@@ -2,11 +2,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/nibzard/looper/internal/config"
+	"github.com/nibzard/looper/internal/loop"
 )
 
 func main() {
@@ -18,13 +22,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	// For now, just print the loaded config to demonstrate it works
-	fmt.Printf("Config loaded successfully:\n")
-	fmt.Printf("  TodoFile: %s\n", cfg.TodoFile)
-	fmt.Printf("  SchemaFile: %s\n", cfg.SchemaFile)
-	fmt.Printf("  LogDir: %s\n", cfg.LogDir)
-	fmt.Printf("  MaxIterations: %d\n", cfg.MaxIterations)
-	fmt.Printf("  Schedule: %s\n", cfg.Schedule)
-	fmt.Printf("  ApplySummary: %v\n", cfg.ApplySummary)
-	fmt.Printf("  ProjectRoot: %s\n", cfg.ProjectRoot)
+	// Create context with cancellation for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle signals
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		cancel()
+	}()
+
+	// Create and run loop
+	l, err := loop.New(cfg, cfg.ProjectRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing loop: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := l.Run(ctx); err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintf(os.Stderr, "\nLoop interrupted\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "Error running loop: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	fmt.Println("Loop completed")
 }
