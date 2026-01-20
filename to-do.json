@@ -142,7 +142,7 @@
       "title": "Implement bootstrapping of to-do.json from source docs and ensure schema exists",
       "priority": 2,
       "status": "done",
-      "updated_at": "2026-01-20T23:00:53Z",
+      "updated_at": "2026-01-20T23:01:36Z",
       "files": [
         "looper/internal/loop/loop.go",
         "to-do.json"
@@ -152,7 +152,13 @@
       "id": "T011",
       "title": "Implement repair flow via agent for invalid task files",
       "priority": 2,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-20T23:02:59Z",
+      "files": [
+        "looper/internal/loop/loop.go",
+        "looper/internal/prompts/prompts.go",
+        "looper/prompts/repair.txt"
+      ]
     },
     {
       "id": "T012",

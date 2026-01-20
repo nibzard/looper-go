@@ -121,6 +121,7 @@ type Data struct {
 	Iteration    int
 	Schedule     string
 	Now          string
+	ErrorMessage string // Validation errors for repair prompt
 }
 
 // NewData builds prompt data with a UTC timestamp formatted in RFC3339.
@@ -132,6 +133,17 @@ func NewData(todoPath, schemaPath, workDir string, selected Task, iteration int,
 		SelectedTask: selected,
 		Iteration:    iteration,
 		Schedule:     schedule,
+		Now:          now.UTC().Format(time.RFC3339),
+	}
+}
+
+// NewDataForRepair builds prompt data for repair flow with validation errors.
+func NewDataForRepair(todoPath, schemaPath, workDir, errMsg string, now time.Time) Data {
+	return Data{
+		TodoPath:     todoPath,
+		SchemaPath:   schemaPath,
+		WorkDir:      workDir,
+		ErrorMessage: errMsg,
 		Now:          now.UTC().Format(time.RFC3339),
 	}
 }

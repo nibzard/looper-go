@@ -311,14 +311,22 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 		fmt.Fprintf(os.Stderr, "  - %v\n", e)
 	}
 
+	// Build error message for prompt
+	var errMsg string
+	if len(validationResult.Errors) > 0 {
+		errParts := make([]string, 0, len(validationResult.Errors))
+		for _, e := range validationResult.Errors {
+			errParts = append(errParts, e.Error())
+		}
+		errMsg = strings.Join(errParts, "\n")
+	}
+
 	renderer := prompts.NewRenderer(promptStore)
-	promptData := prompts.NewData(
+	promptData := prompts.NewDataForRepair(
 		todoPath,
 		schemaPath,
 		workDir,
-		prompts.Task{},
-		0,
-		"repair",
+		errMsg,
 		time.Now(),
 	)
 	prompt, err := renderer.Render(prompts.RepairPrompt, promptData)
