@@ -66,11 +66,12 @@
       "title": "Implement task file types and JSON Schema validation with minimal fallback checks",
       "priority": 1,
       "status": "done",
-      "updated_at": "2026-01-20T21:29:43Z",
+      "updated_at": "2026-01-20T21:39:53Z",
       "files": [
         "looper/internal/todo/types.go",
-        "looper/internal/todo/types_test.go",
-        "looper/internal/todo/doc.go"
+        "looper/go.mod",
+        "looper/go.sum",
+        "to-do.json"
       ]
     },
     {
