@@ -175,7 +175,12 @@
       "id": "T013",
       "title": "Implement iteration scheduling and agent selection (codex/claude, odd-even, round-robin)",
       "priority": 3,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-21T00:00:00Z",
+      "files": [
+        "looper/internal/config/config.go"
+      ],
+      "details": "Added configurable odd-even and round-robin scheduling with --odd-agent, --even-agent, and --rr-agents flags and env vars"
     },
     {
       "id": "T014",
@@ -218,11 +223,12 @@
       "title": "Add tests: task selection, summary apply, prompt rendering, and stub-agent integration",
       "priority": 2,
       "status": "done",
-      "updated_at": "2026-01-20T23:45:17Z",
+      "updated_at": "2026-01-20T23:45:56Z",
       "files": [
         "looper/internal/loop/loop_test.go",
         "looper/internal/prompts/prompts_test.go",
-        "looper/internal/todo/types_test.go"
+        "looper/internal/todo/types_test.go",
+        "to-do.json"
       ]
     },
     {

@@ -40,6 +40,11 @@ type Config struct {
 	Schedule      string `toml:"schedule"` // codex, claude, odd-even, round-robin
 	RepairAgent   string `toml:"repair_agent"` // codex or claude
 
+	// Scheduling options for odd-even and round-robin
+	OddAgent      string   `toml:"odd_agent"`      // agent for odd iterations (default: codex)
+	EvenAgent     string   `toml:"even_agent"`     // agent for even iterations (default: claude)
+	RRAgents      []string `toml:"rr_agents"`      // agent list for round-robin (default: claude,codex)
+
 	// Agents
 	Agents AgentConfig `toml:"agents"`
 
@@ -81,16 +86,29 @@ func (c *Config) IterSchedule(iter int) string {
 		return "claude"
 	case "odd-even":
 		if iter%2 == 1 {
-			return "codex" // odd
-		}
-		return "claude" // even
-	case "round-robin":
-		// Simple alternation: codex, claude, codex, claude...
-		// TODO: support custom round-robin lists
-		if iter%2 == 1 {
+			// Odd iteration (1, 3, 5, ...)
+			if c.OddAgent != "" {
+				return c.OddAgent
+			}
 			return "codex"
 		}
+		// Even iteration (2, 4, 6, ...)
+		if c.EvenAgent != "" {
+			return c.EvenAgent
+		}
 		return "claude"
+	case "round-robin":
+		agents := c.RRAgents
+		if len(agents) == 0 {
+			// Default: claude, codex
+			agents = []string{"claude", "codex"}
+		}
+		if len(agents) == 0 {
+			return "codex"
+		}
+		// iter is 1-indexed, convert to 0-indexed for array access
+		idx := (iter - 1) % len(agents)
+		return agents[idx]
 	default:
 		return "codex"
 	}
@@ -145,6 +163,9 @@ func setDefaults(cfg *Config) {
 	cfg.MaxIterations = DefaultMaxIterations
 	cfg.Schedule = "codex"
 	cfg.RepairAgent = "codex"
+	cfg.OddAgent = ""      // Empty means use default (codex)
+	cfg.EvenAgent = ""     // Empty means use default (claude)
+	cfg.RRAgents = nil     // nil means use default (claude,codex)
 	cfg.ApplySummary = DefaultApplySummary
 	cfg.GitInit = true
 	cfg.LoopDelaySeconds = 0
@@ -201,6 +222,15 @@ func loadFromEnv(cfg *Config) {
 	if v := os.Getenv("LOOPER_REPAIR_AGENT"); v != "" {
 		cfg.RepairAgent = v
 	}
+	if v := os.Getenv("LOOPER_ITER_ODD_AGENT"); v != "" {
+		cfg.OddAgent = v
+	}
+	if v := os.Getenv("LOOPER_ITER_EVEN_AGENT"); v != "" {
+		cfg.EvenAgent = v
+	}
+	if v := os.Getenv("LOOPER_ITER_RR_AGENTS"); v != "" {
+		cfg.RRAgents = splitAndTrim(v, ",")
+	}
 	if v := os.Getenv("LOOPER_APPLY_SUMMARY"); v != "" {
 		cfg.ApplySummary = boolFromString(v)
 	}
@@ -236,6 +266,19 @@ func boolFromString(s string) bool {
 	return s == "1" || s == "true" || s == "yes" || s == "on"
 }
 
+// splitAndTrim splits a string by sep and trims whitespace from each part.
+func splitAndTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
 // parseFlags defines and parses CLI flags.
 func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	if fs == nil {
@@ -251,6 +294,18 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
 	fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
 	fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations (codex|claude)")
+	fs.StringVar(&cfg.OddAgent, "odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule (codex|claude)")
+	fs.StringVar(&cfg.EvenAgent, "even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule (codex|claude)")
+
+	// Round-robin agents - need a custom var flag since StringVar doesn't handle slices
+	var rrAgentsStr string
+	if cfg.RRAgents != nil {
+		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
+	}
+	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule (e.g., claude,codex)")
+	if rrAgentsStr != "" {
+		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
+	}
 
 	// Output
 	fs.BoolVar(&cfg.ApplySummary, "apply-summary", cfg.ApplySummary, "Apply summaries to task file")
