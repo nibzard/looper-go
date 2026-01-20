@@ -78,7 +78,43 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 	}, nil
 }
 
+// ensureSchemaExists ensures the schema file exists, creating it if necessary.
+// The schema is read from the bundled prompt assets and written to the project root.
+func ensureSchemaExists(schemaPath string) error {
+	// Check if schema already exists
+	if _, err := os.Stat(schemaPath); err == nil {
+		return nil
+	}
+
+	// Ensure directory exists
+	schemaDir := filepath.Dir(schemaPath)
+	if schemaDir != "" && schemaDir != "." {
+		if err := os.MkdirAll(schemaDir, 0755); err != nil {
+			return fmt.Errorf("create schema directory: %w", err)
+		}
+	}
+
+	// Read the bundled schema from prompts
+	// The schema is embedded in the binary at build time
+	bundledSchema, err := prompts.BundledSchema()
+	if err != nil {
+		return fmt.Errorf("get bundled schema: %w", err)
+	}
+
+	// Write the schema to the project root
+	if err := os.WriteFile(schemaPath, bundledSchema, 0644); err != nil {
+		return fmt.Errorf("write schema file: %w", err)
+	}
+
+	return nil
+}
+
 func loadAndValidateTodo(workDir, todoPath, schemaPath string, promptStore *prompts.Store, cfg *config.Config) (*todo.File, error) {
+	// Ensure schema file exists
+	if err := ensureSchemaExists(schemaPath); err != nil {
+		return nil, fmt.Errorf("ensure schema exists: %w", err)
+	}
+
 	// Load or bootstrap todo file
 	todoFile, err := loadOrBootstrapTodo(workDir, todoPath, schemaPath, promptStore, cfg)
 	if err != nil {
