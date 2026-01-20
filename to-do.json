@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "looper-go",
+    "root": "."
+  },
+  "source_files": [
+    "looper/README.md",
+    "looper/MIGRATION.md"
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Initialize Go module and project layout (cmd/looper, internal packages)",
+      "priority": 1,
+      "status": "done",
+      "updated_at": "2026-01-20T21:12:51Z",
+      "files": [
+        "looper/cmd/looper/main.go",
+        "looper/go.mod",
+        "looper/internal/agents/doc.go",
+        "looper/internal/config/doc.go",
+        "looper/internal/hooks/doc.go",
+        "looper/internal/logging/doc.go",
+        "looper/internal/loop/doc.go",
+        "looper/internal/prompts/doc.go",
+        "looper/internal/todo/doc.go",
+        "looper/internal/ui/doc.go",
+        "to-do.json"
+      ]
+    },
+    {
+      "id": "T002",
+      "title": "Define config system: flags, env, defaults, and TOML config loading",
+      "priority": 1,
+      "status": "done",
+      "updated_at": "2026-01-20T21:15:26ZZ",
+      "files": [
+        "looper/internal/config/config.go",
+        "looper/internal/config/config_test.go",
+        "looper/internal/config/example.go",
+        "looper/internal/config/doc.go",
+        "looper/cmd/looper/main.go",
+        "looper/go.mod"
+      ]
+    },
+    {
+      "id": "T003",
+      "title": "Implement prompt assets and strict template renderer with required variables",
+      "priority": 1,
+      "status": "todo"
+    },
+    {
+      "id": "T004",
+      "title": "Implement task file types and JSON Schema validation with minimal fallback checks",
+      "priority": 1,
+      "status": "todo"
+    },
+    {
+      "id": "T005",
+      "title": "Implement deterministic task selection and stable task file read/write (2-space indent)",
+      "priority": 1,
+      "status": "todo"
+    },
+    {
+      "id": "T006",
+      "title": "Implement agent interface plus Codex and Claude runners with streaming logs and timeouts",
+      "priority": 1,
+      "status": "todo"
+    },
+    {
+      "id": "T007",
+      "title": "Implement loop orchestration: bootstrap, validate/repair, select task, run, review, project-done",
+      "priority": 1,
+      "status": "todo"
+    },
+    {
+      "id": "T008",
+      "title": "Implement summary schema parsing and apply-summary logic with task ID checks",
+      "priority": 2,
+      "status": "todo"
+    },
+    {
+      "id": "T009",
+      "title": "Implement JSONL logging, last-message files, and log directory layout",
+      "priority": 2,
+      "status": "todo"
+    },
+    {
+      "id": "T010",
+      "title": "Implement bootstrapping of to-do.json from source docs and ensure schema exists",
+      "priority": 2,
+      "status": "todo"
+    },
+    {
+      "id": "T011",
+      "title": "Implement repair flow via agent for invalid task files",
+      "priority": 2,
+      "status": "todo"
+    },
+    {
+      "id": "T012",
+      "title": "Implement CLI commands: run (default), doctor, tail, ls, version, and core flags",
+      "priority": 2,
+      "status": "todo"
+    },
+    {
+      "id": "T013",
+      "title": "Implement iteration scheduling and agent selection (codex/claude, odd-even, round-robin)",
+      "priority": 3,
+      "status": "todo"
+    },
+    {
+      "id": "T014",
+      "title": "Implement tail command with optional follow of the latest log",
+      "priority": 3,
+      "status": "todo"
+    },
+    {
+      "id": "T015",
+      "title": "Implement doctor checks for dependencies, config, prompts, and task file validity",
+      "priority": 3,
+      "status": "todo"
+    },
+    {
+      "id": "T016",
+      "title": "Implement ls command to list tasks by status with deterministic ordering",
+      "priority": 3,
+      "status": "todo"
+    },
+    {
+      "id": "T017",
+      "title": "Implement LOOPER_HOOK invocation with required arguments and error handling",
+      "priority": 3,
+      "status": "todo"
+    },
+    {
+      "id": "T018",
+      "title": "Add dev-only prompt overrides and optional print-prompt gating (env or build tag)",
+      "priority": 4,
+      "status": "todo"
+    },
+    {
+      "id": "T019",
+      "title": "Update install/build scripts and Homebrew formula for the Go binary",
+      "priority": 4,
+      "status": "todo"
+    },
+    {
+      "id": "T020",
+      "title": "Add tests: task selection, summary apply, prompt rendering, and stub-agent integration",
+      "priority": 2,
+      "status": "todo"
+    },
+    {
+      "id": "T021",
+      "title": "Implement optional TUI (Bubble Tea) behind --ui tui or looper tui",
+      "priority": 5,
+      "status": "todo"
+    },
+    {
+      "id": "T022",
+      "title": "Update README and migration docs for the Go CLI, config, and behavior changes",
+      "priority": 4,
+      "status": "todo"
+    }
+  ]
+}
