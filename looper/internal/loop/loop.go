@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nibzard/looper/internal/agents"
@@ -44,22 +45,10 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 		schemaPath = filepath.Join(workDir, schemaPath)
 	}
 
-	// Load or bootstrap todo file
-	todoFile, err := loadOrBootstrapTodo(workDir, todoPath, schemaPath, promptStore, cfg)
+	// Load or bootstrap todo file and validate/repair if needed.
+	todoFile, err := loadAndValidateTodo(workDir, todoPath, schemaPath, promptStore, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("load todo file: %w", err)
-	}
-
-	// Validate todo file
-	result := todoFile.Validate(todo.ValidationOptions{
-		SchemaPath: schemaPath,
-	})
-	if !result.Valid {
-		// Try to repair the file
-		todoFile, err = repairTodoFile(workDir, todoPath, schemaPath, promptStore, cfg, result)
-		if err != nil {
-			return nil, fmt.Errorf("todo file validation failed and repair failed: %w (validation errors: %v)", err, result.Errors)
-		}
 	}
 
 	// Create log directory
@@ -83,6 +72,28 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 	}, nil
 }
 
+func loadAndValidateTodo(workDir, todoPath, schemaPath string, promptStore *prompts.Store, cfg *config.Config) (*todo.File, error) {
+	// Load or bootstrap todo file
+	todoFile, err := loadOrBootstrapTodo(workDir, todoPath, schemaPath, promptStore, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate todo file
+	result := todoFile.Validate(todo.ValidationOptions{
+		SchemaPath: schemaPath,
+	})
+	if !result.Valid {
+		// Try to repair the file
+		todoFile, err = repairTodoFile(workDir, todoPath, schemaPath, promptStore, cfg, result)
+		if err != nil {
+			return nil, fmt.Errorf("todo file validation failed and repair failed: %w (validation errors: %v)", err, result.Errors)
+		}
+	}
+
+	return todoFile, nil
+}
+
 // loadOrBootstrapTodo loads the todo file, or bootstraps it if missing.
 func loadOrBootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.Store, cfg *config.Config) (*todo.File, error) {
 	// Try to load existing file
@@ -101,7 +112,18 @@ func loadOrBootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prom
 		return todo.Load(todoPath)
 	}
 
-	return nil, err
+	// Attempt repair for load errors (e.g., invalid JSON)
+	fmt.Fprintf(os.Stderr, "Todo file failed to load, attempting repair...\n")
+	validationResult := &todo.ValidationResult{
+		Valid:  false,
+		Errors: []error{err},
+	}
+	todoFile, repairErr := repairTodoFile(workDir, todoPath, schemaPath, promptStore, cfg, validationResult)
+	if repairErr != nil {
+		return nil, fmt.Errorf("load todo file: %w; repair failed: %v", err, repairErr)
+	}
+
+	return todoFile, nil
 }
 
 // bootstrapTodo creates a new todo file by running the bootstrap agent.
@@ -251,8 +273,12 @@ func (l *Loop) Run(ctx context.Context) error {
 
 // runIteration executes a single iteration for a task.
 func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) error {
+	taskID := task.ID
+	taskTitle := task.Title
+	taskStatus := string(task.Status)
+
 	// Mark task as doing
-	if err := l.todoFile.SetTaskDoing(task.ID); err != nil {
+	if err := l.todoFile.SetTaskDoing(taskID); err != nil {
 		return fmt.Errorf("mark task doing: %w", err)
 	}
 	if err := l.saveTodo(); err != nil {
@@ -263,7 +289,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	agentType := l.cfg.IterSchedule(iter)
 
 	// Create log file
-	logPath := l.logPath(iter, task.ID)
+	logPath := l.logPath(iter, taskID)
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create log file: %w", err)
@@ -285,9 +311,9 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 		l.schemaPath,
 		l.workDir,
 		prompts.Task{
-			ID:     task.ID,
-			Title:  task.Title,
-			Status: string(task.Status),
+			ID:     taskID,
+			Title:  taskTitle,
+			Status: taskStatus,
 		},
 		iter,
 		agentType,
@@ -303,7 +329,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 		Binary:        l.cfg.GetAgentBinary(agentType),
 		Model:         l.cfg.GetAgentModel(agentType),
 		WorkDir:       l.workDir,
-		LastMessagePath: l.lastMessagePath(iter, task.ID),
+		LastMessagePath: l.lastMessagePath(iter, taskID),
 	}
 	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
 	if err != nil {
@@ -313,18 +339,27 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	summary, err := agent.Run(ctx, prompt, multiLogWriter)
 	if err != nil {
 		// Mark task as blocked on error
-		_ = l.todoFile.SetTaskStatus(task.ID, todo.StatusBlocked)
+		_ = l.todoFile.SetTaskStatus(taskID, todo.StatusBlocked)
 		_ = l.saveTodo()
 		return fmt.Errorf("run agent: %w", err)
 	}
 
+	if err := l.reloadTodo(); err != nil {
+		_ = multiLogWriter.Write(agents.LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   fmt.Sprintf("reload todo file: %v", err),
+		})
+		return fmt.Errorf("reload todo file: %w", err)
+	}
+
 	// Validate summary matches selected task
-	if summary.TaskID != "" && summary.TaskID != task.ID {
+	if summary.TaskID != "" && summary.TaskID != taskID {
 		// Warn and skip summary apply
 		_ = multiLogWriter.Write(agents.LogEvent{
 			Type:      "error",
 			Timestamp: time.Now().UTC(),
-			Content:   fmt.Sprintf("summary task_id %q does not match selected task %q, skipping summary apply", summary.TaskID, task.ID),
+			Content:   fmt.Sprintf("summary task_id %q does not match selected task %q, skipping summary apply", summary.TaskID, taskID),
 		})
 		return nil
 	}
@@ -389,6 +424,15 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 	summary, err := agent.Run(ctx, prompt, multiLogWriter)
 	if err != nil {
 		return fmt.Errorf("run review agent: %w", err)
+	}
+
+	if err := l.reloadTodo(); err != nil {
+		_ = multiLogWriter.Write(agents.LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   fmt.Sprintf("reload todo file: %v", err),
+		})
+		return fmt.Errorf("reload todo file: %w", err)
 	}
 
 	// Apply summary if it adds tasks
@@ -460,19 +504,49 @@ func (l *Loop) applySummary(summary *agents.Summary) error {
 
 // addProjectDoneMarker adds a project-done task to indicate completion.
 func (l *Loop) addProjectDoneMarker() {
+	if l.hasProjectDoneMarker() {
+		return
+	}
 	l.todoFile.AddTask(todo.Task{
-		ID:       "project-done",
-		Title:    "Project Done",
-		Priority: 1,
+		ID:       "PROJECT-DONE",
+		Title:    "Project done: no new tasks",
+		Priority: 5,
 		Status:   todo.StatusDone,
-		Details:  "All tasks completed. No new work found during review.",
+		Details:  "Review found no new tasks.",
+		Tags:     []string{"project-done"},
 	})
 	_ = l.saveTodo()
+}
+
+// hasProjectDoneMarker returns true if a project-done task already exists.
+func (l *Loop) hasProjectDoneMarker() bool {
+	for i := range l.todoFile.Tasks {
+		task := l.todoFile.Tasks[i]
+		if strings.EqualFold(task.ID, "project-done") {
+			return true
+		}
+		for _, tag := range task.Tags {
+			if strings.EqualFold(tag, "project-done") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // saveTodo saves the todo file.
 func (l *Loop) saveTodo() error {
 	return l.todoFile.Save(l.todoPath)
+}
+
+// reloadTodo reloads the todo file and applies validation/repair.
+func (l *Loop) reloadTodo() error {
+	todoFile, err := loadAndValidateTodo(l.workDir, l.todoPath, l.schemaPath, l.promptStore, l.cfg)
+	if err != nil {
+		return err
+	}
+	l.todoFile = todoFile
+	return nil
 }
 
 // logPath returns the path for a log file.
