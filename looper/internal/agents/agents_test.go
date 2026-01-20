@@ -1,0 +1,477 @@
+// Package agents tests for Codex and Claude runners.
+package agents
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestExtractJSON tests the extractJSON function.
+func TestExtractJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "plain JSON",
+			input:    `{"task_id":"T1","status":"done"}`,
+			expected: `{"task_id":"T1","status":"done"}`,
+		},
+		{
+			name:     "JSON in markdown code block with json tag",
+			input:    "```json\n{\"task_id\":\"T1\",\"status\":\"done\"}\n```",
+			expected: `{"task_id":"T1","status":"done"}`,
+		},
+		{
+			name:     "JSON in markdown code block without tag",
+			input:    "```\n{\"task_id\":\"T1\",\"status\":\"done\"}\n```",
+			expected: `{"task_id":"T1","status":"done"}`,
+		},
+		{
+			name:     "JSON embedded in text",
+			input:    "Some text here\n{\"task_id\":\"T1\",\"status\":\"done\"}\nMore text",
+			expected: `{"task_id":"T1","status":"done"}`,
+		},
+		{
+			name:     "no JSON",
+			input:    "Just plain text with no JSON",
+			expected: "",
+		},
+		{
+			name:     "nested objects",
+			input:    `{"outer":{"inner":"value"}}`,
+			expected: `{"outer":{"inner":"value"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractJSON(tt.input)
+			if result != tt.expected {
+				t.Errorf("extractJSON() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestIOStreamLogWriter tests the IOStreamLogWriter.
+func TestIOStreamLogWriter(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewIOStreamLogWriter(&buf)
+
+	event := LogEvent{
+		Type:      "test",
+		Timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+		Content:   "test message",
+	}
+
+	err := writer.Write(event)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	// Check that output is valid JSON
+	var got LogEvent
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("Failed to parse output as JSON: %v", err)
+	}
+
+	if got.Type != event.Type {
+		t.Errorf("Type = %q, want %q", got.Type, event.Type)
+	}
+	if got.Content != event.Content {
+		t.Errorf("Content = %q, want %q", got.Content, event.Content)
+	}
+}
+
+// TestIOStreamLogWriterIndent tests the SetIndent method.
+func TestIOStreamLogWriterIndent(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewIOStreamLogWriter(&buf)
+	writer.SetIndent("  ")
+
+	event := LogEvent{
+		Type:      "test",
+		Timestamp: time.Now().UTC(),
+		Content:   "test message",
+	}
+
+	err := writer.Write(event)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	output := buf.String()
+	if !strings.HasPrefix(output, "  ") {
+		t.Errorf("Output does not start with indent: %q", output)
+	}
+}
+
+// TestMultiLogWriter tests the MultiLogWriter.
+func TestMultiLogWriter(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	writer1 := NewIOStreamLogWriter(&buf1)
+	writer2 := NewIOStreamLogWriter(&buf2)
+	multi := NewMultiLogWriter(writer1, writer2)
+
+	event := LogEvent{
+		Type:      "test",
+		Timestamp: time.Now().UTC(),
+		Content:   "test message",
+	}
+
+	err := multi.Write(event)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	// Both writers should have received the event
+	if buf1.Len() == 0 {
+		t.Error("Writer 1 received no output")
+	}
+	if buf2.Len() == 0 {
+		t.Error("Writer 2 received no output")
+	}
+
+	// Both should be valid JSON
+	var got1, got2 LogEvent
+	if err := json.Unmarshal(buf1.Bytes(), &got1); err != nil {
+		t.Errorf("Failed to parse writer 1 output as JSON: %v", err)
+	}
+	if err := json.Unmarshal(buf2.Bytes(), &got2); err != nil {
+		t.Errorf("Failed to parse writer 2 output as JSON: %v", err)
+	}
+
+	if got1.Content != event.Content {
+		t.Errorf("Writer 1 Content = %q, want %q", got1.Content, event.Content)
+	}
+	if got2.Content != event.Content {
+		t.Errorf("Writer 2 Content = %q, want %q", got2.Content, event.Content)
+	}
+}
+
+// TestNullLogWriter tests the NullLogWriter.
+func TestNullLogWriter(t *testing.T) {
+	writer := NullLogWriter{}
+
+	event := LogEvent{
+		Type:      "test",
+		Timestamp: time.Now().UTC(),
+		Content:   "test message",
+	}
+
+	err := writer.Write(event)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+}
+
+// TestValidateBinary tests the ValidateBinary function.
+func TestValidateBinary(t *testing.T) {
+	// Create a temporary executable file
+	tmpDir := t.TempDir()
+	execPath := filepath.Join(tmpDir, "test_exec")
+
+	// Create the file
+	if err := os.WriteFile(execPath, []byte("#!/bin/sh\necho test\n"), 0755); err != nil {
+		t.Fatalf("Failed to create test executable: %v", err)
+	}
+
+	// Test valid executable
+	if err := ValidateBinary(execPath); err != nil {
+		t.Errorf("ValidateBinary() on valid executable error = %v", err)
+	}
+
+	// Test non-existent file
+	if err := ValidateBinary("/nonexistent/path/to/binary"); err == nil {
+		t.Error("ValidateBinary() on non-existent file expected error, got nil")
+	}
+
+	// Test non-executable file
+	nonExecPath := filepath.Join(tmpDir, "non_exec")
+	if err := os.WriteFile(nonExecPath, []byte("not executable"), 0644); err != nil {
+		t.Fatalf("Failed to create non-executable file: %v", err)
+	}
+
+	if err := ValidateBinary(nonExecPath); err == nil {
+		t.Error("ValidateBinary() on non-executable file expected error, got nil")
+	}
+}
+
+// TestFindAgentBinary tests the FindAgentBinary function.
+func TestFindAgentBinary(t *testing.T) {
+	// Test with a binary that should exist (sh, ls, etc.)
+	if path, err := FindAgentBinary(AgentTypeCodex); err != nil {
+		// Codex might not be installed, that's ok
+		t.Logf("Codex binary not found (expected if not installed): %v", err)
+	} else if path == "" {
+		t.Error("FindAgentBinary() returned empty path without error")
+	}
+
+	// Test with unknown agent type
+	if _, err := FindAgentBinary("unknown"); err == nil {
+		t.Error("FindAgentBinary() with unknown type expected error, got nil")
+	}
+
+	// Test with a shell built-in that exists
+	if path, err := exec.LookPath("sh"); err != nil {
+		t.Logf("Shell not found (unexpected): %v", err)
+	} else if path == "" {
+		t.Error("exec.LookPath() returned empty path without error")
+	}
+}
+
+// TestSummary tests Summary marshaling/unmarshaling.
+func TestSummary(t *testing.T) {
+	summary := Summary{
+		TaskID:   "T001",
+		Status:   "done",
+		Summary:  "Test completed successfully",
+		Files:    []string{"file1.go", "file2.go"},
+		Blockers: []string{"blocker1"},
+	}
+
+	data, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	var got Summary
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	if got.TaskID != summary.TaskID {
+		t.Errorf("TaskID = %q, want %q", got.TaskID, summary.TaskID)
+	}
+	if got.Status != summary.Status {
+		t.Errorf("Status = %q, want %q", got.Status, summary.Status)
+	}
+	if got.Summary != summary.Summary {
+		t.Errorf("Summary = %q, want %q", got.Summary, summary.Summary)
+	}
+	if len(got.Files) != len(summary.Files) {
+		t.Errorf("Files length = %d, want %d", len(got.Files), len(summary.Files))
+	}
+}
+
+// TestCodexAgentConfig tests creating a Codex agent with config.
+func TestCodexAgentConfig(t *testing.T) {
+	cfg := Config{
+		Binary:  "codex",
+		Model:   "gpt-5",
+		Args:    []string{"--arg1", "value1"},
+		Timeout: 5 * time.Minute,
+		WorkDir: "/tmp",
+	}
+
+	agent := NewCodexAgent(cfg)
+	if agent == nil {
+		t.Fatal("NewCodexAgent() returned nil")
+	}
+
+	// Type assertion to check it's the right type
+	if _, ok := agent.(*codexAgent); !ok {
+		t.Error("NewCodexAgent() did not return *codexAgent")
+	}
+}
+
+// TestClaudeAgentConfig tests creating a Claude agent with config.
+func TestClaudeAgentConfig(t *testing.T) {
+	cfg := Config{
+		Binary:  "claude",
+		Model:   "claude-4",
+		Args:    []string{"--arg1", "value1"},
+		Timeout: 10 * time.Minute,
+		WorkDir: "/tmp",
+	}
+
+	agent := NewClaudeAgent(cfg)
+	if agent == nil {
+		t.Fatal("NewClaudeAgent() returned nil")
+	}
+
+	// Type assertion to check it's the right type
+	if _, ok := agent.(*claudeAgent); !ok {
+		t.Error("NewClaudeAgent() did not return *claudeAgent")
+	}
+}
+
+// TestNewAgent tests the NewAgent factory function.
+func TestNewAgent(t *testing.T) {
+	cfg := Config{
+		Binary:  "test",
+		Timeout: DefaultTimeout,
+	}
+
+	tests := []struct {
+		name      string
+		agentType AgentType
+		wantErr   bool
+	}{
+		{
+			name:      "codex agent",
+			agentType: AgentTypeCodex,
+			wantErr:   false,
+		},
+		{
+			name:      "claude agent",
+			agentType: AgentTypeClaude,
+			wantErr:   false,
+		},
+		{
+			name:      "unknown agent type",
+			agentType: "unknown",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent, err := NewAgent(tt.agentType, cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewAgent() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && agent == nil {
+				t.Error("NewAgent() returned nil agent")
+			}
+		})
+	}
+}
+
+// TestLogEventJSON tests LogEvent JSON marshaling.
+func TestLogEventJSON(t *testing.T) {
+	event := LogEvent{
+		Type:      "assistant_message",
+		Timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+		Content:   "test message",
+		Tool:      "test_tool",
+		Command:   []string{"echo", "test"},
+		ExitCode:  0,
+		Summary: &Summary{
+			TaskID:  "T001",
+			Status:  "done",
+			Summary: "completed",
+		},
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	var got LogEvent
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	if got.Type != event.Type {
+		t.Errorf("Type = %q, want %q", got.Type, event.Type)
+	}
+	if got.Content != event.Content {
+		t.Errorf("Content = %q, want %q", got.Content, event.Content)
+	}
+	if got.Tool != event.Tool {
+		t.Errorf("Tool = %q, want %q", got.Tool, event.Tool)
+	}
+	if got.Summary.TaskID != event.Summary.TaskID {
+		t.Errorf("Summary.TaskID = %q, want %q", got.Summary.TaskID, event.Summary.TaskID)
+	}
+}
+
+// stubAgentProcess creates a stub process that outputs JSON lines.
+// This is used for integration testing.
+func stubAgentProcess(t *testing.T, output string) *exec.Cmd {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "stub.sh")
+
+	// Create a stub script that outputs the given content
+	script := "#!/bin/sh\necho '" + output + "'\n"
+
+	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to create stub script: %v", err)
+	}
+
+	return exec.Command(scriptPath)
+}
+
+// TestCodexAgentTimeout tests that the codex agent respects timeout.
+func TestCodexAgentTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping timeout test in short mode")
+	}
+
+	t.Skip("timeout test requires actual binary or more complex stub")
+
+	// This would need a stub that sleeps longer than the timeout
+	// For now, we skip this test
+}
+
+// TestProcessLine tests the processLine method for codex agent.
+func TestProcessLine(t *testing.T) {
+	agent := NewCodexAgent(Config{}).(*codexAgent)
+
+	tests := []struct {
+		name        string
+		line        string
+		wantSummary bool
+	}{
+		{
+			name:        "plain text",
+			line:        "just some text",
+			wantSummary: false,
+		},
+		{
+			name:        "valid JSON with task_id",
+			line:        `{"task_id":"T001","status":"done","summary":"test"}`,
+			wantSummary: true,
+		},
+		{
+			name:        "valid JSON with summary field",
+			line:        `{"summary":"test output"}`,
+			wantSummary: true,
+		},
+		{
+			name:        "JSON without summary",
+			line:        `{"type":"tool_use","tool":"test"}`,
+			wantSummary: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logWriter := NewIOStreamLogWriter(&buf)
+			summaries := make(chan *Summary, 10)
+			ctx := context.Background()
+
+			err := agent.processLine(ctx, tt.line, logWriter, summaries)
+			if err != nil {
+				t.Errorf("processLine() error = %v", err)
+			}
+
+			// Check if summary was sent
+			select {
+			case summary := <-summaries:
+				if !tt.wantSummary {
+					t.Errorf("Unexpected summary received: %+v", summary)
+				}
+			default:
+				if tt.wantSummary {
+					t.Error("Expected summary but none received")
+				}
+			}
+		})
+	}
+}

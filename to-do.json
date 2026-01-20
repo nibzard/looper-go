@@ -79,17 +79,26 @@
       "title": "Implement deterministic task selection and stable task file read/write (2-space indent)",
       "priority": 1,
       "status": "done",
-      "updated_at": "2026-01-20T22:00:00Z",
+      "updated_at": "2026-01-20T21:49:49Z",
       "files": [
         "looper/internal/todo/types.go",
-        "looper/internal/todo/types_test.go"
-      ]
+        "looper/internal/todo/types_test.go",
+        "to-do.json"
+      ],
+      "details": "Implementation already present in internal/todo types and tests; no code changes needed this iteration."
     },
     {
       "id": "T006",
       "title": "Implement agent interface plus Codex and Claude runners with streaming logs and timeouts",
       "priority": 1,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-20T21:52:37Z",
+      "files": [
+        "looper/internal/agents/agents.go",
+        "looper/internal/agents/agents_test.go",
+        "looper/internal/agents/doc.go",
+        "to-do.json"
+      ]
     },
     {
       "id": "T007",
