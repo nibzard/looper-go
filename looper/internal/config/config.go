@@ -79,7 +79,7 @@ type Agent struct {
 
 // IterSchedule returns the agent for a given iteration number.
 func (c *Config) IterSchedule(iter int) string {
-	switch c.Schedule {
+	switch normalizeSchedule(c.Schedule) {
 	case "codex":
 		return "codex"
 	case "claude":
@@ -87,18 +87,18 @@ func (c *Config) IterSchedule(iter int) string {
 	case "odd-even":
 		if iter%2 == 1 {
 			// Odd iteration (1, 3, 5, ...)
-			if c.OddAgent != "" {
-				return c.OddAgent
+			if agent := normalizeAgent(c.OddAgent); agent != "" {
+				return agent
 			}
 			return "codex"
 		}
 		// Even iteration (2, 4, 6, ...)
-		if c.EvenAgent != "" {
-			return c.EvenAgent
+		if agent := normalizeAgent(c.EvenAgent); agent != "" {
+			return agent
 		}
 		return "claude"
 	case "round-robin":
-		agents := c.RRAgents
+		agents := normalizeAgentList(c.RRAgents)
 		if len(agents) == 0 {
 			// Default: claude, codex
 			agents = []string{"claude", "codex"}
@@ -216,7 +216,9 @@ func loadFromEnv(cfg *Config) {
 			cfg.MaxIterations = i
 		}
 	}
-	if v := os.Getenv("LOOPER_SCHEDULE"); v != "" {
+	if v := os.Getenv("LOOPER_ITER_SCHEDULE"); v != "" {
+		cfg.Schedule = v
+	} else if v := os.Getenv("LOOPER_SCHEDULE"); v != "" {
 		cfg.Schedule = v
 	}
 	if v := os.Getenv("LOOPER_REPAIR_AGENT"); v != "" {
@@ -279,6 +281,38 @@ func splitAndTrim(s, sep string) []string {
 	return result
 }
 
+func normalizeSchedule(schedule string) string {
+	s := strings.ToLower(strings.TrimSpace(schedule))
+	switch s {
+	case "odd_even", "odd-even", "oddeven":
+		return "odd-even"
+	case "round_robin", "round-robin", "roundrobin", "rr":
+		return "round-robin"
+	case "codex", "claude":
+		return s
+	default:
+		return s
+	}
+}
+
+func normalizeAgent(agent string) string {
+	return strings.ToLower(strings.TrimSpace(agent))
+}
+
+func normalizeAgentList(agents []string) []string {
+	if len(agents) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		normalized := normalizeAgent(agent)
+		if normalized != "" {
+			result = append(result, normalized)
+		}
+	}
+	return result
+}
+
 // parseFlags defines and parses CLI flags.
 func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	if fs == nil {
@@ -303,9 +337,6 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
 	}
 	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule (e.g., claude,codex)")
-	if rrAgentsStr != "" {
-		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
-	}
 
 	// Output
 	fs.BoolVar(&cfg.ApplySummary, "apply-summary", cfg.ApplySummary, "Apply summaries to task file")
@@ -325,7 +356,13 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	fs.StringVar(&cfg.Agents.Codex.Model, "codex-model", cfg.Agents.Codex.Model, "Codex model")
 	fs.StringVar(&cfg.Agents.Claude.Model, "claude-model", cfg.Agents.Claude.Model, "Claude model")
 
-	return fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if rrAgentsStr != "" {
+		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
+	}
+	return nil
 }
 
 // finalizeConfig computes derived values and validates paths.

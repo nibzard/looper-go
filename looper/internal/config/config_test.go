@@ -39,8 +39,10 @@ func TestIterSchedule(t *testing.T) {
 		{"odd-even odd", "odd-even", 1, "codex"},
 		{"odd-even even", "odd-even", 2, "claude"},
 		{"odd-even odd 3", "odd-even", 3, "codex"},
-		{"round-robin 1", "round-robin", 1, "codex"},
-		{"round-robin 2", "round-robin", 2, "claude"},
+		{"odd-even alias", "odd_even", 2, "claude"},
+		{"round-robin 1", "round-robin", 1, "claude"},
+		{"round-robin 2", "round-robin", 2, "codex"},
+		{"round-robin alias", "round_robin", 1, "claude"},
 	}
 
 	for _, tt := range tests {
@@ -65,6 +67,7 @@ func TestLoadFromEnv(t *testing.T) {
 	// Save original env
 	origTodo := os.Getenv("LOOPER_TODO")
 	origMaxIter := os.Getenv("LOOPER_MAX_ITERATIONS")
+	origIterSchedule := os.Getenv("LOOPER_ITER_SCHEDULE")
 	origSchedule := os.Getenv("LOOPER_SCHEDULE")
 
 	defer func() {
@@ -78,6 +81,11 @@ func TestLoadFromEnv(t *testing.T) {
 		} else {
 			os.Unsetenv("LOOPER_MAX_ITERATIONS")
 		}
+		if origIterSchedule != "" {
+			os.Setenv("LOOPER_ITER_SCHEDULE", origIterSchedule)
+		} else {
+			os.Unsetenv("LOOPER_ITER_SCHEDULE")
+		}
 		if origSchedule != "" {
 			os.Setenv("LOOPER_SCHEDULE", origSchedule)
 		} else {
@@ -88,7 +96,8 @@ func TestLoadFromEnv(t *testing.T) {
 	// Set test env vars
 	os.Setenv("LOOPER_TODO", "custom-todo.json")
 	os.Setenv("LOOPER_MAX_ITERATIONS", "100")
-	os.Setenv("LOOPER_SCHEDULE", "claude")
+	os.Setenv("LOOPER_ITER_SCHEDULE", "claude")
+	os.Setenv("LOOPER_SCHEDULE", "codex")
 
 	cfg := &Config{}
 	setDefaults(cfg)
@@ -168,6 +177,7 @@ func TestParseFlags(t *testing.T) {
 		"--todo", "flag-todo.json",
 		"--max-iterations", "75",
 		"--schedule", "odd-even",
+		"--rr-agents", "claude,codex",
 	}
 
 	if err := parseFlags(cfg, fs, args); err != nil {
@@ -182,6 +192,9 @@ func TestParseFlags(t *testing.T) {
 	}
 	if cfg.Schedule != "odd-even" {
 		t.Errorf("Schedule: got %q, want odd-even", cfg.Schedule)
+	}
+	if len(cfg.RRAgents) != 2 || cfg.RRAgents[0] != "claude" || cfg.RRAgents[1] != "codex" {
+		t.Errorf("RRAgents: got %v, want [claude codex]", cfg.RRAgents)
 	}
 }
 
