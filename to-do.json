@@ -115,11 +115,11 @@
       "title": "Implement summary schema parsing and apply-summary logic with task ID checks",
       "priority": 2,
       "status": "done",
-      "updated_at": "2026-01-20T22:29:10Z",
+      "updated_at": "2026-01-20T22:30:51Z",
       "files": [
         "looper/internal/agents/agents.go",
-        "looper/internal/agents/agents_test.go",
         "looper/internal/loop/loop.go",
+        "looper/prompts/summary.schema.json",
         "to-do.json"
       ]
     },
