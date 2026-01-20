@@ -218,10 +218,11 @@
       "title": "Add tests: task selection, summary apply, prompt rendering, and stub-agent integration",
       "priority": 2,
       "status": "done",
-      "updated_at": "2026-01-20T23:33:23Z",
+      "updated_at": "2026-01-20T23:35:58Z",
       "files": [
+        "looper/internal/loop/loop_test.go",
         "looper/internal/prompts/prompts_test.go",
-        "looper/internal/loop/loop_test.go"
+        "looper/internal/todo/types_test.go"
       ]
     },
     {

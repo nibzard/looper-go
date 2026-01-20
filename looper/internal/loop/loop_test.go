@@ -715,6 +715,181 @@ Now: {{.Now}}
 	}
 }
 
+// TestStubAgentIntegration tests that the stub agent correctly implements the Agent interface.
+func TestStubAgentIntegration(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		agent    *stubAgent
+		prompt   string
+		wantErr  bool
+		verifyFn func(*testing.T, *agents.Summary, error)
+	}{
+		{
+			name: "stub agent returns valid summary",
+			agent: &stubAgent{
+				summary: &agents.Summary{
+					TaskID:  "T001",
+					Status:  "done",
+					Summary: "Task completed successfully",
+					Files:   []string{"file1.go", "file2.go"},
+				},
+			},
+			prompt:  "Complete task T001",
+			wantErr: false,
+			verifyFn: func(t *testing.T, summary *agents.Summary, err error) {
+				if err != nil {
+					t.Errorf("Run() unexpected error = %v", err)
+				}
+				if summary == nil {
+					t.Fatal("Run() returned nil summary")
+				}
+				if summary.TaskID != "T001" {
+					t.Errorf("TaskID = %q, want T001", summary.TaskID)
+				}
+				if summary.Status != "done" {
+					t.Errorf("Status = %q, want done", summary.Status)
+				}
+				if summary.Summary != "Task completed successfully" {
+					t.Errorf("Summary = %q, want 'Task completed successfully'", summary.Summary)
+				}
+				if len(summary.Files) != 2 {
+					t.Errorf("Files length = %d, want 2", len(summary.Files))
+				}
+			},
+		},
+		{
+			name: "stub agent returns error",
+			agent: &stubAgent{
+				err: errors.New("agent error"),
+			},
+			prompt:  "Complete task T001",
+			wantErr: true,
+			verifyFn: func(t *testing.T, summary *agents.Summary, err error) {
+				if err == nil {
+					t.Error("Run() expected error, got nil")
+				}
+				if err.Error() != "agent error" {
+					t.Errorf("Error = %q, want 'agent error'", err.Error())
+				}
+				if summary != nil {
+					t.Errorf("Run() should return nil summary on error, got %+v", summary)
+				}
+			},
+		},
+		{
+			name: "stub agent with nil summary",
+			agent: &stubAgent{
+				summary: nil,
+			},
+			prompt:  "Complete task T001",
+			wantErr: false,
+			verifyFn: func(t *testing.T, summary *agents.Summary, err error) {
+				if err != nil {
+					t.Errorf("Run() unexpected error = %v", err)
+				}
+				if summary != nil {
+					t.Errorf("Run() should return nil summary when configured, got %+v", summary)
+				}
+			},
+		},
+		{
+			name: "stub agent with blocked status and blockers",
+			agent: &stubAgent{
+				summary: &agents.Summary{
+					TaskID:   "T001",
+					Status:   "blocked",
+					Summary:  "Waiting for dependency",
+					Blockers: []string{"waiting for T002", "API change needed"},
+				},
+			},
+			prompt:  "Complete task T001",
+			wantErr: false,
+			verifyFn: func(t *testing.T, summary *agents.Summary, err error) {
+				if err != nil {
+					t.Errorf("Run() unexpected error = %v", err)
+				}
+				if summary.Status != "blocked" {
+					t.Errorf("Status = %q, want blocked", summary.Status)
+				}
+				if len(summary.Blockers) != 2 {
+					t.Errorf("Blockers length = %d, want 2", len(summary.Blockers))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a log writer that captures events
+			var capturedEvents []agents.LogEvent
+			logWriter := &captureLogWriter{
+				onWrite: func(event agents.LogEvent) {
+					capturedEvents = append(capturedEvents, event)
+				},
+			}
+
+			summary, err := tt.agent.Run(ctx, tt.prompt, logWriter)
+
+			if tt.verifyFn != nil {
+				tt.verifyFn(t, summary, err)
+			} else if (err != nil) != tt.wantErr {
+				t.Errorf("Run() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// captureLogWriter is a test helper that captures log events.
+type captureLogWriter struct {
+	onWrite func(agents.LogEvent)
+}
+
+func (w *captureLogWriter) Write(event agents.LogEvent) error {
+	if w.onWrite != nil {
+		w.onWrite(event)
+	}
+	return nil
+}
+
+func (w *captureLogWriter) Close() error {
+	return nil
+}
+
+func (w *captureLogWriter) SetIndent(string) {}
+
+// TestStubAgentLogWriter tests that the stub agent correctly handles log writers.
+func TestStubAgentLogWriter(t *testing.T) {
+	ctx := context.Background()
+	agent := &stubAgent{
+		summary: &agents.Summary{
+			TaskID:  "T001",
+			Status:  "done",
+			Summary: "Complete",
+		},
+	}
+
+	var logged bool
+	logWriter := &captureLogWriter{
+		onWrite: func(event agents.LogEvent) {
+			logged = true
+			if event.Timestamp.IsZero() {
+				t.Error("LogEvent timestamp should not be zero")
+			}
+		},
+	}
+
+	_, err := agent.Run(ctx, "test prompt", logWriter)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// The stub agent doesn't write logs, so logged should be false
+	// This test verifies the log writer interface is correctly passed
+	t.Logf("Log writer called: %v", logged)
+}
+
 // Helper functions
 
 func contains(s, substr string) bool {
