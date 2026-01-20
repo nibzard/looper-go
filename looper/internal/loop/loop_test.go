@@ -2,10 +2,10 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/nibzard/looper/internal/agents"
 	"github.com/nibzard/looper/internal/config"
@@ -108,7 +108,7 @@ func TestApplySummary(t *testing.T) {
 			},
 			summary: &agents.Summary{
 				TaskID:  "T002",
-				Status:  "todo",
+				Status:  "skipped",
 				Summary: "New task from review",
 			},
 			wantErr: false,
@@ -151,7 +151,6 @@ func TestApplySummary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			todoPath := filepath.Join(tmpDir, "todo.json")
-			schemaPath := filepath.Join(tmpDir, "to-do.schema.json")
 
 			// Create todo file
 			todoFile := &todo.File{
@@ -165,11 +164,12 @@ func TestApplySummary(t *testing.T) {
 
 			// Create config
 			cfg := &config.Config{
-				TodoFile:     "todo.json",
-				SchemaFile:   "to-do.schema.json",
-				PromptDir:    promptsDir,
-				ApplySummary: true,
+				TodoFile:      "todo.json",
+				SchemaFile:    "to-do.schema.json",
+				PromptDir:     promptsDir,
+				ApplySummary:  true,
 				MaxIterations: 10,
+				LogDir:        filepath.Join(tmpDir, "logs"),
 			}
 
 			// Create loop
@@ -228,15 +228,12 @@ func TestApplySummaryStatusMapping(t *testing.T) {
 	}{
 		{"done", todo.StatusDone},
 		{"blocked", todo.StatusBlocked},
-		{"doing", todo.StatusDoing},
-		{"todo", todo.StatusTodo},
-		{"unknown", todo.StatusTodo},
+		{"skipped", todo.StatusTodo},
 	}
 
 	for _, st := range statusTests {
 		t.Run(st.summaryStatus, func(t *testing.T) {
 			todoPath := filepath.Join(tmpDir, "todo.json")
-			schemaPath := filepath.Join(tmpDir, "to-do.schema.json")
 
 			todoFile := &todo.File{
 				SchemaVersion: 1,
@@ -250,11 +247,12 @@ func TestApplySummaryStatusMapping(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				TodoFile:     "todo.json",
-				SchemaFile:   "to-do.schema.json",
-				PromptDir:    promptsDir,
-				ApplySummary: true,
+				TodoFile:      "todo.json",
+				SchemaFile:    "to-do.schema.json",
+				PromptDir:     promptsDir,
+				ApplySummary:  true,
 				MaxIterations: 10,
+				LogDir:        filepath.Join(tmpDir, "logs"),
 			}
 
 			loop, err := New(cfg, tmpDir)
@@ -326,11 +324,12 @@ func TestLoopNew(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		TodoFile:     "todo.json",
-		SchemaFile:   "to-do.schema.json",
-		PromptDir:    promptsDir,
-		ApplySummary: true,
+		TodoFile:      "todo.json",
+		SchemaFile:    "to-do.schema.json",
+		PromptDir:     promptsDir,
+		ApplySummary:  true,
 		MaxIterations: 10,
+		LogDir:        filepath.Join(tmpDir, "logs"),
 	}
 
 	loop, err := New(cfg, tmpDir)
@@ -566,7 +565,6 @@ func TestSummaryApplyWithValidation(t *testing.T) {
 	}
 
 	todoPath := filepath.Join(tmpDir, "todo.json")
-	schemaFilePath := filepath.Join(tmpDir, "to-do.schema.json")
 
 	todoFile := &todo.File{
 		SchemaVersion: 1,
@@ -580,11 +578,12 @@ func TestSummaryApplyWithValidation(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		TodoFile:     "todo.json",
-		SchemaFile:   "to-do.schema.json",
-		PromptDir:    promptsDir,
-		ApplySummary: true,
+		TodoFile:      "todo.json",
+		SchemaFile:    "to-do.schema.json",
+		PromptDir:     promptsDir,
+		ApplySummary:  true,
 		MaxIterations: 10,
+		LogDir:        filepath.Join(tmpDir, "logs"),
 	}
 
 	loop, err := New(cfg, tmpDir)
@@ -606,12 +605,12 @@ func TestSummaryApplyWithValidation(t *testing.T) {
 
 	// Test missing required fields
 	invalidSummary2 := &agents.Summary{
-		Status: "done",
+		TaskID: "T001",
 	}
 
 	err = loop.applySummary(invalidSummary2)
 	if err == nil {
-		t.Error("applySummary() without task_id expected error, got nil")
+		t.Error("applySummary() without status expected error, got nil")
 	}
 }
 
@@ -630,6 +629,7 @@ func (s *stubAgent) Run(ctx context.Context, prompt string, logWriter agents.Log
 
 // TestRunIteration tests a single iteration with a stub agent.
 func TestRunIteration(t *testing.T) {
+	t.Setenv("LOOPER_QUIET", "1")
 	tmpDir := t.TempDir()
 
 	// Create prompts directory
@@ -669,8 +669,24 @@ Now: {{.Now}}
 		t.Fatalf("Failed to write iteration prompt: %v", err)
 	}
 
+	stubPath := filepath.Join(tmpDir, "stub-codex.sh")
+	stubScript := `#!/bin/sh
+prompt=$(cat)
+status="blocked"
+summary="missing prompt"
+case "$prompt" in
+  *"Task: T001"*)
+    status="done"
+    summary="completed"
+    ;;
+esac
+printf '{"task_id":"T001","status":"%s","summary":"%s"}\n' "$status" "$summary"
+`
+	if err := os.WriteFile(stubPath, []byte(stubScript), 0755); err != nil {
+		t.Fatalf("Failed to write stub agent: %v", err)
+	}
+
 	todoPath := filepath.Join(tmpDir, "todo.json")
-	schemaFilePath := filepath.Join(tmpDir, "to-do.schema.json")
 
 	todoFile := &todo.File{
 		SchemaVersion: 1,
@@ -689,29 +705,38 @@ Now: {{.Now}}
 		PromptDir:     promptsDir,
 		ApplySummary:  true,
 		MaxIterations: 10,
+		LogDir:        filepath.Join(tmpDir, "logs"),
 	}
+	cfg.Agents.Codex.Binary = stubPath
 
 	loop, err := New(cfg, tmpDir)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	// Create stub agent with a summary
 	task := loop.todoFile.SelectTask()
 	if task == nil {
 		t.Fatal("No task selected")
 	}
 
-	// We'll need to mock the agent creation, which is done internally
-	// For this test, we'll verify the iteration setup works
-	if task.ID != "T001" {
-		t.Errorf("Selected task ID = %q, want T001", task.ID)
+	if err := loop.runIteration(context.Background(), 1, task); err != nil {
+		t.Fatalf("runIteration() error = %v", err)
 	}
 
-	// Verify task was marked as doing
-	if task.Status != todo.StatusTodo {
-		// The task in the file hasn't been modified yet
-		t.Logf("Task status before iteration: %q", task.Status)
+	updated, err := todo.Load(todoPath)
+	if err != nil {
+		t.Fatalf("Failed to reload todo file: %v", err)
+	}
+
+	updatedTask := updated.GetTask("T001")
+	if updatedTask == nil {
+		t.Fatal("Task T001 not found after iteration")
+	}
+	if updatedTask.Status != todo.StatusDone {
+		t.Errorf("Task status = %q, want %q", updatedTask.Status, todo.StatusDone)
+	}
+	if updatedTask.Details != "completed" {
+		t.Errorf("Task details = %q, want %q", updatedTask.Details, "completed")
 	}
 }
 
