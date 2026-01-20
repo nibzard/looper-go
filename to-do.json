@@ -79,7 +79,7 @@
       "title": "Implement deterministic task selection and stable task file read/write (2-space indent)",
       "priority": 1,
       "status": "done",
-      "updated_at": "2026-01-20T21:42:21Z",
+      "updated_at": "2026-01-20T22:00:00Z",
       "files": [
         "looper/internal/todo/types.go",
         "looper/internal/todo/types_test.go"
