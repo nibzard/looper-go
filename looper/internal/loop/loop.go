@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -283,7 +284,7 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
 
 	_, err = agent.Run(ctx, prompt, logWriter)
-	if err != nil {
+	if err != nil && !errors.Is(err, agents.ErrSummaryMissing) {
 		return fmt.Errorf("run bootstrap agent: %w", err)
 	}
 
@@ -349,7 +350,7 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
 
 	_, err = agent.Run(ctx, prompt, logWriter)
-	if err != nil {
+	if err != nil && !errors.Is(err, agents.ErrSummaryMissing) {
 		return nil, fmt.Errorf("run repair agent: %w", err)
 	}
 

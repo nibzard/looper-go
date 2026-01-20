@@ -52,6 +52,9 @@ func (e *SummaryValidationError) Error() string {
 	return fmt.Sprintf("summary validation failed: %s", e.Message)
 }
 
+// ErrSummaryMissing indicates the agent completed without returning a summary.
+var ErrSummaryMissing = errors.New("agent did not produce a summary")
+
 // ValidateSummary validates a summary against a JSON schema file.
 // If schemaPath is empty, only minimal validation is performed.
 func ValidateSummary(summary *Summary, schemaPath string) error {
@@ -507,7 +510,7 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 	}
 
 	if summary == nil {
-		return nil, errors.New("codex did not produce a summary")
+		return nil, fmt.Errorf("codex: %w", ErrSummaryMissing)
 	}
 
 	return summary, nil
@@ -771,7 +774,7 @@ func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWrite
 	}
 
 	if summary == nil {
-		return nil, errors.New("claude did not produce a summary")
+		return nil, fmt.Errorf("claude: %w", ErrSummaryMissing)
 	}
 
 	return summary, nil
