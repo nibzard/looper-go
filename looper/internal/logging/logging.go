@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -173,4 +174,163 @@ func hashPath(input string) string {
 
 func runID() string {
 	return fmt.Sprintf("%s-%d", time.Now().UTC().Format("20060102-150405"), os.Getpid())
+}
+
+// FindLogDir finds the log directory for a given work directory.
+func FindLogDir(baseDir, workDir string) (string, error) {
+	if baseDir == "" {
+		return "", fmt.Errorf("log base dir is empty")
+	}
+
+	resolvedWorkDir := workDir
+	if resolvedWorkDir == "" {
+		resolvedWorkDir = "."
+	}
+	if abs, err := filepath.Abs(resolvedWorkDir); err == nil {
+		resolvedWorkDir = abs
+	}
+
+	baseDir = resolveBaseDir(baseDir, resolvedWorkDir)
+	projectRoot := resolveProjectRoot(resolvedWorkDir)
+	logDir := filepath.Join(baseDir, projectSlug(projectRoot))
+
+	return logDir, nil
+}
+
+// FindLatestLog finds the latest JSONL log file in a directory.
+func FindLatestLog(logDir string) (string, error) {
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read log dir: %w", err)
+	}
+
+	var latest string
+	var latestTime time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		if info.ModTime().After(latestTime) {
+			latestTime = info.ModTime()
+			latest = filepath.Join(logDir, name)
+		}
+	}
+
+	return latest, nil
+}
+
+// TailLog tails a log file to a writer, optionally following.
+func TailLog(w io.Writer, path string, n int, follow bool) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open log file: %w", err)
+	}
+	defer file.Close()
+
+	// If n > 0, seek to show only last n lines
+	if n > 0 {
+		if err := tailSeek(file, n); err != nil {
+			return fmt.Errorf("seek to tail position: %w", err)
+		}
+	}
+
+	if follow {
+		return tailFollow(w, file)
+	}
+
+	// Just dump the rest of the file
+	_, err = io.Copy(w, file)
+	return err
+}
+
+// tailSeek seeks to a position that shows approximately the last n lines.
+func tailSeek(file *os.File, n int) error {
+	const avgLineLength = 100
+
+	stat, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	size := stat.Size()
+	if size < avgLineLength*int64(n) {
+		// File is small enough, just read from start
+		_, err = file.Seek(0, io.SeekStart)
+		return err
+	}
+
+	// Seek back from end
+	offset := size - int64(n*avgLineLength)
+	if offset < 0 {
+		offset = 0
+	}
+	_, err = file.Seek(offset, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	// Discard partial first line
+	buf := make([]byte, 1)
+	_, err = file.Read(buf)
+	if err != nil {
+		return err
+	}
+	for {
+		if buf[0] == '\n' {
+			break
+		}
+		_, err := file.Read(buf)
+		if err != nil {
+			break
+		}
+	}
+
+	return nil
+}
+
+// tailFollow follows a file like tail -f.
+func tailFollow(w io.Writer, file *os.File) error {
+	// First, copy existing content
+	if _, err := io.Copy(w, file); err != nil {
+		return err
+	}
+
+	// Then follow for new content
+	for {
+		_, err := io.Copy(w, file)
+		if err != nil {
+			return err
+		}
+
+		// Wait briefly before checking for more data
+		time.Sleep(100 * time.Millisecond)
+
+		// Check if more data is available
+		var buf [1]byte
+		_, err = file.Read(buf[:])
+		if err != nil {
+			if err == io.EOF {
+				continue
+			}
+			return err
+		}
+		// We read a byte, write it and continue copying
+		if _, err := w.Write(buf[:]); err != nil {
+			return err
+		}
+	}
 }

@@ -153,7 +153,7 @@
       "title": "Implement repair flow via agent for invalid task files",
       "priority": 2,
       "status": "done",
-      "updated_at": "2026-01-20T23:14:02Z",
+      "updated_at": "2026-01-20T23:14:37Z",
       "files": [
         "looper/internal/agents/agents.go",
         "looper/internal/loop/loop.go",
@@ -164,7 +164,14 @@
       "id": "T012",
       "title": "Implement CLI commands: run (default), doctor, tail, ls, version, and core flags",
       "priority": 2,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-21T00:00:00Z",
+      "files": [
+        "looper/cmd/root.go",
+        "looper/cmd/looper/main.go",
+        "looper/internal/logging/logging.go",
+        "to-do.json"
+      ]
     },
     {
       "id": "T013",
