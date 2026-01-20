@@ -380,6 +380,124 @@ func TestFileOutputFormat(t *testing.T) {
 	}
 }
 
+func TestValidateWithSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "schema.json")
+
+	// Write a schema file
+	schema := `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_files", "tasks"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "source_files": {"type": "array"},
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "priority", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string", "minLength": 1},
+          "priority": {"type": "integer", "minimum": 1, "maximum": 5},
+          "status": {"type": "string", "enum": ["todo", "doing", "blocked", "done"]}
+        }
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(schemaPath, []byte(schema), 0644); err != nil {
+		t.Fatalf("Failed to write schema: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		file    *File
+		wantErr bool
+	}{
+		{
+			name: "valid file with schema",
+			file: &File{
+				SchemaVersion: 1,
+				SourceFiles:   []string{"README.md"},
+				Tasks: []Task{
+					{ID: "T001", Title: "Test", Priority: 1, Status: StatusTodo},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid schema_version",
+			file: &File{
+				SchemaVersion: 2,
+				SourceFiles:   []string{"README.md"},
+				Tasks:         []Task{{ID: "T001", Title: "Test", Priority: 1, Status: StatusTodo}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid status enum",
+			file: &File{
+				SchemaVersion: 1,
+				SourceFiles:   []string{"README.md"},
+				Tasks:         []Task{{ID: "T001", Title: "Test", Priority: 1, Status: "invalid"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "priority out of range",
+			file: &File{
+				SchemaVersion: 1,
+				SourceFiles:   []string{"README.md"},
+				Tasks:         []Task{{ID: "T001", Title: "Test", Priority: 10, Status: StatusTodo}},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.file.Validate(ValidationOptions{
+				SchemaPath: schemaPath,
+			})
+			if result.Valid == tt.wantErr {
+				t.Errorf("Validate() valid = %v, want error %v", result.Valid, tt.wantErr)
+			}
+			if !result.UsedSchema {
+				t.Error("Expected UsedSchema to be true")
+			}
+		})
+	}
+}
+
+func TestValidateWithSchemaMissingFile(t *testing.T) {
+	f := &File{
+		SchemaVersion: 1,
+		SourceFiles:   []string{"README.md"},
+		Tasks: []Task{
+			{ID: "T001", Title: "Test", Priority: 1, Status: StatusTodo},
+		},
+	}
+
+	// Non-existent schema path should fall back to minimal validation
+	result := f.Validate(ValidationOptions{
+		SchemaPath: "/non/existent/schema.json",
+	})
+
+	if !result.Valid {
+		t.Errorf("Valid should be true, got false")
+	}
+	if result.UsedSchema {
+		t.Error("UsedSchema should be false when schema file not found")
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("Expected warnings when schema file not found")
+	}
+}
+
 func containsIndent(content, indent string) bool {
 	// Simple check for indentation presence
 	for i := 0; i < len(content)-len(indent); i++ {

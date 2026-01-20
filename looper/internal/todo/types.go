@@ -243,13 +243,210 @@ func validateWithSchema(f *File, schemaPath string) *ValidationResult {
 		return result
 	}
 
-	// Try to use a JSON Schema validator if available
-	// For now, this is a placeholder for when we add a schema library
-	_ = schemaData
+	// Parse the schema
+	var schema map[string]interface{}
+	if err := json.Unmarshal(schemaData, &schema); err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("invalid schema file: %v", err))
+		return result
+	}
 
-	// No schema validator available yet
-	result.Warnings = append(result.Warnings, "JSON Schema validation not implemented")
+	// Mark that we're using schema validation
+	result.UsedSchema = true
+
+	// Marshal the file back to JSON for validation
+	fileData, err := json.Marshal(f)
+	if err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, &ValidationError{
+			Path: "",
+			Err:  fmt.Errorf("failed to marshal file for validation: %w", err),
+		})
+		return result
+	}
+
+	// Perform schema validation
+	var fileObj map[string]interface{}
+	if err := json.Unmarshal(fileData, &fileObj); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, &ValidationError{
+			Path: "",
+			Err:  fmt.Errorf("failed to unmarshal file for validation: %w", err),
+		})
+		return result
+	}
+
+	// Validate against schema
+	validateObjAgainstSchema(fileObj, schema, "", result)
+
 	return result
+}
+
+// validateObjAgainstSchema recursively validates an object against a JSON schema.
+func validateObjAgainstSchema(obj, schema map[string]interface{}, path string, result *ValidationResult) {
+	// Check required fields
+	if required, ok := schema["required"].([]interface{}); ok {
+		for _, req := range required {
+			if field, ok := req.(string); ok {
+				if _, exists := obj[field]; !exists {
+					result.Valid = false
+					result.Errors = append(result.Errors, &ValidationError{
+						Path: joinPath(path, field),
+						Err:  fmt.Errorf("missing required field"),
+					})
+				}
+			}
+		}
+	}
+
+	// Check additionalProperties (should be false for our schema)
+	if addProps, ok := schema["additionalProperties"].(bool); ok && !addProps {
+		// Get allowed properties from schema
+		allowedProps := make(map[string]bool)
+		if properties, ok := schema["properties"].(map[string]interface{}); ok {
+			for key := range properties {
+				allowedProps[key] = true
+			}
+		}
+		// Check for extra properties
+		for key := range obj {
+			if !allowedProps[key] {
+				result.Valid = false
+				result.Errors = append(result.Errors, &ValidationError{
+					Path: joinPath(path, key),
+					Err:  fmt.Errorf("additional property not allowed"),
+				})
+			}
+		}
+	}
+
+	// Validate properties
+	if properties, ok := schema["properties"].(map[string]interface{}); ok {
+		for key, propSchema := range properties {
+			propSchemaMap, ok := propSchema.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if value, exists := obj[key]; exists {
+				validateValueAgainstSchema(value, propSchemaMap, joinPath(path, key), result)
+			}
+		}
+	}
+}
+
+// validateValueAgainstSchema validates a value against a schema.
+func validateValueAgainstSchema(value interface{}, schema map[string]interface{}, path string, result *ValidationResult) {
+	// Check const constraint
+	if constVal, ok := schema["const"]; ok {
+		if value != constVal {
+			result.Valid = false
+			result.Errors = append(result.Errors, &ValidationError{
+				Path: path,
+				Err:  fmt.Errorf("expected %v, got %v", constVal, value),
+			})
+			return
+		}
+	}
+
+	// Check type constraint
+	typeStr, _ := schema["type"].(string)
+	switch typeStr {
+	case "object":
+		obj, ok := value.(map[string]interface{})
+		if !ok {
+			result.Valid = false
+			result.Errors = append(result.Errors, &ValidationError{
+				Path: path,
+				Err:  fmt.Errorf("expected object, got %T", value),
+			})
+			return
+		}
+		validateObjAgainstSchema(obj, schema, path, result)
+
+	case "array":
+		arr, ok := value.([]interface{})
+		if !ok {
+			result.Valid = false
+			result.Errors = append(result.Errors, &ValidationError{
+				Path: path,
+				Err:  fmt.Errorf("expected array, got %T", value),
+			})
+			return
+		}
+		// Validate array items
+		if itemsSchema, ok := schema["items"].(map[string]interface{}); ok {
+			for i, item := range arr {
+				itemPath := fmt.Sprintf("%s[%d]", path, i)
+				if itemObj, ok := item.(map[string]interface{}); ok {
+					validateObjAgainstSchema(itemObj, itemsSchema, itemPath, result)
+				}
+			}
+		}
+
+	case "string":
+		if _, ok := value.(string); !ok {
+			result.Valid = false
+			result.Errors = append(result.Errors, &ValidationError{
+				Path: path,
+				Err:  fmt.Errorf("expected string, got %T", value),
+			})
+		}
+		// Check enum constraint
+		if enum, ok := schema["enum"].([]interface{}); ok {
+			found := false
+			for _, e := range enum {
+				if value == e {
+					found = true
+					break
+				}
+			}
+			if !found {
+				result.Valid = false
+				result.Errors = append(result.Errors, &ValidationError{
+					Path: path,
+					Err:  fmt.Errorf("value must be one of %v, got %v", enum, value),
+				})
+			}
+		}
+
+	case "integer":
+		// JSON numbers are float64 in Go
+		if _, ok := value.(float64); !ok {
+			result.Valid = false
+			result.Errors = append(result.Errors, &ValidationError{
+				Path: path,
+				Err:  fmt.Errorf("expected integer, got %T", value),
+			})
+		} else {
+			// Check minimum constraint
+			if min, ok := schema["minimum"].(float64); ok {
+				if val, ok := value.(float64); ok && val < min {
+					result.Valid = false
+					result.Errors = append(result.Errors, &ValidationError{
+						Path: path,
+						Err:  fmt.Errorf("must be >= %v, got %v", min, val),
+					})
+				}
+			}
+			// Check maximum constraint
+			if max, ok := schema["maximum"].(float64); ok {
+				if val, ok := value.(float64); ok && val > max {
+					result.Valid = false
+					result.Errors = append(result.Errors, &ValidationError{
+						Path: path,
+						Err:  fmt.Errorf("must be <= %v, got %v", max, val),
+					})
+				}
+			}
+		}
+	}
+}
+
+// joinPath joins JSON path segments.
+func joinPath(base, segment string) string {
+	if base == "" {
+		return segment
+	}
+	return base + "." + segment
 }
 
 // GetTask returns a task by ID, or nil if not found.
