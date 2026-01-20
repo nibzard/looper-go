@@ -142,10 +142,13 @@
       "title": "Implement bootstrapping of to-do.json from source docs and ensure schema exists",
       "priority": 2,
       "status": "done",
-      "updated_at": "2026-01-20T22:48:06Z",
+      "updated_at": "2026-01-20T22:49:28Z",
       "files": [
         "looper/internal/loop/loop.go",
-        "looper/internal/prompts/prompts.go"
+        "looper/internal/prompts/prompts.go",
+        "looper/prompts/bootstrap.txt",
+        "looper/prompts/summary.schema.json",
+        "to-do.schema.json"
       ]
     },
     {
