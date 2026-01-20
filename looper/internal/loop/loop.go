@@ -10,6 +10,7 @@ import (
 
 	"github.com/nibzard/looper/internal/agents"
 	"github.com/nibzard/looper/internal/config"
+	"github.com/nibzard/looper/internal/logging"
 	"github.com/nibzard/looper/internal/prompts"
 	"github.com/nibzard/looper/internal/todo"
 )
@@ -25,7 +26,8 @@ type Loop struct {
 	todoPath         string
 	schemaPath       string
 	summarySchemaPath string
-	logDir           string
+	runLogger        *logging.RunLogger
+	logWriter        agents.LogWriter
 	workDir          string
 }
 
@@ -55,14 +57,12 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 		return nil, fmt.Errorf("load todo file: %w", err)
 	}
 
-	// Create log directory
-	logDir := cfg.LogDir
-	if !filepath.IsAbs(logDir) {
-		logDir = filepath.Join(workDir, logDir)
+	// Initialize run logger
+	runLogger, err := logging.NewRunLogger(cfg.LogDir, workDir)
+	if err != nil {
+		return nil, fmt.Errorf("init run logger: %w", err)
 	}
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return nil, fmt.Errorf("create log dir: %w", err)
-	}
+	logWriter := agents.NewIOStreamLogWriter(runLogger.Writer())
 
 	return &Loop{
 		cfg:              cfg,
@@ -72,7 +72,8 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 		todoPath:         todoPath,
 		schemaPath:       schemaPath,
 		summarySchemaPath: summarySchemaPath,
-		logDir:           logDir,
+		runLogger:        runLogger,
+		logWriter:        logWriter,
 		workDir:          workDir,
 	}, nil
 }
@@ -235,6 +236,9 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 
 // Run executes the main loop.
 func (l *Loop) Run(ctx context.Context) error {
+	if l.runLogger != nil {
+		defer l.runLogger.Close()
+	}
 	for i := 1; i <= l.cfg.MaxIterations; i++ {
 		// Check context
 		if ctx.Err() != nil {
@@ -293,16 +297,11 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	// Determine agent type
 	agentType := l.cfg.IterSchedule(iter)
 
-	// Create log file
-	logPath := l.logPath(iter, taskID)
-	logFile, err := os.Create(logPath)
-	if err != nil {
-		return fmt.Errorf("create log file: %w", err)
+	logWriter := l.logWriter
+	if logWriter == nil {
+		logWriter = agents.NullLogWriter{}
 	}
-	defer logFile.Close()
-	logWriter := agents.NewIOStreamLogWriter(logFile)
 
-	// Also log to stdout if needed
 	var multiLogWriter agents.LogWriter = logWriter
 	if os.Getenv("LOOPER_QUIET") == "" {
 		stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
@@ -331,10 +330,10 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 
 	// Run agent
 	agentCfg := agents.Config{
-		Binary:        l.cfg.GetAgentBinary(agentType),
-		Model:         l.cfg.GetAgentModel(agentType),
-		WorkDir:       l.workDir,
-		LastMessagePath: l.lastMessagePath(iter, taskID),
+		Binary:          l.cfg.GetAgentBinary(agentType),
+		Model:           l.cfg.GetAgentModel(agentType),
+		WorkDir:         l.workDir,
+		LastMessagePath: l.lastMessagePath(iterationLabel(iter)),
 	}
 	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
 	if err != nil {
@@ -386,14 +385,10 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 
 // runReview executes the review pass.
 func (l *Loop) runReview(ctx context.Context, iter int) error {
-	// Create log file
-	logPath := l.logPath(iter, "review")
-	logFile, err := os.Create(logPath)
-	if err != nil {
-		return fmt.Errorf("create log file: %w", err)
+	logWriter := l.logWriter
+	if logWriter == nil {
+		logWriter = agents.NullLogWriter{}
 	}
-	defer logFile.Close()
-	logWriter := agents.NewIOStreamLogWriter(logFile)
 
 	var multiLogWriter agents.LogWriter = logWriter
 	if os.Getenv("LOOPER_QUIET") == "" {
@@ -422,7 +417,7 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 		Binary:          l.cfg.GetAgentBinary("codex"),
 		Model:           l.cfg.GetAgentModel("codex"),
 		WorkDir:         l.workDir,
-		LastMessagePath: l.lastMessagePath(iter, "review"),
+		LastMessagePath: l.lastMessagePath(reviewLabel(iter)),
 	}
 	agent := agents.NewCodexAgent(agentCfg)
 
@@ -559,16 +554,18 @@ func (l *Loop) reloadTodo() error {
 	return nil
 }
 
-// logPath returns the path for a log file.
-func (l *Loop) logPath(iter int, label string) string {
-	timestamp := time.Now().UTC().Format("20060102-150405")
-	pid := os.Getpid()
-	return filepath.Join(l.logDir, fmt.Sprintf("%s-%d-%s.jsonl", timestamp, pid, label))
+func iterationLabel(iter int) string {
+	return fmt.Sprintf("iter-%d", iter)
+}
+
+func reviewLabel(iter int) string {
+	return fmt.Sprintf("review-%d", iter)
 }
 
 // lastMessagePath returns the path for a last message file.
-func (l *Loop) lastMessagePath(iter int, label string) string {
-	timestamp := time.Now().UTC().Format("20060102-150405")
-	pid := os.Getpid()
-	return filepath.Join(l.logDir, fmt.Sprintf("%s-%d-%s.last.json", timestamp, pid, label))
+func (l *Loop) lastMessagePath(label string) string {
+	if l.runLogger == nil {
+		return ""
+	}
+	return l.runLogger.LastMessagePath(label)
 }

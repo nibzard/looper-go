@@ -178,6 +178,9 @@ func loadFromEnv(cfg *Config) {
 	if v := os.Getenv("LOOPER_SCHEMA"); v != "" {
 		cfg.SchemaFile = v
 	}
+	if v := os.Getenv("LOOPER_BASE_DIR"); v != "" {
+		cfg.LogDir = v
+	}
 	if v := os.Getenv("LOOPER_LOG_DIR"); v != "" {
 		cfg.LogDir = v
 	}

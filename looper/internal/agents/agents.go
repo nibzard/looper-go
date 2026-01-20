@@ -713,7 +713,7 @@ func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWrite
 	}
 
 	// Stream output
-	summaries, errs := a.streamOutput(ctx, stdout, stderr, logWriter)
+	summaries, errs, lastMessages := a.streamOutput(ctx, stdout, stderr, logWriter)
 
 	// Wait for command to finish
 	runErr := cmd.Wait()
@@ -730,12 +730,28 @@ func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWrite
 	// Collect results
 	var summary *Summary
 	var outputErrs []error
+	var lastMessage string
 
 	for s := range summaries {
 		summary = s
 	}
 	for e := range errs {
 		outputErrs = append(outputErrs, e)
+	}
+	for msg := range lastMessages {
+		if msg != "" {
+			lastMessage = msg
+		}
+	}
+
+	if cfg.LastMessagePath != "" {
+		if err := writeLastMessageFile(cfg.LastMessagePath, lastMessage, summary); err != nil {
+			_ = logWriter.Write(LogEvent{
+				Type:      "error",
+				Timestamp: time.Now().UTC(),
+				Content:   fmt.Sprintf("write last message: %v", err),
+			})
+		}
 	}
 
 	// Handle errors
@@ -766,9 +782,10 @@ func (a *claudeAgent) streamOutput(
 	ctx context.Context,
 	stdout, stderr io.Reader,
 	logWriter LogWriter,
-) (<-chan *Summary, <-chan error) {
+) (<-chan *Summary, <-chan error, <-chan string) {
 	summaries := make(chan *Summary, 1)
 	errs := make(chan error, 10)
+	lastMessages := make(chan string, 1)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -776,9 +793,16 @@ func (a *claudeAgent) streamOutput(
 	// Stream stdout (stream-json format)
 	go func() {
 		defer wg.Done()
-		if err := a.processStreamJSON(ctx, stdout, logWriter, summaries); err != nil {
+		lastMessage, err := a.processStreamJSON(ctx, stdout, logWriter, summaries)
+		if err != nil {
 			select {
 			case errs <- err:
+			default:
+			}
+		}
+		if lastMessage != "" {
+			select {
+			case lastMessages <- lastMessage:
 			default:
 			}
 		}
@@ -811,9 +835,10 @@ func (a *claudeAgent) streamOutput(
 		wg.Wait()
 		close(summaries)
 		close(errs)
+		close(lastMessages)
 	}()
 
-	return summaries, errs
+	return summaries, errs, lastMessages
 }
 
 // processStreamJSON processes Claude's stream-json format.
@@ -823,7 +848,7 @@ func (a *claudeAgent) processStreamJSON(
 	r io.Reader,
 	logWriter LogWriter,
 	summaries chan *Summary,
-) error {
+) (string, error) {
 	decoder := json.NewDecoder(r)
 
 	var lastMessageBuf bytes.Buffer
@@ -831,7 +856,7 @@ func (a *claudeAgent) processStreamJSON(
 
 	for {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return "", ctx.Err()
 		}
 
 		var raw map[string]any
@@ -839,7 +864,7 @@ func (a *claudeAgent) processStreamJSON(
 			if err == io.EOF {
 				break
 			}
-			return fmt.Errorf("decode json: %w", err)
+			return "", fmt.Errorf("decode json: %w", err)
 		}
 
 		// Serialize back to JSON for logging
@@ -874,7 +899,7 @@ func (a *claudeAgent) processStreamJSON(
 		}
 
 		if err := logWriter.Write(event); err != nil {
-			return fmt.Errorf("write log event: %w", err)
+			return "", fmt.Errorf("write log event: %w", err)
 		}
 
 		if !sawFullMessage {
@@ -896,12 +921,12 @@ func (a *claudeAgent) processStreamJSON(
 				Timestamp: time.Now().UTC(),
 				Summary:   summary,
 			}); err != nil {
-				return fmt.Errorf("write log event: %w", err)
+				return "", fmt.Errorf("write log event: %w", err)
 			}
 		}
 	}
 
-	return nil
+	return lastMessageBuf.String(), nil
 }
 
 // extractJSON extracts a JSON object from a string.
@@ -1055,6 +1080,33 @@ func parseSummaryFromText(text string) (*Summary, bool) {
 		return nil, false
 	}
 	return &summary, true
+}
+
+func writeLastMessageFile(path, message string, summary *Summary) error {
+	if path == "" {
+		return nil
+	}
+	if summary != nil {
+		return writeJSONFile(path, summary)
+	}
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return nil
+	}
+	extracted := extractJSON(trimmed)
+	if extracted != "" && json.Valid([]byte(extracted)) {
+		return os.WriteFile(path, append([]byte(extracted), '\n'), 0644)
+	}
+	return writeJSONFile(path, map[string]string{"raw": trimmed})
+}
+
+func writeJSONFile(path string, value any) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0644)
 }
 
 func parseSummaryFromFile(path string) (*Summary, bool) {

@@ -127,7 +127,15 @@
       "id": "T009",
       "title": "Implement JSONL logging, last-message files, and log directory layout",
       "priority": 2,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-20T22:43:30Z",
+      "files": [
+        "looper/internal/logging/logging.go",
+        "looper/internal/loop/loop.go",
+        "looper/internal/agents/agents.go",
+        "looper/internal/config/config.go",
+        "to-do.json"
+      ]
     },
     {
       "id": "T010",
