@@ -97,6 +97,13 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("looper run", flag.ContinueOnError)
 	maxIter := fs.Int("max-iterations", cfg.MaxIterations, "Maximum iterations")
 	schedule := fs.String("schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
+	oddAgent := fs.String("odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule (codex|claude)")
+	evenAgent := fs.String("even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule (codex|claude)")
+	var rrAgentsStr string
+	if cfg.RRAgents != nil {
+		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
+	}
+	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule (e.g., claude,codex)")
 	repairAgent := fs.String("repair-agent", cfg.RepairAgent, "Agent for repair operations (codex|claude)")
 	applySummary := fs.Bool("apply-summary", cfg.ApplySummary, "Apply summaries to task file")
 	gitInit := fs.Bool("git-init", cfg.GitInit, "Initialize git repo if missing")
@@ -118,6 +125,11 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	// Update config with parsed values
 	cfg.MaxIterations = *maxIter
 	cfg.Schedule = *schedule
+	cfg.OddAgent = *oddAgent
+	cfg.EvenAgent = *evenAgent
+	if rrAgentsStr != "" {
+		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
+	}
 	cfg.RepairAgent = *repairAgent
 	cfg.ApplySummary = *applySummary
 	cfg.GitInit = *gitInit
@@ -463,6 +475,12 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "        Maximum iterations (default 50)")
 	fmt.Fprintln(w, "  -schedule string")
 	fmt.Fprintln(w, "        Iteration schedule (codex|claude|odd-even|round-robin)")
+	fmt.Fprintln(w, "  -odd-agent string")
+	fmt.Fprintln(w, "        Agent for odd iterations in odd-even schedule (codex|claude)")
+	fmt.Fprintln(w, "  -even-agent string")
+	fmt.Fprintln(w, "        Agent for even iterations in odd-even schedule (codex|claude)")
+	fmt.Fprintln(w, "  -rr-agents string")
+	fmt.Fprintln(w, "        Comma-separated agent list for round-robin (e.g., claude,codex)")
 	fmt.Fprintln(w, "  -repair-agent string")
 	fmt.Fprintln(w, "        Agent for repair operations (codex|claude)")
 	fmt.Fprintln(w, "  -apply-summary")
@@ -542,4 +560,17 @@ func printTask(t todo.Task, verbose bool) {
 			fmt.Printf("      Files: %v\n", t.Files)
 		}
 	}
+}
+
+// splitAndTrim splits a string by sep and trims whitespace from each part.
+func splitAndTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

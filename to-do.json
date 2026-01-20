@@ -176,9 +176,10 @@
       "title": "Implement iteration scheduling and agent selection (codex/claude, odd-even, round-robin)",
       "priority": 3,
       "status": "done",
-      "updated_at": "2026-01-21T00:00:00Z",
+      "updated_at": "2026-01-21T00:49:00Z",
       "files": [
-        "looper/internal/config/config.go"
+        "looper/internal/config/config.go",
+        "looper/cmd/root.go"
       ],
       "details": "Added configurable odd-even and round-robin scheduling with --odd-agent, --even-agent, and --rr-agents flags and env vars"
     },
