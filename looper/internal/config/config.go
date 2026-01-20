@@ -38,6 +38,7 @@ type Config struct {
 	// Loop settings
 	MaxIterations int    `toml:"max_iterations"`
 	Schedule      string `toml:"schedule"` // codex, claude, odd-even, round-robin
+	RepairAgent   string `toml:"repair_agent"` // codex or claude
 
 	// Agents
 	Agents AgentConfig `toml:"agents"`
@@ -143,6 +144,7 @@ func setDefaults(cfg *Config) {
 	cfg.LogDir = DefaultLogDir
 	cfg.MaxIterations = DefaultMaxIterations
 	cfg.Schedule = "codex"
+	cfg.RepairAgent = "codex"
 	cfg.ApplySummary = DefaultApplySummary
 	cfg.GitInit = true
 	cfg.LoopDelaySeconds = 0
@@ -196,6 +198,9 @@ func loadFromEnv(cfg *Config) {
 	if v := os.Getenv("LOOPER_SCHEDULE"); v != "" {
 		cfg.Schedule = v
 	}
+	if v := os.Getenv("LOOPER_REPAIR_AGENT"); v != "" {
+		cfg.RepairAgent = v
+	}
 	if v := os.Getenv("LOOPER_APPLY_SUMMARY"); v != "" {
 		cfg.ApplySummary = boolFromString(v)
 	}
@@ -245,6 +250,7 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	// Loop settings
 	fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
 	fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
+	fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations (codex|claude)")
 
 	// Output
 	fs.BoolVar(&cfg.ApplySummary, "apply-summary", cfg.ApplySummary, "Apply summaries to task file")

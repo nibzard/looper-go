@@ -16,8 +16,6 @@ import (
 	"github.com/nibzard/looper/internal/todo"
 )
 
-const repairAgentType = agents.AgentTypeCodex
-
 // Loop manages the iteration flow and state transitions.
 type Loop struct {
 	cfg              *config.Config
@@ -269,7 +267,8 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 		return fmt.Errorf("render bootstrap prompt: %w", err)
 	}
 
-	// Create bootstrap agent
+	// Create bootstrap agent using the configured repair agent
+	repairAgentType := agents.AgentType(cfg.RepairAgent)
 	agentCfg := agents.Config{
 		Binary: cfg.GetAgentBinary(string(repairAgentType)),
 		Model:  cfg.GetAgentModel(string(repairAgentType)),
@@ -334,7 +333,8 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 		return nil, fmt.Errorf("render repair prompt: %w", err)
 	}
 
-	// Create repair agent
+	// Create repair agent using the configured repair agent
+	repairAgentType := agents.AgentType(cfg.RepairAgent)
 	agentCfg := agents.Config{
 		Binary: cfg.GetAgentBinary(string(repairAgentType)),
 		Model:  cfg.GetAgentModel(string(repairAgentType)),
