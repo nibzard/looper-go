@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -82,8 +83,16 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 // The schema is read from the bundled prompt assets and written to the project root.
 func ensureSchemaExists(schemaPath string) error {
 	// Check if schema already exists
-	if _, err := os.Stat(schemaPath); err == nil {
+	if info, err := os.Stat(schemaPath); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("schema path is a directory: %s", schemaPath)
+		}
+		if err := ensureSchemaHasSourceFiles(schemaPath); err != nil {
+			return fmt.Errorf("ensure schema fields: %w", err)
+		}
 		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat schema file: %w", err)
 	}
 
 	// Ensure directory exists
@@ -103,6 +112,79 @@ func ensureSchemaExists(schemaPath string) error {
 
 	// Write the schema to the project root
 	if err := os.WriteFile(schemaPath, bundledSchema, 0644); err != nil {
+		return fmt.Errorf("write schema file: %w", err)
+	}
+
+	return nil
+}
+
+func ensureSchemaHasSourceFiles(schemaPath string) error {
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("read schema file: %w", err)
+	}
+
+	var schema map[string]interface{}
+	if err := json.Unmarshal(data, &schema); err != nil {
+		return nil
+	}
+
+	changed := false
+
+	properties, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		properties = map[string]interface{}{}
+		schema["properties"] = properties
+		changed = true
+	}
+	if _, ok := properties["source_files"]; !ok {
+		properties["source_files"] = map[string]interface{}{
+			"type": "array",
+			"items": map[string]interface{}{
+				"type": "string",
+			},
+		}
+		changed = true
+	}
+
+	requiredSet := map[string]bool{}
+	requiredList := []string{}
+	switch raw := schema["required"].(type) {
+	case []interface{}:
+		for _, item := range raw {
+			s, ok := item.(string)
+			if !ok || requiredSet[s] {
+				continue
+			}
+			requiredSet[s] = true
+			requiredList = append(requiredList, s)
+		}
+	case []string:
+		for _, s := range raw {
+			if requiredSet[s] {
+				continue
+			}
+			requiredSet[s] = true
+			requiredList = append(requiredList, s)
+		}
+	}
+
+	if !requiredSet["source_files"] {
+		requiredList = append(requiredList, "source_files")
+		schema["required"] = requiredList
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	output, err := json.MarshalIndent(schema, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal schema file: %w", err)
+	}
+	output = append(output, '\n')
+	if err := os.WriteFile(schemaPath, output, 0644); err != nil {
 		return fmt.Errorf("write schema file: %w", err)
 	}
 
@@ -204,6 +286,17 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 	_, err = agent.Run(ctx, prompt, logWriter)
 	if err != nil {
 		return fmt.Errorf("run bootstrap agent: %w", err)
+	}
+
+	info, err := os.Stat(todoPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("todo file was not created at %s", todoPath)
+		}
+		return fmt.Errorf("stat todo file: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("todo path is a directory: %s", todoPath)
 	}
 
 	return nil
