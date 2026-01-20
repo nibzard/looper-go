@@ -66,11 +66,11 @@
       "title": "Implement task file types and JSON Schema validation with minimal fallback checks",
       "priority": 1,
       "status": "done",
-      "updated_at": "2026-01-20T21:39:53Z",
+      "updated_at": "2026-01-20T21:40:48Z",
       "files": [
-        "looper/internal/todo/types.go",
         "looper/go.mod",
         "looper/go.sum",
+        "looper/internal/todo/types.go",
         "to-do.json"
       ]
     },
@@ -78,7 +78,12 @@
       "id": "T005",
       "title": "Implement deterministic task selection and stable task file read/write (2-space indent)",
       "priority": 1,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-20T21:42:21Z",
+      "files": [
+        "looper/internal/todo/types.go",
+        "looper/internal/todo/types_test.go"
+      ]
     },
     {
       "id": "T006",

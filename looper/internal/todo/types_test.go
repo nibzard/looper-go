@@ -516,3 +516,153 @@ func containsIndent(content, indent string) bool {
 	}
 	return false
 }
+
+func TestSelectTask(t *testing.T) {
+	tests := []struct {
+		name     string
+		tasks    []Task
+		wantID   string
+		wantDesc string
+	}{
+		{
+			name: "select doing task (lowest id wins)",
+			tasks: []Task{
+				{ID: "T003", Title: "Third task", Priority: 1, Status: StatusDoing},
+				{ID: "T001", Title: "First task", Priority: 3, Status: StatusDoing},
+				{ID: "T002", Title: "Second task", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T001",
+			wantDesc: "doing task T001 selected over T003 (lower id)",
+		},
+		{
+			name: "no doing tasks, select highest priority todo",
+			tasks: []Task{
+				{ID: "T001", Title: "Priority 3", Priority: 3, Status: StatusTodo},
+				{ID: "T002", Title: "Priority 1", Priority: 1, Status: StatusTodo},
+				{ID: "T003", Title: "Priority 2", Priority: 2, Status: StatusTodo},
+			},
+			wantID:   "T002",
+			wantDesc: "priority 1 selected",
+		},
+		{
+			name: "same priority todo, lowest id wins",
+			tasks: []Task{
+				{ID: "T003", Title: "Third task", Priority: 1, Status: StatusTodo},
+				{ID: "T001", Title: "First task", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second task", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T001",
+			wantDesc: "T001 selected (lowest id among priority 1 todos)",
+		},
+		{
+			name: "no todo or doing, select highest priority blocked",
+			tasks: []Task{
+				{ID: "T001", Title: "Priority 3 blocked", Priority: 3, Status: StatusBlocked},
+				{ID: "T002", Title: "Priority 1 blocked", Priority: 1, Status: StatusBlocked},
+			},
+			wantID:   "T002",
+			wantDesc: "priority 1 blocked selected",
+		},
+		{
+			name: "same priority blocked, lowest id wins",
+			tasks: []Task{
+				{ID: "T003", Title: "Third blocked", Priority: 2, Status: StatusBlocked},
+				{ID: "T001", Title: "First blocked", Priority: 2, Status: StatusBlocked},
+				{ID: "T002", Title: "Second blocked", Priority: 2, Status: StatusBlocked},
+			},
+			wantID:   "T001",
+			wantDesc: "T001 selected (lowest id among priority 2 blocked)",
+		},
+		{
+			name: "doing takes priority over todo even with higher priority",
+			tasks: []Task{
+				{ID: "T005", Title: "Doing task", Priority: 5, Status: StatusDoing},
+				{ID: "T001", Title: "Priority 1 todo", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T005",
+			wantDesc: "doing always selected first regardless of priority",
+		},
+		{
+			name: "only done tasks returns nil",
+			tasks: []Task{
+				{ID: "T001", Title: "Done task", Priority: 1, Status: StatusDone},
+				{ID: "T002", Title: "Another done", Priority: 1, Status: StatusDone},
+			},
+			wantID:   "",
+			wantDesc: "no selectable tasks",
+		},
+		{
+			name:     "empty tasks returns nil",
+			tasks:    []Task{},
+			wantID:   "",
+			wantDesc: "no tasks at all",
+		},
+		{
+			name: "complex: doing > todo > blocked",
+			tasks: []Task{
+				{ID: "T005", Title: "Priority 1 todo", Priority: 1, Status: StatusTodo},
+				{ID: "T010", Title: "Priority 1 blocked", Priority: 1, Status: StatusBlocked},
+				{ID: "T003", Title: "Priority 3 doing", Priority: 3, Status: StatusDoing},
+				{ID: "T001", Title: "Priority 2 todo", Priority: 2, Status: StatusTodo},
+			},
+			wantID:   "T003",
+			wantDesc: "doing selected over higher priority todo/blocked",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &File{
+				SchemaVersion: 1,
+				SourceFiles:   []string{"README.md"},
+				Tasks:         tt.tasks,
+			}
+
+			got := f.SelectTask()
+
+			if tt.wantID == "" {
+				if got != nil {
+					t.Errorf("%s: SelectTask() = %v (%s), want nil", tt.name, got, got.ID)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Fatalf("%s: SelectTask() = nil, want task with ID %s (%s)", tt.name, tt.wantID, tt.wantDesc)
+			}
+
+			if got.ID != tt.wantID {
+				t.Errorf("%s: SelectTask() ID = %s, want %s (%s)", tt.name, got.ID, tt.wantID, tt.wantDesc)
+			}
+		})
+	}
+}
+
+func TestSetTaskDoing(t *testing.T) {
+	f := &File{
+		SchemaVersion: 1,
+		SourceFiles:   []string{"README.md"},
+		Tasks: []Task{
+			{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+		},
+	}
+
+	// Set to doing
+	err := f.SetTaskDoing("T001")
+	if err != nil {
+		t.Fatalf("SetTaskDoing failed: %v", err)
+	}
+
+	if f.Tasks[0].Status != StatusDoing {
+		t.Errorf("Status: got %s, want doing", f.Tasks[0].Status)
+	}
+	if f.Tasks[0].UpdatedAt == nil {
+		t.Error("UpdatedAt should be set")
+	}
+
+	// Non-existing task
+	err = f.SetTaskDoing("T999")
+	if err == nil {
+		t.Error("SetTaskDoing for non-existing task should return error")
+	}
+}

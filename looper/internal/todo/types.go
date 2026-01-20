@@ -422,3 +422,59 @@ func (f *File) UpdateTask(id string, updater func(*Task)) error {
 	}
 	return fmt.Errorf("task %q not found", id)
 }
+
+// SelectTask selects the next task to work on using a deterministic algorithm.
+// The selection order is:
+// 1. Any task with status "doing" (lowest id wins)
+// 2. Otherwise highest priority "todo" (priority 1 is highest), tie-break by lowest id
+// 3. Otherwise highest priority "blocked", tie-break by lowest id
+// Returns nil if no tasks are found.
+func (f *File) SelectTask() *Task {
+	// First, look for any "doing" task (lowest id wins)
+	var selected *Task
+	for i := range f.Tasks {
+		if f.Tasks[i].Status == StatusDoing {
+			if selected == nil || f.Tasks[i].ID < selected.ID {
+				selected = &f.Tasks[i]
+			}
+		}
+	}
+	if selected != nil {
+		return selected
+	}
+
+	// No "doing" tasks, find highest priority "todo"
+	bestPriority := 5 // maximum priority value (lowest priority)
+	for i := range f.Tasks {
+		if f.Tasks[i].Status == StatusTodo {
+			if selected == nil || f.Tasks[i].Priority < bestPriority ||
+				(f.Tasks[i].Priority == bestPriority && f.Tasks[i].ID < selected.ID) {
+				selected = &f.Tasks[i]
+				bestPriority = f.Tasks[i].Priority
+			}
+		}
+	}
+	if selected != nil {
+		return selected
+	}
+
+	// No "todo" tasks, find highest priority "blocked"
+	bestPriority = 5
+	for i := range f.Tasks {
+		if f.Tasks[i].Status == StatusBlocked {
+			if selected == nil || f.Tasks[i].Priority < bestPriority ||
+				(f.Tasks[i].Priority == bestPriority && f.Tasks[i].ID < selected.ID) {
+				selected = &f.Tasks[i]
+				bestPriority = f.Tasks[i].Priority
+			}
+		}
+	}
+
+	return selected
+}
+
+// SetTaskDoing marks a task as "doing" and sets updated_at.
+// This is a convenience wrapper around SetTaskStatus.
+func (f *File) SetTaskDoing(id string) error {
+	return f.SetTaskStatus(id, StatusDoing)
+}
