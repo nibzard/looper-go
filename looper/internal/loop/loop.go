@@ -13,6 +13,8 @@ import (
 	"github.com/nibzard/looper/internal/todo"
 )
 
+const repairAgentType = agents.AgentTypeCodex
+
 // Loop manages the iteration flow and state transitions.
 type Loop struct {
 	cfg         *config.Config
@@ -30,22 +32,34 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 	// Create prompt store
 	promptStore := prompts.NewStore(workDir, cfg.PromptDir)
 
-	// Load todo file
+	// Resolve todo file path
 	todoPath := cfg.TodoFile
 	if !filepath.IsAbs(todoPath) {
 		todoPath = filepath.Join(workDir, todoPath)
 	}
-	todoFile, err := todo.Load(todoPath)
+
+	// Resolve schema path
+	schemaPath := cfg.SchemaFile
+	if !filepath.IsAbs(schemaPath) {
+		schemaPath = filepath.Join(workDir, schemaPath)
+	}
+
+	// Load or bootstrap todo file
+	todoFile, err := loadOrBootstrapTodo(workDir, todoPath, schemaPath, promptStore, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("load todo file: %w", err)
 	}
 
 	// Validate todo file
 	result := todoFile.Validate(todo.ValidationOptions{
-		SchemaPath: cfg.SchemaFile,
+		SchemaPath: schemaPath,
 	})
 	if !result.Valid {
-		return nil, fmt.Errorf("todo file validation failed: %w", result.Errors[0])
+		// Try to repair the file
+		todoFile, err = repairTodoFile(workDir, todoPath, schemaPath, promptStore, cfg, result)
+		if err != nil {
+			return nil, fmt.Errorf("todo file validation failed and repair failed: %w (validation errors: %v)", err, result.Errors)
+		}
 	}
 
 	// Create log directory
@@ -63,10 +77,133 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 		renderer:    prompts.NewRenderer(promptStore),
 		todoFile:    todoFile,
 		todoPath:    todoPath,
-		schemaPath:  cfg.SchemaFile,
+		schemaPath:  schemaPath,
 		logDir:      logDir,
 		workDir:     workDir,
 	}, nil
+}
+
+// loadOrBootstrapTodo loads the todo file, or bootstraps it if missing.
+func loadOrBootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.Store, cfg *config.Config) (*todo.File, error) {
+	// Try to load existing file
+	todoFile, err := todo.Load(todoPath)
+	if err == nil {
+		return todoFile, nil
+	}
+
+	// File doesn't exist - bootstrap it
+	if os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Todo file not found at %s, bootstrapping...\n", todoPath)
+		if err := bootstrapTodo(workDir, todoPath, schemaPath, promptStore, cfg); err != nil {
+			return nil, fmt.Errorf("bootstrap todo file: %w", err)
+		}
+		// Load the newly created file
+		return todo.Load(todoPath)
+	}
+
+	return nil, err
+}
+
+// bootstrapTodo creates a new todo file by running the bootstrap agent.
+func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.Store, cfg *config.Config) error {
+	ctx := context.Background()
+
+	renderer := prompts.NewRenderer(promptStore)
+	promptData := prompts.NewData(
+		todoPath,
+		schemaPath,
+		workDir,
+		prompts.Task{},
+		0,
+		"bootstrap",
+		time.Now(),
+	)
+	prompt, err := renderer.Render(prompts.BootstrapPrompt, promptData)
+	if err != nil {
+		return fmt.Errorf("render bootstrap prompt: %w", err)
+	}
+
+	// Create bootstrap agent
+	agentCfg := agents.Config{
+		Binary: cfg.GetAgentBinary(string(repairAgentType)),
+		Model:  cfg.GetAgentModel(string(repairAgentType)),
+		WorkDir: workDir,
+	}
+	agent, err := agents.NewAgent(repairAgentType, agentCfg)
+	if err != nil {
+		return fmt.Errorf("create bootstrap agent: %w", err)
+	}
+
+	// Log to stderr for bootstrap
+	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
+
+	_, err = agent.Run(ctx, prompt, logWriter)
+	if err != nil {
+		return fmt.Errorf("run bootstrap agent: %w", err)
+	}
+
+	return nil
+}
+
+// repairTodoFile repairs an invalid todo file by running the repair agent.
+func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.Store, cfg *config.Config, validationResult *todo.ValidationResult) (*todo.File, error) {
+	ctx := context.Background()
+
+	fmt.Fprintf(os.Stderr, "Todo file validation failed, attempting repair...\n")
+	for _, e := range validationResult.Errors {
+		fmt.Fprintf(os.Stderr, "  - %v\n", e)
+	}
+
+	renderer := prompts.NewRenderer(promptStore)
+	promptData := prompts.NewData(
+		todoPath,
+		schemaPath,
+		workDir,
+		prompts.Task{},
+		0,
+		"repair",
+		time.Now(),
+	)
+	prompt, err := renderer.Render(prompts.RepairPrompt, promptData)
+	if err != nil {
+		return nil, fmt.Errorf("render repair prompt: %w", err)
+	}
+
+	// Create repair agent
+	agentCfg := agents.Config{
+		Binary: cfg.GetAgentBinary(string(repairAgentType)),
+		Model:  cfg.GetAgentModel(string(repairAgentType)),
+		WorkDir: workDir,
+	}
+	agent, err := agents.NewAgent(repairAgentType, agentCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create repair agent: %w", err)
+	}
+
+	// Log to stderr for repair
+	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
+
+	_, err = agent.Run(ctx, prompt, logWriter)
+	if err != nil {
+		return nil, fmt.Errorf("run repair agent: %w", err)
+	}
+
+	// Reload the repaired file
+	todoFile, err := todo.Load(todoPath)
+	if err != nil {
+		return nil, fmt.Errorf("load repaired todo file: %w", err)
+	}
+
+	// Validate the repaired file
+	result := todoFile.Validate(todo.ValidationOptions{
+		SchemaPath: schemaPath,
+	})
+	if !result.Valid {
+		return nil, fmt.Errorf("repaired file still invalid: %w", result.Errors[0])
+	}
+
+	fmt.Fprintf(os.Stderr, "Todo file repaired successfully.\n")
+	return todoFile, nil
 }
 
 // Run executes the main loop.

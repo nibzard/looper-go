@@ -104,7 +104,7 @@
       "title": "Implement loop orchestration: bootstrap, validate/repair, select task, run, review, project-done",
       "priority": 1,
       "status": "done",
-      "updated_at": "2026-01-20T22:14:23Z",
+      "updated_at": "2026-01-20T22:17:32Z",
       "files": [
         "looper/internal/loop/loop.go",
         "looper/cmd/looper/main.go",
