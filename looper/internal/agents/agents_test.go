@@ -526,3 +526,199 @@ func TestCodexAgentRunReadsPrompt(t *testing.T) {
 		t.Fatalf("summary.Status = %q, want %q", summary.Status, "done")
 	}
 }
+
+// TestValidateSummaryMinimal tests the minimal summary validation (without schema).
+func TestValidateSummaryMinimal(t *testing.T) {
+	tests := []struct {
+		name    string
+		summary *Summary
+		wantErr bool
+	}{
+		{
+			name: "valid done summary",
+			summary: &Summary{
+				TaskID:  "T001",
+				Status:  "done",
+				Summary: "Task completed",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid blocked summary",
+			summary: &Summary{
+				TaskID:   "T001",
+				Status:   "blocked",
+				Summary:  "Blocked by dependency",
+				Blockers: []string{"waiting for T002"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid skipped summary",
+			summary: &Summary{
+				TaskID:  "T001",
+				Status:  "skipped",
+				Summary: "Task not applicable",
+			},
+			wantErr: false,
+		},
+		{
+			name: "summary with files",
+			summary: &Summary{
+				TaskID:  "T001",
+				Status:  "done",
+				Summary: "Completed",
+				Files:   []string{"file1.go", "file2.go"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "minimal valid summary - just status",
+			summary: &Summary{
+				Status: "done",
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid status",
+			summary: &Summary{
+				TaskID:  "T001",
+				Status:  "invalid_status",
+				Summary: "Test",
+			},
+			wantErr: true,
+		},
+		{
+			name:    "empty summary",
+			summary: &Summary{},
+			wantErr: true,
+		},
+		{
+			name:    "nil summary",
+			summary: nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateSummary(tt.summary, "")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateSummary() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateSummaryWithSchema tests summary validation with actual schema file.
+func TestValidateSummaryWithSchema(t *testing.T) {
+	// Create a temporary schema file
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "summary.schema.json")
+	schemaContent := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "Test Summary Schema",
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["task_id", "status"],
+		"properties": {
+			"task_id": { "type": ["string", "null"] },
+			"status": { "type": "string", "enum": ["done", "blocked", "skipped"] },
+			"summary": { "type": "string" },
+			"files": { "type": "array", "items": { "type": "string" } },
+			"blockers": { "type": "array", "items": { "type": "string" } }
+		}
+	}`
+
+	if err := os.WriteFile(schemaPath, []byte(schemaContent), 0644); err != nil {
+		t.Fatalf("Failed to create schema file: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		summary *Summary
+		wantErr bool
+	}{
+		{
+			name: "valid summary with all fields",
+			summary: &Summary{
+				TaskID:   "T001",
+				Status:   "done",
+				Summary:  "Completed successfully",
+				Files:    []string{"file1.go"},
+				Blockers: []string{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid minimal summary",
+			summary: &Summary{
+				TaskID: "T001",
+				Status: "blocked",
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing required task_id",
+			summary: &Summary{
+				Status: "done",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing required status",
+			summary: &Summary{
+				TaskID: "T001",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid status value",
+			summary: &Summary{
+				TaskID: "T001",
+				Status: "invalid",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateSummary(tt.summary, schemaPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateSummary() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && err != nil {
+				// Check if it's a validation error with good formatting
+				var valErr *SummaryValidationError
+				if !errors.As(err, &valErr) {
+					t.Errorf("Expected SummaryValidationError, got %T", err)
+				}
+			}
+		})
+	}
+}
+
+// TestSummaryValidationError tests the SummaryValidationError type.
+func TestSummaryValidationError(t *testing.T) {
+	err := &SummaryValidationError{
+		Path:    "status",
+		Message: "invalid value",
+	}
+
+	expected := "summary validation failed at status: invalid value"
+	if err.Error() != expected {
+		t.Errorf("Error() = %q, want %q", err.Error(), expected)
+	}
+
+	// Test without path
+	err2 := &SummaryValidationError{
+		Message: "general error",
+	}
+
+	expected2 := "summary validation failed: general error"
+	if err2.Error() != expected2 {
+		t.Errorf("Error() without path = %q, want %q", err2.Error(), expected2)
+	}
+}
+

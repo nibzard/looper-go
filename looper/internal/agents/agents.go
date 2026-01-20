@@ -11,10 +11,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
 )
 
 // AgentType represents the type of agent.
@@ -34,6 +37,187 @@ type Summary struct {
 	Summary  string   `json:"summary"`
 	Files    []string `json:"files,omitempty"`
 	Blockers []string `json:"blockers,omitempty"`
+}
+
+// SummaryValidationError represents an error in summary validation.
+type SummaryValidationError struct {
+	Path    string
+	Message string
+}
+
+func (e *SummaryValidationError) Error() string {
+	if e.Path != "" {
+		return fmt.Sprintf("summary validation failed at %s: %s", e.Path, e.Message)
+	}
+	return fmt.Sprintf("summary validation failed: %s", e.Message)
+}
+
+// ValidateSummary validates a summary against a JSON schema file.
+// If schemaPath is empty, only minimal validation is performed.
+func ValidateSummary(summary *Summary, schemaPath string) error {
+	if summary == nil {
+		return errors.New("summary is nil")
+	}
+
+	// Try schema validation if path is provided
+	if schemaPath != "" {
+		absPath, err := filepath.Abs(schemaPath)
+		if err != nil {
+			return fmt.Errorf("invalid schema path: %w", err)
+		}
+
+		if _, err := os.Stat(absPath); err == nil {
+			// Schema file exists, validate against it
+			if err := validateSummaryWithSchema(summary, absPath); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
+	// Fallback to minimal validation
+	return validateSummaryMinimal(summary)
+}
+
+// validateSummaryWithSchema validates a summary against the JSON schema.
+func validateSummaryWithSchema(summary *Summary, schemaPath string) error {
+	compiler := jsonschema.NewCompiler()
+	compiler.AssertFormat = true
+
+	schema, err := compiler.Compile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("compile schema: %w", err)
+	}
+
+	// Marshal summary to JSON for validation
+	summaryData, err := json.Marshal(summary)
+	if err != nil {
+		return fmt.Errorf("marshal summary: %w", err)
+	}
+
+	var summaryObj interface{}
+	if err := json.Unmarshal(summaryData, &summaryObj); err != nil {
+		return fmt.Errorf("unmarshal summary: %w", err)
+	}
+
+	if err := schema.Validate(summaryObj); err != nil {
+		return mapSchemaErrorToSummaryValidationError(err)
+	}
+
+	return nil
+}
+
+// mapSchemaErrorToSummaryValidationError converts jsonschema ValidationError to SummaryValidationError.
+func mapSchemaErrorToSummaryValidationError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	ve, ok := err.(*jsonschema.ValidationError)
+	if !ok {
+		return &SummaryValidationError{Message: err.Error()}
+	}
+
+	// Find the first useful error
+	var result error
+	collectSchemaValidationErrors(ve, &result)
+	if result != nil {
+		return result
+	}
+
+	return &SummaryValidationError{Message: err.Error()}
+}
+
+// collectSchemaValidationErrors recursively collects validation errors.
+func collectSchemaValidationErrors(err *jsonschema.ValidationError, result *error) {
+	if err == nil {
+		return
+	}
+
+	if len(err.Causes) == 0 {
+		path := jsonPointerToPathForSummary(err.InstanceLocation)
+		*result = &SummaryValidationError{
+			Path:    path,
+			Message: err.Message,
+		}
+		return
+	}
+
+	for _, cause := range err.Causes {
+		if *result == nil {
+			collectSchemaValidationErrors(cause, result)
+		}
+	}
+}
+
+// jsonPointerToPathForSummary converts a JSON pointer to a path string.
+func jsonPointerToPathForSummary(ptr string) string {
+	if ptr == "" {
+		return ""
+	}
+	if strings.HasPrefix(ptr, "#") {
+		ptr = strings.TrimPrefix(ptr, "#")
+	}
+	if strings.HasPrefix(ptr, "/") {
+		ptr = ptr[1:]
+	}
+	if ptr == "" {
+		return ""
+	}
+
+	parts := strings.Split(ptr, "/")
+	path := ""
+	for _, part := range parts {
+		part = strings.ReplaceAll(part, "~1", "/")
+		part = strings.ReplaceAll(part, "~0", "~")
+		if part == "" {
+			continue
+		}
+		if idx, err := strconv.Atoi(part); err == nil {
+			path += fmt.Sprintf("[%d]", idx)
+			continue
+		}
+		if path == "" {
+			path = part
+		} else {
+			path += "." + part
+		}
+	}
+
+	return path
+}
+
+// validateSummaryMinimal performs minimal validation without JSON schema.
+func validateSummaryMinimal(summary *Summary) error {
+	var errs []string
+
+	// Check task_id is present or null
+	if summary.TaskID == "" {
+		// task_id can be null (empty string is treated as null for Go)
+		// This is allowed per the schema
+	}
+
+	// Check status is a valid enum value
+	validStatuses := map[string]bool{
+		"done":    true,
+		"blocked": true,
+		"skipped": true,
+	}
+	if summary.Status != "" && !validStatuses[summary.Status] {
+		errs = append(errs, fmt.Sprintf("invalid status %q, must be one of: done, blocked, skipped", summary.Status))
+	}
+
+	// Check that at least one meaningful field is set
+	if summary.TaskID == "" && summary.Status == "" && summary.Summary == "" &&
+		len(summary.Files) == 0 && len(summary.Blockers) == 0 {
+		return errors.New("summary is empty")
+	}
+
+	if len(errs) > 0 {
+		return &SummaryValidationError{Message: strings.Join(errs, "; ")}
+	}
+
+	return nil
 }
 
 // LogEvent represents a single log event from the agent.

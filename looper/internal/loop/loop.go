@@ -18,14 +18,15 @@ const repairAgentType = agents.AgentTypeCodex
 
 // Loop manages the iteration flow and state transitions.
 type Loop struct {
-	cfg         *config.Config
-	promptStore *prompts.Store
-	renderer    *prompts.Renderer
-	todoFile    *todo.File
-	todoPath    string
-	schemaPath  string
-	logDir      string
-	workDir     string
+	cfg              *config.Config
+	promptStore      *prompts.Store
+	renderer         *prompts.Renderer
+	todoFile         *todo.File
+	todoPath         string
+	schemaPath       string
+	summarySchemaPath string
+	logDir           string
+	workDir          string
 }
 
 // New creates a new loop instance.
@@ -45,6 +46,9 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 		schemaPath = filepath.Join(workDir, schemaPath)
 	}
 
+	// Resolve summary schema path (from prompt store)
+	summarySchemaPath := filepath.Join(promptStore.Dir(), prompts.SummarySchema)
+
 	// Load or bootstrap todo file and validate/repair if needed.
 	todoFile, err := loadAndValidateTodo(workDir, todoPath, schemaPath, promptStore, cfg)
 	if err != nil {
@@ -61,14 +65,15 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 	}
 
 	return &Loop{
-		cfg:         cfg,
-		promptStore: promptStore,
-		renderer:    prompts.NewRenderer(promptStore),
-		todoFile:    todoFile,
-		todoPath:    todoPath,
-		schemaPath:  schemaPath,
-		logDir:      logDir,
-		workDir:     workDir,
+		cfg:              cfg,
+		promptStore:      promptStore,
+		renderer:         prompts.NewRenderer(promptStore),
+		todoFile:         todoFile,
+		todoPath:         todoPath,
+		schemaPath:       schemaPath,
+		summarySchemaPath: summarySchemaPath,
+		logDir:           logDir,
+		workDir:          workDir,
 	}, nil
 }
 
@@ -449,6 +454,11 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 func (l *Loop) applySummary(summary *agents.Summary) error {
 	if summary.TaskID == "" {
 		return nil
+	}
+
+	// Validate summary against schema before applying
+	if err := agents.ValidateSummary(summary, l.summarySchemaPath); err != nil {
+		return fmt.Errorf("summary validation failed: %w", err)
 	}
 
 	// Map status
