@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex RALF Iteration Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "status"],
+  "properties": {
+    "task_id": { "type": ["string", "null"] },
+    "status": { "type": "string", "enum": ["done", "blocked", "skipped"] },
+    "summary": { "type": "string" },
+    "files": { "type": "array", "items": { "type": "string" } },
+    "blockers": { "type": "array", "items": { "type": "string" } }
+  }
+}

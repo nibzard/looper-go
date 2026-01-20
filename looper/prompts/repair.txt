@@ -1,0 +1,11 @@
+Fix "{{.TodoPath}}" to match the schema in "{{.SchemaPath}}".
+
+Rules:
+- Preserve existing tasks and their intent.
+- Ensure source_files exists; if missing, add relevant source docs (PROJECT.md, PROJECT_SPEC.md, SPECS.md, SPECIFICATION.md, README.md, DESIGN.md, IDEA.md). Use relative paths and [] if none.
+- Do not change code or other files.
+- Use jq if helpful.
+- Keep JSON formatted with 2-space indentation.
+- Do not ask for confirmation.
+
+Return a brief summary of what you changed.

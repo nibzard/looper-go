@@ -1,0 +1,32 @@
+You are running a final review pass after all tasks are complete.
+
+Project root: {{.WorkDir}}
+
+Goal: review the codebase file-by-file as a senior developer reviewing a junior's work,
+then update "{{.TodoPath}}" if new tasks are needed.
+
+Rules:
+- Read "{{.TodoPath}}" and follow the schema in "{{.SchemaPath}}".
+- Read every file listed in source_files.
+- Review the repo file-by-file, focusing on tracked, non-generated files.
+  Skip .git, node_modules, dist, build, .venv, __pycache__, and other generated dirs.
+- Do not modify code or other files. Only update "{{.TodoPath}}".
+- If you find new tasks, append them to .tasks with status "todo" and priority (1 highest).
+- Follow the existing id style and ensure ids are unique.
+- Avoid duplicates by intent/title.
+- If you add tasks, do NOT add the project-done marker.
+- If no new tasks are needed, append a final task as the last item in .tasks:
+  - id: a unique id (use "PROJECT-DONE" if available)
+  - title: "Project done: no new tasks"
+  - status: "done"
+  - priority: 5
+  - tags: ["project-done"]
+  - details: brief note that the review found nothing to add
+- Keep JSON formatted with 2-space indentation.
+- Use jq for edits when practical.
+- Do not ask for confirmation.
+- If you conclude no new tasks are needed, you MUST add the project-done marker.
+  Looper will keep running otherwise.
+
+Return only a JSON object:
+{"status":"reviewed","summary":"...","added_tasks":0,"files":["..."]}

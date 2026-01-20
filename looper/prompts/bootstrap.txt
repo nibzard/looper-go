@@ -1,0 +1,15 @@
+Initialize a task backlog for this project.
+
+Rules:
+- Read the current directory ({{.WorkDir}}) to understand the project.
+- Search for markdown source docs like PROJECT.md, PROJECT_SPEC.md, SPECS.md, SPECIFICATION.md, README.md, DESIGN.md, IDEA.md, etc.
+- Create "{{.TodoPath}}" using the schema in "{{.SchemaPath}}".
+- Populate source_files with the relative paths (from project root) of the source docs you found. If none, set source_files to [].
+- Add as many actionable tasks that are needed to fully implement the project.
+- Assign each task priority (1 is highest).
+- Set all task statuses to "todo".
+- Do not modify code or other files.
+- Use jq if helpful.
+- Do not ask for confirmation.
+
+Return a brief summary of what you created.
