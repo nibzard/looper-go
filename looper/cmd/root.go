@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -31,11 +32,22 @@ func Run(ctx context.Context, args []string) error {
 	fs.Usage = func() {
 		printUsage(fs, os.Stderr)
 	}
+	help := fs.Bool("help", false, "Show help")
+	fs.BoolVar(help, "h", false, "Show help")
+	showVersion := fs.Bool("version", false, "Show version")
+	fs.BoolVar(showVersion, "v", false, "Show version")
 
 	// Global flags
 	cfg, err := config.Load(fs, args)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
+	}
+	if *help {
+		printUsage(fs, os.Stdout)
+		return nil
+	}
+	if *showVersion {
+		return versionCommand()
 	}
 
 	// Determine the subcommand
@@ -95,6 +107,14 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		return err
 	}
 
+	remaining := fs.Args()
+	if len(remaining) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[1:])
+	}
+	if len(remaining) == 1 {
+		cfg.TodoFile = remaining[0]
+	}
+
 	// Update config with parsed values
 	cfg.MaxIterations = *maxIter
 	cfg.Schedule = *schedule
@@ -128,6 +148,15 @@ func doctorCommand(cfg *config.Config, args []string) error {
 		return err
 	}
 
+	remaining := fs.Args()
+	if len(remaining) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[1:])
+	}
+	todoPath := cfg.TodoFile
+	if len(remaining) == 1 {
+		todoPath = remaining[0]
+	}
+
 	fmt.Println("Looper Doctor")
 	fmt.Println("=============")
 	fmt.Println()
@@ -145,7 +174,6 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	fmt.Println()
 
 	// Check todo file
-	todoPath := cfg.TodoFile
 	if !filepath.IsAbs(todoPath) {
 		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
 	}
@@ -229,7 +257,7 @@ func doctorCommand(cfg *config.Config, args []string) error {
 			fmt.Println("  ✅ OK")
 		} else {
 			// Try to find it in PATH
-			if _, err := os.Executable(agent.binary); err == nil {
+			if _, err := exec.LookPath(agent.binary); err == nil {
 				fmt.Println("  ✅ OK (found in PATH)")
 			} else {
 				fmt.Printf("  ❌ Not found: %v\n", err)
@@ -300,6 +328,7 @@ func tailCommand(cfg *config.Config, args []string) error {
 	// Parse tail-specific flags
 	fs := flag.NewFlagSet("looper tail", flag.ContinueOnError)
 	follow := fs.Bool("f", false, "Follow the log (like tail -f)")
+	fs.BoolVar(follow, "follow", false, "Follow the log (like tail -f)")
 	n := fs.Int("n", 0, "Number of lines to show (0 = all)")
 
 	if err := fs.Parse(args); err != nil {
@@ -352,8 +381,23 @@ func lsCommand(cfg *config.Config, args []string) error {
 		return err
 	}
 
-	// Resolve todo file path
+	remaining := fs.Args()
+	if len(remaining) > 2 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[2:])
+	}
+	if len(remaining) >= 1 && *statusFilter == "" {
+		*statusFilter = remaining[0]
+		remaining = remaining[1:]
+	}
+	if len(remaining) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[1:])
+	}
 	todoPath := cfg.TodoFile
+	if len(remaining) == 1 {
+		todoPath = remaining[0]
+	}
+
+	// Resolve todo file path
 	if !filepath.IsAbs(todoPath) {
 		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
 	}
@@ -404,9 +448,9 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  run [file]    Run the loop (default command)")
-	fmt.Fprintln(w, "  doctor        Check dependencies, config, and task file validity")
+	fmt.Fprintln(w, "  doctor [file] Check dependencies, config, and task file validity")
 	fmt.Fprintln(w, "  tail          Tail the latest log file")
-	fmt.Fprintln(w, "  ls            List tasks by status")
+	fmt.Fprintln(w, "  ls [status] [file]  List tasks by status")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
 	fmt.Fprintln(w)
@@ -431,7 +475,8 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "        Delay between iterations in seconds (default 0)")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Tail Options (use with 'tail' command):")
-	fmt.Fprintln(w, "  -f    Follow the log (like tail -f)")
+	fmt.Fprintln(w, "  -f, --follow")
+	fmt.Fprintln(w, "        Follow the log (like tail -f)")
 	fmt.Fprintln(w, "  -n int")
 	fmt.Fprintln(w, "        Number of lines to show (0 = all)")
 	fmt.Fprintln(w)

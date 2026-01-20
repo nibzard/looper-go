@@ -165,11 +165,9 @@
       "title": "Implement CLI commands: run (default), doctor, tail, ls, version, and core flags",
       "priority": 2,
       "status": "done",
-      "updated_at": "2026-01-21T00:00:00Z",
+      "updated_at": "2026-01-20T23:28:56Z",
       "files": [
         "looper/cmd/root.go",
-        "looper/cmd/looper/main.go",
-        "looper/internal/logging/logging.go",
         "to-do.json"
       ]
     },
