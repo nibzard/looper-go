@@ -92,11 +92,10 @@
       "title": "Implement agent interface plus Codex and Claude runners with streaming logs and timeouts",
       "priority": 1,
       "status": "done",
-      "updated_at": "2026-01-20T21:54:27Z",
+      "updated_at": "2026-01-20T22:12:18Z",
       "files": [
         "looper/internal/agents/agents.go",
         "looper/internal/agents/agents_test.go",
-        "looper/internal/agents/doc.go",
         "to-do.json"
       ]
     },

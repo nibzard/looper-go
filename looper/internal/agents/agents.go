@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,8 @@ const (
 	AgentTypeCodex  AgentType = "codex"
 	AgentTypeClaude AgentType = "claude"
 )
+
+const maxScanTokenSize = 1024 * 1024
 
 // Summary is the expected output from an agent run.
 type Summary struct {
@@ -143,11 +146,61 @@ type Config struct {
 	Args []string
 
 	// Timeout is the maximum duration to wait for the agent to complete.
-	// If zero, no timeout is enforced.
+	// If zero, DefaultTimeout is used. Use a negative value to disable timeouts.
 	Timeout time.Duration
 
 	// WorkDir is the working directory for the agent command.
 	WorkDir string
+
+	// LastMessagePath is an optional path to write the last message (codex only).
+	LastMessagePath string
+}
+
+type lockedLogWriter struct {
+	mu     sync.Mutex
+	writer LogWriter
+}
+
+func (l *lockedLogWriter) Write(event LogEvent) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.writer.Write(event)
+}
+
+func normalizeLogWriter(writer LogWriter) LogWriter {
+	if writer == nil {
+		return NullLogWriter{}
+	}
+	return &lockedLogWriter{writer: writer}
+}
+
+func normalizeConfig(agentType AgentType, cfg Config) Config {
+	if cfg.Binary == "" {
+		switch agentType {
+		case AgentTypeCodex:
+			cfg.Binary = "codex"
+		case AgentTypeClaude:
+			cfg.Binary = "claude"
+		}
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = DefaultTimeout
+	}
+	return cfg
+}
+
+func ensurePromptTerminator(prompt string) string {
+	if strings.HasSuffix(prompt, "\n") {
+		return prompt
+	}
+	return prompt + "\n"
+}
+
+func applyTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 // codexAgent implements Agent for Codex.
@@ -157,31 +210,36 @@ type codexAgent struct {
 
 // NewCodexAgent creates a new Codex agent.
 func NewCodexAgent(cfg Config) Agent {
-	return &codexAgent{cfg: cfg}
+	return &codexAgent{cfg: normalizeConfig(AgentTypeCodex, cfg)}
 }
 
 // Run executes the Codex agent.
 func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter) (*Summary, error) {
+	logWriter = normalizeLogWriter(logWriter)
+	cfg := normalizeConfig(AgentTypeCodex, a.cfg)
+
 	// Build arguments
 	args := []string{"exec", "--json"}
-	if a.cfg.Model != "" {
-		args = append(args, "--model", a.cfg.Model)
+	if cfg.Model != "" {
+		args = append(args, "-m", cfg.Model)
 	}
-	args = append(args, a.cfg.Args...)
-	args = append(args, "--", prompt)
+	args = append(args, cfg.Args...)
+	if cfg.LastMessagePath != "" {
+		args = append(args, "--output-last-message", cfg.LastMessagePath)
+	}
+	args = append(args, "-")
 
 	// Apply timeout
-	if a.cfg.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, a.cfg.Timeout)
-		defer cancel()
-	}
+	var cancel context.CancelFunc
+	ctx, cancel = applyTimeout(ctx, cfg.Timeout)
+	defer cancel()
 
 	// Create command
-	cmd := exec.CommandContext(ctx, a.cfg.Binary, args...)
-	if a.cfg.WorkDir != "" {
-		cmd.Dir = a.cfg.WorkDir
+	cmd := exec.CommandContext(ctx, cfg.Binary, args...)
+	if cfg.WorkDir != "" {
+		cmd.Dir = cfg.WorkDir
 	}
+	cmd.Stdin = strings.NewReader(ensurePromptTerminator(prompt))
 
 	// Capture stdout and stderr
 	stdout, err := cmd.StdoutPipe()
@@ -195,7 +253,20 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 
 	// Start command
 	if err := cmd.Start(); err != nil {
+		_ = logWriter.Write(LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   err.Error(),
+		})
 		return nil, fmt.Errorf("start codex: %w", err)
+	}
+
+	if err := logWriter.Write(LogEvent{
+		Type:      "command",
+		Timestamp: time.Now().UTC(),
+		Command:   cmd.Args,
+	}); err != nil {
+		return nil, fmt.Errorf("write log event: %w", err)
 	}
 
 	// Stream output
@@ -203,6 +274,15 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 
 	// Wait for command to finish
 	runErr := cmd.Wait()
+	exitCode := exitCodeFromError(runErr)
+	if err := logWriter.Write(LogEvent{
+		Type:      "command",
+		Timestamp: time.Now().UTC(),
+		Command:   cmd.Args,
+		ExitCode:  exitCode,
+	}); err != nil {
+		return nil, fmt.Errorf("write log event: %w", err)
+	}
 
 	// Collect results
 	var summary *Summary
@@ -215,10 +295,26 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 		outputErrs = append(outputErrs, e)
 	}
 
+	if summary == nil && cfg.LastMessagePath != "" {
+		if parsed, ok := parseSummaryFromFile(cfg.LastMessagePath); ok {
+			summary = parsed
+			_ = logWriter.Write(LogEvent{
+				Type:      "summary",
+				Timestamp: time.Now().UTC(),
+				Summary:   summary,
+			})
+		}
+	}
+
 	// Handle errors
 	if runErr != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("codex timeout after %s", a.cfg.Timeout)
+			_ = logWriter.Write(LogEvent{
+				Type:      "error",
+				Timestamp: time.Now().UTC(),
+				Content:   fmt.Sprintf("codex timeout after %s", cfg.Timeout),
+			})
+			return nil, fmt.Errorf("codex timeout after %s", cfg.Timeout)
 		}
 		if len(outputErrs) > 0 {
 			return nil, fmt.Errorf("codex failed: %w (output errors: %v)", runErr, outputErrs)
@@ -249,6 +345,7 @@ func (a *codexAgent) streamOutput(
 	go func() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if err := a.processLine(ctx, line, logWriter, summaries); err != nil {
@@ -270,6 +367,7 @@ func (a *codexAgent) streamOutput(
 	go func() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
+		scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if strings.TrimSpace(line) != "" {
@@ -278,6 +376,12 @@ func (a *codexAgent) streamOutput(
 					Timestamp: time.Now().UTC(),
 					Content:   line,
 				})
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			select {
+			case errs <- fmt.Errorf("stderr scanner error: %w", err):
+			default:
 			}
 		}
 	}()
@@ -298,6 +402,10 @@ func (a *codexAgent) processLine(
 	logWriter LogWriter,
 	summaries chan *Summary,
 ) error {
+	if strings.TrimSpace(line) == "" {
+		return nil
+	}
+
 	// Try to parse as JSON
 	var rawData map[string]any
 	if err := json.Unmarshal([]byte(line), &rawData); err != nil {
@@ -309,36 +417,49 @@ func (a *codexAgent) processLine(
 		})
 	}
 
-	// Check for message type
-	msgType, _ := rawData["type"].(string)
-
-	// Write raw event to log
-	eventType := "assistant_message"
-	switch {
-	case msgType == "tool_use":
-		eventType = "tool"
-	case rawData["command"] != nil:
-		eventType = "command"
-	case rawData["summary"] != nil:
-		eventType = "summary"
-	}
-
-	if err := logWriter.Write(LogEvent{
+	eventType := classifyEventType(rawData)
+	event := LogEvent{
 		Type:      eventType,
 		Timestamp: time.Now().UTC(),
-		Content:   line,
-	}); err != nil {
+	}
+
+	text := extractTextFromMessage(rawData)
+	if eventType == "assistant_message" {
+		if text != "" {
+			event.Content = text
+		} else {
+			event.Content = line
+		}
+	} else {
+		event.Content = line
+	}
+
+	if tool := extractToolName(rawData); tool != "" {
+		event.Tool = tool
+	}
+	if cmd, ok := extractCommand(rawData); ok {
+		event.Command = cmd
+	}
+	if exitCode, ok := extractExitCode(rawData); ok {
+		event.ExitCode = exitCode
+	}
+
+	if err := logWriter.Write(event); err != nil {
 		return fmt.Errorf("write log event: %w", err)
 	}
 
-	// Check for summary
-	if rawData["task_id"] != nil || rawData["summary"] != nil {
-		var summary Summary
-		if err := json.Unmarshal([]byte(line), &summary); err == nil {
-			select {
-			case summaries <- &summary:
-			case <-ctx.Done():
-			}
+	summary, ok := parseSummaryFromRaw(rawData)
+	if !ok && text != "" {
+		summary, ok = parseSummaryFromText(text)
+	}
+	if ok {
+		sendSummary(ctx, summaries, summary)
+		if err := logWriter.Write(LogEvent{
+			Type:      "summary",
+			Timestamp: time.Now().UTC(),
+			Summary:   summary,
+		}); err != nil {
+			return fmt.Errorf("write log event: %w", err)
 		}
 	}
 
@@ -352,30 +473,31 @@ type claudeAgent struct {
 
 // NewClaudeAgent creates a new Claude agent.
 func NewClaudeAgent(cfg Config) Agent {
-	return &claudeAgent{cfg: cfg}
+	return &claudeAgent{cfg: normalizeConfig(AgentTypeClaude, cfg)}
 }
 
 // Run executes the Claude agent.
 func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWriter) (*Summary, error) {
+	logWriter = normalizeLogWriter(logWriter)
+	cfg := normalizeConfig(AgentTypeClaude, a.cfg)
+
 	// Build arguments
 	args := []string{"--output-format", "stream-json"}
-	if a.cfg.Model != "" {
-		args = append(args, "--model", a.cfg.Model)
+	if cfg.Model != "" {
+		args = append(args, "--model", cfg.Model)
 	}
-	args = append(args, a.cfg.Args...)
-	args = append(args, "--", prompt)
+	args = append(args, cfg.Args...)
+	args = append(args, "-p", prompt)
 
 	// Apply timeout
-	if a.cfg.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, a.cfg.Timeout)
-		defer cancel()
-	}
+	var cancel context.CancelFunc
+	ctx, cancel = applyTimeout(ctx, cfg.Timeout)
+	defer cancel()
 
 	// Create command
-	cmd := exec.CommandContext(ctx, a.cfg.Binary, args...)
-	if a.cfg.WorkDir != "" {
-		cmd.Dir = a.cfg.WorkDir
+	cmd := exec.CommandContext(ctx, cfg.Binary, args...)
+	if cfg.WorkDir != "" {
+		cmd.Dir = cfg.WorkDir
 	}
 
 	// Capture stdout and stderr
@@ -390,7 +512,20 @@ func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWrite
 
 	// Start command
 	if err := cmd.Start(); err != nil {
+		_ = logWriter.Write(LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   err.Error(),
+		})
 		return nil, fmt.Errorf("start claude: %w", err)
+	}
+
+	if err := logWriter.Write(LogEvent{
+		Type:      "command",
+		Timestamp: time.Now().UTC(),
+		Command:   cmd.Args,
+	}); err != nil {
+		return nil, fmt.Errorf("write log event: %w", err)
 	}
 
 	// Stream output
@@ -398,6 +533,15 @@ func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWrite
 
 	// Wait for command to finish
 	runErr := cmd.Wait()
+	exitCode := exitCodeFromError(runErr)
+	if err := logWriter.Write(LogEvent{
+		Type:      "command",
+		Timestamp: time.Now().UTC(),
+		Command:   cmd.Args,
+		ExitCode:  exitCode,
+	}); err != nil {
+		return nil, fmt.Errorf("write log event: %w", err)
+	}
 
 	// Collect results
 	var summary *Summary
@@ -413,7 +557,12 @@ func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWrite
 	// Handle errors
 	if runErr != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("claude timeout after %s", a.cfg.Timeout)
+			_ = logWriter.Write(LogEvent{
+				Type:      "error",
+				Timestamp: time.Now().UTC(),
+				Content:   fmt.Sprintf("claude timeout after %s", cfg.Timeout),
+			})
+			return nil, fmt.Errorf("claude timeout after %s", cfg.Timeout)
 		}
 		if len(outputErrs) > 0 {
 			return nil, fmt.Errorf("claude failed: %w (output errors: %v)", runErr, outputErrs)
@@ -455,6 +604,7 @@ func (a *claudeAgent) streamOutput(
 	go func() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
+		scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if strings.TrimSpace(line) != "" {
@@ -463,6 +613,12 @@ func (a *claudeAgent) streamOutput(
 					Timestamp: time.Now().UTC(),
 					Content:   line,
 				})
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			select {
+			case errs <- fmt.Errorf("stderr scanner error: %w", err):
+			default:
 			}
 		}
 	}()
@@ -487,8 +643,13 @@ func (a *claudeAgent) processStreamJSON(
 	decoder := json.NewDecoder(r)
 
 	var lastMessageBuf bytes.Buffer
+	sawFullMessage := false
 
 	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		var raw map[string]any
 		if err := decoder.Decode(&raw); err != nil {
 			if err == io.EOF {
@@ -501,54 +662,57 @@ func (a *claudeAgent) processStreamJSON(
 		data, _ := json.Marshal(raw)
 		line := string(data)
 
-		// Determine event type
-		msgType, _ := raw["type"].(string)
-
-		eventType := "assistant_message"
-		switch msgType {
-		case "tool_use":
-			eventType = "tool"
-		case "command":
-			eventType = "command"
-		}
-
-		// Write log event
-		if err := logWriter.Write(LogEvent{
+		eventType := classifyEventType(raw)
+		event := LogEvent{
 			Type:      eventType,
 			Timestamp: time.Now().UTC(),
-			Content:   line,
-		}); err != nil {
+		}
+
+		content := ""
+		if eventType == "assistant_message" {
+			content = extractClaudeEventText(raw)
+			if content == "" {
+				content = line
+			}
+		} else {
+			content = line
+		}
+		event.Content = content
+
+		if tool := extractToolName(raw); tool != "" {
+			event.Tool = tool
+		}
+		if cmd, ok := extractCommand(raw); ok {
+			event.Command = cmd
+		}
+		if exitCode, ok := extractExitCode(raw); ok {
+			event.ExitCode = exitCode
+		}
+
+		if err := logWriter.Write(event); err != nil {
 			return fmt.Errorf("write log event: %w", err)
 		}
 
-		// For assistant messages, accumulate to extract final response
-		if msgType == "assistant_message" {
-			if content, ok := raw["content"].([]any); ok {
-				for _, item := range content {
-					if itemMap, ok := item.(map[string]any); ok {
-						if itemType, _ := itemMap["type"].(string); itemType == "text" {
-							if text, _ := itemMap["text"].(string); text != "" {
-								lastMessageBuf.WriteString(text)
-							}
-						}
-					}
-				}
+		if !sawFullMessage {
+			if full := extractClaudeFullMessage(raw); full != "" {
+				lastMessageBuf.Reset()
+				lastMessageBuf.WriteString(full)
+				sawFullMessage = true
+			} else if delta := extractClaudeStreamDelta(raw); delta != "" {
+				lastMessageBuf.WriteString(delta)
 			}
 		}
 	}
 
-	// Try to parse the last message as a summary
 	if lastMessageBuf.Len() > 0 {
-		lastMessage := lastMessageBuf.String()
-		// Look for JSON within the message (often Claude wraps in markdown)
-		summaryJSON := extractJSON(lastMessage)
-		if summaryJSON != "" {
-			var summary Summary
-			if err := json.Unmarshal([]byte(summaryJSON), &summary); err == nil {
-				select {
-				case summaries <- &summary:
-				case <-ctx.Done():
-				}
+		if summary, ok := parseSummaryFromText(lastMessageBuf.String()); ok {
+			sendSummary(ctx, summaries, summary)
+			if err := logWriter.Write(LogEvent{
+				Type:      "summary",
+				Timestamp: time.Now().UTC(),
+				Summary:   summary,
+			}); err != nil {
+				return fmt.Errorf("write log event: %w", err)
 			}
 		}
 	}
@@ -605,6 +769,318 @@ func extractJSON(s string) string {
 	return ""
 }
 
+func textFromContent(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case map[string]any:
+		if text, ok := v["text"].(string); ok {
+			return text
+		}
+	case []any:
+		var parts []string
+		for _, item := range v {
+			switch typed := item.(type) {
+			case string:
+				if typed != "" {
+					parts = append(parts, typed)
+				}
+			case map[string]any:
+				if text, ok := typed["text"].(string); ok && text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
+func extractTextFromMessage(raw map[string]any) string {
+	if raw == nil {
+		return ""
+	}
+	if message, ok := raw["message"].(map[string]any); ok {
+		if text := textFromContent(message["content"]); text != "" {
+			return text
+		}
+	}
+	if text := textFromContent(raw["content"]); text != "" {
+		return text
+	}
+	if text, ok := raw["text"].(string); ok {
+		return text
+	}
+	return ""
+}
+
+func extractClaudeFullMessage(raw map[string]any) string {
+	if raw == nil {
+		return ""
+	}
+	if message, ok := raw["message"].(map[string]any); ok {
+		if text := textFromContent(message["content"]); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func extractClaudeStreamDelta(raw map[string]any) string {
+	if raw == nil {
+		return ""
+	}
+	msgType, _ := raw["type"].(string)
+	switch msgType {
+	case "content_block_delta":
+		if delta, ok := raw["delta"].(map[string]any); ok {
+			if text, ok := delta["text"].(string); ok {
+				return text
+			}
+		}
+	case "content_block_start":
+		if block, ok := raw["content_block"].(map[string]any); ok {
+			if text, ok := block["text"].(string); ok {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func extractClaudeEventText(raw map[string]any) string {
+	if full := extractClaudeFullMessage(raw); full != "" {
+		return full
+	}
+	if delta := extractClaudeStreamDelta(raw); delta != "" {
+		return delta
+	}
+	return ""
+}
+
+func parseSummaryFromText(text string) (*Summary, bool) {
+	summaryJSON := extractJSON(text)
+	if summaryJSON == "" {
+		return nil, false
+	}
+	var summary Summary
+	if err := json.Unmarshal([]byte(summaryJSON), &summary); err != nil {
+		return nil, false
+	}
+	if !summaryHasContent(summary) {
+		return nil, false
+	}
+	return &summary, true
+}
+
+func parseSummaryFromFile(path string) (*Summary, bool) {
+	if path == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return nil, false
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err == nil {
+		if summary, ok := parseSummaryFromRaw(raw); ok {
+			return summary, true
+		}
+		if text := extractTextFromMessage(raw); text != "" {
+			return parseSummaryFromText(text)
+		}
+	}
+	return parseSummaryFromText(string(data))
+}
+
+func parseSummaryFromRaw(raw map[string]any) (*Summary, bool) {
+	if raw == nil {
+		return nil, false
+	}
+	if _, ok := raw["task_id"]; ok {
+		// continue
+	} else if _, ok := raw["status"]; ok {
+		// continue
+	} else if _, ok := raw["summary"]; ok {
+		// continue
+	} else if _, ok := raw["files"]; ok {
+		// continue
+	} else if _, ok := raw["blockers"]; ok {
+		// continue
+	} else {
+		return nil, false
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, false
+	}
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		return nil, false
+	}
+	if !summaryHasContent(summary) {
+		return nil, false
+	}
+	return &summary, true
+}
+
+func summaryHasContent(summary Summary) bool {
+	return summary.TaskID != "" ||
+		summary.Status != "" ||
+		summary.Summary != "" ||
+		len(summary.Files) > 0 ||
+		len(summary.Blockers) > 0
+}
+
+func classifyEventType(raw map[string]any) string {
+	if raw == nil {
+		return "assistant_message"
+	}
+	if msgType, ok := raw["type"].(string); ok {
+		switch msgType {
+		case "tool_use", "tool_result", "tool", "tool_call":
+			return "tool"
+		case "command":
+			return "command"
+		case "error":
+			return "error"
+		}
+	}
+	if _, ok := raw["command"]; ok {
+		return "command"
+	}
+	if _, ok := raw["tool"]; ok {
+		return "tool"
+	}
+	if _, ok := raw["tool_name"]; ok {
+		return "tool"
+	}
+	return "assistant_message"
+}
+
+func extractToolName(raw map[string]any) string {
+	if raw == nil {
+		return ""
+	}
+	if tool, ok := raw["tool"].(string); ok {
+		return tool
+	}
+	if tool, ok := raw["tool_name"].(string); ok {
+		return tool
+	}
+	if msgType, _ := raw["type"].(string); msgType == "tool_use" || msgType == "tool_result" || msgType == "tool" || msgType == "tool_call" {
+		if name, ok := raw["name"].(string); ok {
+			return name
+		}
+		if toolUse, ok := raw["tool_use"].(map[string]any); ok {
+			if name, ok := toolUse["name"].(string); ok {
+				return name
+			}
+		}
+	}
+	return ""
+}
+
+func extractCommand(raw map[string]any) ([]string, bool) {
+	if raw == nil {
+		return nil, false
+	}
+	value, ok := raw["command"]
+	if !ok {
+		return nil, false
+	}
+	switch typed := value.(type) {
+	case string:
+		if typed == "" {
+			return nil, false
+		}
+		return []string{typed}, true
+	case []any:
+		parts := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				parts = append(parts, text)
+			}
+		}
+		if len(parts) == 0 {
+			return nil, false
+		}
+		return parts, true
+	}
+	return nil, false
+}
+
+func extractExitCode(raw map[string]any) (int, bool) {
+	if raw == nil {
+		return 0, false
+	}
+	if value, ok := raw["exit_code"]; ok {
+		return parseExitCode(value)
+	}
+	if value, ok := raw["exitCode"]; ok {
+		return parseExitCode(value)
+	}
+	return 0, false
+}
+
+func parseExitCode(value any) (int, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed), true
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil {
+			return int(parsed), true
+		}
+		if parsed, err := typed.Float64(); err == nil {
+			return int(parsed), true
+		}
+	case string:
+		if parsed, err := strconv.Atoi(typed); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func exitCodeFromError(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
+}
+
+func sendSummary(ctx context.Context, summaries chan *Summary, summary *Summary) {
+	if summary == nil {
+		return
+	}
+	select {
+	case summaries <- summary:
+		return
+	default:
+	}
+	select {
+	case <-summaries:
+	default:
+	}
+	select {
+	case summaries <- summary:
+	case <-ctx.Done():
+	}
+}
+
 // NewAgent creates an agent of the specified type.
 func NewAgent(agentType AgentType, cfg Config) (Agent, error) {
 	switch agentType {
@@ -617,7 +1093,7 @@ func NewAgent(agentType AgentType, cfg Config) (Agent, error) {
 	}
 }
 
-// DefaultTimeout returns the default timeout for agents.
+// DefaultTimeout is the default timeout for agents.
 const DefaultTimeout = 30 * time.Minute
 
 // FindAgentBinary finds the agent binary in PATH.

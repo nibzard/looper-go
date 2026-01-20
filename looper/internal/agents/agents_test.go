@@ -443,6 +443,11 @@ func TestProcessLine(t *testing.T) {
 			wantSummary: true,
 		},
 		{
+			name:        "assistant message with summary JSON",
+			line:        `{"type":"assistant_message","message":{"content":[{"type":"text","text":"{\"task_id\":\"T1\",\"status\":\"done\"}"}]}}`,
+			wantSummary: true,
+		},
+		{
 			name:        "JSON without summary",
 			line:        `{"type":"tool_use","tool":"test"}`,
 			wantSummary: false,
@@ -473,5 +478,51 @@ func TestProcessLine(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestClaudeProcessStreamJSONSummaryFromDelta(t *testing.T) {
+	agent := NewClaudeAgent(Config{}).(*claudeAgent)
+	stream := strings.Join([]string{
+		`{"type":"content_block_start","content_block":{"type":"text","text":"{\"task_id\":\"T1\","}}`,
+		`{"type":"content_block_delta","delta":{"text":"\"status\":\"done\",\"summary\":\"ok\"}"}}`,
+	}, "\n")
+
+	summaries := make(chan *Summary, 1)
+	err := agent.processStreamJSON(context.Background(), strings.NewReader(stream), NullLogWriter{}, summaries)
+	if err != nil {
+		t.Fatalf("processStreamJSON() error = %v", err)
+	}
+
+	select {
+	case summary := <-summaries:
+		if summary.Status != "done" {
+			t.Fatalf("summary.Status = %q, want %q", summary.Status, "done")
+		}
+	default:
+		t.Fatal("Expected summary but none received")
+	}
+}
+
+func TestCodexAgentRunReadsPrompt(t *testing.T) {
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "stub.sh")
+	script := "#!/bin/sh\ninput=$(cat)\nif [ -z \"$input\" ]; then\n  echo '{\"task_id\":\"T1\",\"status\":\"blocked\",\"summary\":\"missing prompt\"}'\nelse\n  echo '{\"task_id\":\"T1\",\"status\":\"done\",\"summary\":\"got prompt\"}'\nfi\n"
+
+	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to create stub script: %v", err)
+	}
+
+	agent := NewCodexAgent(Config{
+		Binary:  scriptPath,
+		Timeout: 5 * time.Second,
+	})
+
+	summary, err := agent.Run(context.Background(), "hello", NullLogWriter{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if summary.Status != "done" {
+		t.Fatalf("summary.Status = %q, want %q", summary.Status, "done")
 	}
 }
