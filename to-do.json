@@ -50,12 +50,12 @@
       "title": "Implement prompt assets and strict template renderer with required variables",
       "priority": 1,
       "status": "done",
-      "updated_at": "2026-01-20T21:23:11Z",
+      "updated_at": "2026-01-20T21:23:59Z",
       "files": [
         "looper/internal/prompts/prompts.go",
         "looper/prompts/bootstrap.txt",
-        "looper/prompts/repair.txt",
         "looper/prompts/iteration.txt",
+        "looper/prompts/repair.txt",
         "looper/prompts/review.txt",
         "looper/prompts/summary.schema.json",
         "to-do.json"
@@ -65,7 +65,13 @@
       "id": "T004",
       "title": "Implement task file types and JSON Schema validation with minimal fallback checks",
       "priority": 1,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-20T21:27:09ZZ",
+      "files": [
+        "looper/internal/todo/types.go",
+        "looper/internal/todo/types_test.go",
+        "looper/internal/todo/doc.go"
+      ]
     },
     {
       "id": "T005",
