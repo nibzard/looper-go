@@ -132,15 +132,21 @@ looper run --schedule round-robin
 looper run --schedule round-robin --rr-agents claude,claude,codex
 ```
 
-**Note:** The final review pass always uses Codex, regardless of iteration schedule.
+**Note:** The final review pass uses the configured review agent (defaults to Codex if not set).
 
-### Repair Agent
+### Step Agents
 
-The agent used for repair operations can be configured independently:
+Agents for specific loop steps can be configured independently:
 
 ```bash
 looper run --repair-agent claude
+looper run --review-agent claude
+looper run --bootstrap-agent claude
 ```
+
+- **Repair agent** - Used for repairing invalid task files (default: `codex`)
+- **Review agent** - Used for the review pass when no tasks are found (default: `codex`)
+- **Bootstrap agent** - Used for creating the initial task file (default: `codex`)
 
 ## Configuration
 
@@ -164,7 +170,9 @@ log_dir = "~/.looper"
 # Loop settings
 max_iterations = 50
 schedule = "codex"  # codex|claude|odd-even|round-robin
-repair_agent = "codex"
+repair_agent = "codex"  # agent for repair operations
+# review_agent = "codex"  # agent for review pass (default: codex)
+# bootstrap_agent = "codex"  # agent for bootstrap (default: codex)
 
 # Odd-even schedule options
 odd_agent = "codex"   # agent for odd iterations
@@ -205,6 +213,8 @@ Looper reads the config file from the current working directory (not the todo fi
 - `LOOPER_MAX_ITERATIONS` - Maximum iterations
 - `LOOPER_ITER_SCHEDULE` / `LOOPER_SCHEDULE` - Iteration schedule
 - `LOOPER_REPAIR_AGENT` - Agent for repair operations
+- `LOOPER_REVIEW_AGENT` - Agent for review pass (default: codex)
+- `LOOPER_BOOTSTRAP_AGENT` - Agent for bootstrap (default: codex)
 - `LOOPER_ITER_ODD_AGENT` - Agent for odd iterations
 - `LOOPER_ITER_EVEN_AGENT` - Agent for even iterations
 - `LOOPER_ITER_RR_AGENTS` - Comma-separated agent list for round-robin
@@ -225,7 +235,8 @@ Global flags (place before the subcommand):
 
 Run flags (use with `run`):
 - `--max-iterations`, `--schedule`, `--odd-agent`, `--even-agent`, `--rr-agents`
-- `--repair-agent`, `--apply-summary`, `--git-init`, `--hook`, `--loop-delay`
+- `--repair-agent`, `--review-agent`, `--bootstrap-agent`
+- `--apply-summary`, `--git-init`, `--hook`, `--loop-delay`
 
 Run `looper help` for the full list. Dev-only flags appear when `LOOPER_PROMPT_MODE=dev` is set.
 

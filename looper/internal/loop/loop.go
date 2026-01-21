@@ -271,14 +271,14 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 		return fmt.Errorf("render bootstrap prompt: %w", err)
 	}
 
-	// Create bootstrap agent using the configured repair agent
-	repairAgentType := agents.AgentType(cfg.RepairAgent)
+	// Create bootstrap agent using the configured bootstrap agent
+	bootstrapAgentType := agents.AgentType(cfg.GetBootstrapAgent())
 	agentCfg := agents.Config{
-		Binary: cfg.GetAgentBinary(string(repairAgentType)),
-		Model:  cfg.GetAgentModel(string(repairAgentType)),
+		Binary: cfg.GetAgentBinary(string(bootstrapAgentType)),
+		Model:  cfg.GetAgentModel(string(bootstrapAgentType)),
 		WorkDir: workDir,
 	}
-	agent, err := agents.NewAgent(repairAgentType, agentCfg)
+	agent, err := agents.NewAgent(bootstrapAgentType, agentCfg)
 	if err != nil {
 		return fmt.Errorf("create bootstrap agent: %w", err)
 	}
@@ -565,15 +565,19 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 		fmt.Fprintf(os.Stdout, "\n=== Review Prompt ===\n%s\n=== End Prompt ===\n\n", prompt)
 	}
 
-	// Run review agent (always codex)
+	// Run review agent using configured review agent
+	reviewAgentType := l.cfg.GetReviewAgent()
 	label := reviewLabel(iter)
 	agentCfg := agents.Config{
-		Binary:          l.cfg.GetAgentBinary("codex"),
-		Model:           l.cfg.GetAgentModel("codex"),
+		Binary:          l.cfg.GetAgentBinary(reviewAgentType),
+		Model:           l.cfg.GetAgentModel(reviewAgentType),
 		WorkDir:         l.workDir,
 		LastMessagePath: l.lastMessagePath(label),
 	}
-	agent := agents.NewCodexAgent(agentCfg)
+	agent, err := agents.NewAgent(agents.AgentType(reviewAgentType), agentCfg)
+	if err != nil {
+		return fmt.Errorf("create review agent: %w", err)
+	}
 
 	summary, err := agent.Run(ctx, prompt, multiLogWriter)
 	l.runHook(ctx, label, multiLogWriter)

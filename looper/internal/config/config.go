@@ -46,6 +46,8 @@ type Config struct {
 	MaxIterations int    `toml:"max_iterations"`
 	Schedule      string `toml:"schedule"` // codex, claude, odd-even, round-robin
 	RepairAgent   string `toml:"repair_agent"` // codex or claude
+	ReviewAgent   string `toml:"review_agent"` // codex or claude (default: codex)
+	BootstrapAgent string `toml:"bootstrap_agent"` // codex or claude (default: codex)
 
 	// Scheduling options for odd-even and round-robin
 	OddAgent      string   `toml:"odd_agent"`      // agent for odd iterations (default: codex)
@@ -121,9 +123,23 @@ func (c *Config) IterSchedule(iter int) string {
 	}
 }
 
-// ReviewAgent returns the agent to use for the review pass.
-func (c *Config) ReviewAgent() string {
-	// Review always uses codex per spec
+// GetReviewAgent returns the agent to use for the review pass.
+// It returns the configured review_agent or defaults to "codex" if empty.
+func (c *Config) GetReviewAgent() string {
+	agent := normalizeAgent(c.ReviewAgent)
+	if agent != "" {
+		return agent
+	}
+	return "codex"
+}
+
+// GetBootstrapAgent returns the agent to use for bootstrap operations.
+// It returns the configured bootstrap_agent or defaults to "codex" if empty.
+func (c *Config) GetBootstrapAgent() string {
+	agent := normalizeAgent(c.BootstrapAgent)
+	if agent != "" {
+		return agent
+	}
 	return "codex"
 }
 
@@ -170,6 +186,8 @@ func setDefaults(cfg *Config) {
 	cfg.MaxIterations = DefaultMaxIterations
 	cfg.Schedule = "codex"
 	cfg.RepairAgent = "codex"
+	cfg.ReviewAgent = ""   // Empty means use default (codex)
+	cfg.BootstrapAgent = "" // Empty means use default (codex)
 	cfg.OddAgent = ""      // Empty means use default (codex)
 	cfg.EvenAgent = ""     // Empty means use default (claude)
 	cfg.RRAgents = nil     // nil means use default (claude,codex)
@@ -238,6 +256,12 @@ func loadFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("LOOPER_REPAIR_AGENT"); v != "" {
 		cfg.RepairAgent = v
+	}
+	if v := os.Getenv("LOOPER_REVIEW_AGENT"); v != "" {
+		cfg.ReviewAgent = v
+	}
+	if v := os.Getenv("LOOPER_BOOTSTRAP_AGENT"); v != "" {
+		cfg.BootstrapAgent = v
 	}
 	if v := os.Getenv("LOOPER_ITER_ODD_AGENT"); v != "" {
 		cfg.OddAgent = v
@@ -349,6 +373,8 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
 	fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
 	fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations (codex|claude)")
+	fs.StringVar(&cfg.ReviewAgent, "review-agent", cfg.ReviewAgent, "Agent for review pass (codex|claude)")
+	fs.StringVar(&cfg.BootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations (codex|claude)")
 	fs.StringVar(&cfg.OddAgent, "odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule (codex|claude)")
 	fs.StringVar(&cfg.EvenAgent, "even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule (codex|claude)")
 

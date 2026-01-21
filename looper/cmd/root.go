@@ -124,6 +124,8 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	}
 	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule (e.g., claude,codex)")
 	repairAgent := fs.String("repair-agent", cfg.RepairAgent, "Agent for repair operations (codex|claude)")
+	reviewAgent := fs.String("review-agent", cfg.ReviewAgent, "Agent for review pass (codex|claude)")
+	bootstrapAgent := fs.String("bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations (codex|claude)")
 	applySummary := fs.Bool("apply-summary", cfg.ApplySummary, "Apply summaries to task file")
 	gitInit := fs.Bool("git-init", cfg.GitInit, "Initialize git repo if missing")
 	hook := fs.String("hook", cfg.HookCommand, "Hook command to run after each iteration")
@@ -162,6 +164,8 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
 	}
 	cfg.RepairAgent = *repairAgent
+	cfg.ReviewAgent = *reviewAgent
+	cfg.BootstrapAgent = *bootstrapAgent
 	cfg.ApplySummary = *applySummary
 	cfg.GitInit = *gitInit
 	cfg.HookCommand = *hook
@@ -258,6 +262,8 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	configOK := true
 	normalizedSchedule, scheduleOK := normalizeSchedule(cfg.Schedule)
 	repairAgent := normalizeAgent(cfg.RepairAgent)
+	reviewAgent := normalizeAgent(cfg.ReviewAgent)
+	bootstrapAgent := normalizeAgent(cfg.BootstrapAgent)
 
 	fmt.Println("Config:")
 	if scheduleOK {
@@ -274,6 +280,22 @@ func doctorCommand(cfg *config.Config, args []string) error {
 		configOK = false
 	} else {
 		fmt.Printf("  ✅ Repair agent: %s\n", repairAgent)
+	}
+	if reviewAgent == "" {
+		fmt.Println("  ✅ Review agent: (default: codex)")
+	} else if !isValidAgent(reviewAgent) {
+		fmt.Printf("  ❌ Review agent: %s (expected codex|claude)\n", reviewAgent)
+		configOK = false
+	} else {
+		fmt.Printf("  ✅ Review agent: %s\n", reviewAgent)
+	}
+	if bootstrapAgent == "" {
+		fmt.Println("  ✅ Bootstrap agent: (default: codex)")
+	} else if !isValidAgent(bootstrapAgent) {
+		fmt.Printf("  ❌ Bootstrap agent: %s (expected codex|claude)\n", bootstrapAgent)
+		configOK = false
+	} else {
+		fmt.Printf("  ✅ Bootstrap agent: %s\n", bootstrapAgent)
 	}
 
 	switch normalizedSchedule {
@@ -322,6 +344,12 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	// Check dependencies
 	needsClaude := false
 	if repairAgent == "claude" {
+		needsClaude = true
+	}
+	if reviewAgent == "claude" {
+		needsClaude = true
+	}
+	if bootstrapAgent == "claude" {
 		needsClaude = true
 	}
 	if scheduleOK && scheduleUsesClaude(normalizedSchedule, cfg.OddAgent, cfg.EvenAgent, cfg.RRAgents) {
@@ -632,6 +660,10 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "        Comma-separated agent list for round-robin (e.g., claude,codex)")
 	fmt.Fprintln(w, "  -repair-agent string")
 	fmt.Fprintln(w, "        Agent for repair operations (codex|claude)")
+	fmt.Fprintln(w, "  -review-agent string")
+	fmt.Fprintln(w, "        Agent for review pass (codex|claude)")
+	fmt.Fprintln(w, "  -bootstrap-agent string")
+	fmt.Fprintln(w, "        Agent for bootstrap operations (codex|claude)")
 	fmt.Fprintln(w, "  -apply-summary")
 	fmt.Fprintln(w, "        Apply summaries to task file (default true)")
 	fmt.Fprintln(w, "  -git-init")

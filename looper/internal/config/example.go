@@ -21,6 +21,15 @@ max_iterations = 50
 # Iteration schedule: codex, claude, odd-even, round-robin
 schedule = "codex"
 
+# Agent for repair operations (codex or claude)
+repair_agent = "codex"
+
+# Agent for review pass (codex or claude, default: codex)
+# review_agent = "codex"
+
+# Agent for bootstrap operations (codex or claude, default: codex)
+# bootstrap_agent = "codex"
+
 # Apply summaries back to task file
 apply_summary = true
 

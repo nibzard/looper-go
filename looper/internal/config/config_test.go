@@ -59,8 +59,20 @@ func TestIterSchedule(t *testing.T) {
 
 func TestReviewAgent(t *testing.T) {
 	cfg := &Config{}
-	if got := cfg.ReviewAgent(); got != "codex" {
-		t.Errorf("ReviewAgent: got %q, want codex", got)
+	if got := cfg.GetReviewAgent(); got != "codex" {
+		t.Errorf("GetReviewAgent: got %q, want codex", got)
+	}
+}
+
+func TestBootstrapAgent(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.GetBootstrapAgent(); got != "codex" {
+		t.Errorf("GetBootstrapAgent: got %q, want codex", got)
+	}
+
+	cfg.BootstrapAgent = "claude"
+	if got := cfg.GetBootstrapAgent(); got != "claude" {
+		t.Errorf("GetBootstrapAgent: got %q, want claude", got)
 	}
 }
 
@@ -160,18 +172,18 @@ func TestExpandPath(t *testing.T) {
 	}
 	if runtime.GOOS == "windows" {
 		t.Setenv("LOOPER_TEST_HOME", home)
-		tests = append(tests, struct {
-			input string
-			want  string
-		}{
-			{`~\test`, filepath.Join(home, "test")},
-			{`%LOOPER_TEST_HOME%\logs`, filepath.Join(home, "logs")},
-		}...)
+		tests = append(tests, struct{ input string; want string }{
+			input: `~\test`,
+			want:  filepath.Join(home, "test"),
+		}, struct{ input string; want string }{
+			input: `%LOOPER_TEST_HOME%\logs`,
+			want:  filepath.Join(home, "logs"),
+		})
 	} else {
-		tests = append(tests, struct {
-			input string
-			want  string
-		}{input: `~\test`, want: `~\test`})
+		tests = append(tests, struct{ input string; want string }{
+			input: `~\test`,
+			want:  `~\test`,
+		})
 	}
 
 	for _, tt := range tests {

@@ -65,6 +65,8 @@ Most environment variables remain the same. The Go CLI also accepts:
 
 - `LOOPER_LOG_DIR` - Explicit log directory override (alias of `LOOPER_BASE_DIR`)
 - `LOOPER_SCHEDULE` - Alias for `LOOPER_ITER_SCHEDULE`
+- `LOOPER_REVIEW_AGENT` - Agent for review pass (default: codex)
+- `LOOPER_BOOTSTRAP_AGENT` - Agent for bootstrap (default: codex)
 - `LOOPER_APPLY_SUMMARY` - Apply summaries to task file (1/0)
 - `LOOPER_GIT_INIT` - Accepted but currently unused by the Go CLI (1/0)
 - `LOOPER_LOOP_DELAY` - Delay between iterations (seconds)
@@ -148,7 +150,10 @@ The Go version normalizes agent names and schedules more strictly:
 
 **Before:** Shell used whatever agent was configured for iterations.
 
-**After:** Go version **always uses Codex for the review pass**, regardless of iteration schedule. This is intentional per the migration spec.
+**After:** Go version uses the configured `review_agent` for the review pass (defaults to Codex if not set). You can configure this via:
+- TOML: `review_agent = "claude"`
+- Env: `LOOPER_REVIEW_AGENT=claude`
+- Flag: `--review-agent claude`
 
 ### Log Output
 
