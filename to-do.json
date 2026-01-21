@@ -223,7 +223,7 @@
       "title": "Implement LOOPER_HOOK invocation with required arguments and error handling",
       "priority": 3,
       "status": "done",
-      "updated_at": "2026-01-21T00:38:03Z",
+      "updated_at": "2026-01-21T00:38:41Z",
       "files": [
         "looper/internal/hooks/hooks.go",
         "looper/internal/loop/loop.go",
@@ -234,7 +234,13 @@
       "id": "T018",
       "title": "Add dev-only prompt overrides and optional print-prompt gating (env or build tag)",
       "priority": 4,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-21T00:40:26Z",
+      "files": [
+        "looper/internal/config/config.go",
+        "looper/cmd/root.go",
+        "looper/internal/loop/loop.go"
+      ]
     },
     {
       "id": "T019",

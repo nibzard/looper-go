@@ -100,6 +100,8 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("looper run", flag.ContinueOnError)
 	maxIter := fs.Int("max-iterations", cfg.MaxIterations, "Maximum iterations")
 	schedule := fs.String("schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
+	promptDir := fs.String("prompt-dir", cfg.PromptDir, "Prompt directory override (dev only, requires LOOPER_PROMPT_MODE=dev)")
+	printPrompt := fs.Bool("print-prompt", cfg.PrintPrompt, "Print rendered prompts before running (dev only, requires LOOPER_PROMPT_MODE=dev)")
 	oddAgent := fs.String("odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule (codex|claude)")
 	evenAgent := fs.String("even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule (codex|claude)")
 	var rrAgentsStr string
@@ -128,6 +130,8 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	// Update config with parsed values
 	cfg.MaxIterations = *maxIter
 	cfg.Schedule = *schedule
+	cfg.PromptDir = *promptDir
+	cfg.PrintPrompt = *printPrompt
 	cfg.OddAgent = *oddAgent
 	cfg.EvenAgent = *evenAgent
 	if rrAgentsStr != "" {
@@ -577,6 +581,12 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "        Hook command to run after each iteration")
 	fmt.Fprintln(w, "  -loop-delay int")
 	fmt.Fprintln(w, "        Delay between iterations in seconds (default 0)")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Dev Options (require LOOPER_PROMPT_MODE=dev):")
+	fmt.Fprintln(w, "  -prompt-dir string")
+	fmt.Fprintln(w, "        Prompt directory override (dev only)")
+	fmt.Fprintln(w, "  -print-prompt")
+	fmt.Fprintln(w, "        Print rendered prompts before running (dev only)")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Tail Options (use with 'tail' command):")
 	fmt.Fprintln(w, "  -f, --follow")

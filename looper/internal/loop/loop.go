@@ -468,6 +468,11 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 		return fmt.Errorf("render prompt: %w", err)
 	}
 
+	// Print prompt if dev mode is enabled
+	if l.cfg.PrintPrompt {
+		fmt.Fprintf(os.Stdout, "\n=== Iteration %d Prompt ===\n%s\n=== End Prompt ===\n\n", iter, prompt)
+	}
+
 	// Run agent
 	agentCfg := agents.Config{
 		Binary:          l.cfg.GetAgentBinary(agentType),
@@ -551,6 +556,11 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 	prompt, err := l.renderer.Render(prompts.ReviewPrompt, promptData)
 	if err != nil {
 		return fmt.Errorf("render review prompt: %w", err)
+	}
+
+	// Print prompt if dev mode is enabled
+	if l.cfg.PrintPrompt {
+		fmt.Fprintf(os.Stdout, "\n=== Review Prompt ===\n%s\n=== End Prompt ===\n\n", prompt)
 	}
 
 	// Run review agent (always codex)

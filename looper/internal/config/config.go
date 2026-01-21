@@ -33,7 +33,10 @@ type Config struct {
 	TodoFile   string `toml:"todo_file"`
 	SchemaFile string `toml:"schema_file"`
 	LogDir     string `toml:"log_dir"`
-	PromptDir  string `toml:"-"` // Hidden, dev-only
+	PromptDir  string `toml:"-"` // Hidden, dev-only (requires LOOPER_PROMPT_MODE=dev)
+
+	// Dev options (hidden, require LOOPER_PROMPT_MODE=dev)
+	PrintPrompt bool `toml:"-"` // Print rendered prompts before running
 
 	// Loop settings
 	MaxIterations int    `toml:"max_iterations"`
@@ -207,8 +210,13 @@ func loadFromEnv(cfg *Config) {
 	if v := os.Getenv("LOOPER_LOG_DIR"); v != "" {
 		cfg.LogDir = v
 	}
-	if v := os.Getenv("LOOPER_PROMPT_DIR"); v != "" {
-		cfg.PromptDir = v
+	if devModeEnabled() {
+		if v := os.Getenv("LOOPER_PROMPT_DIR"); v != "" {
+			cfg.PromptDir = v
+		}
+		if v := os.Getenv("LOOPER_PRINT_PROMPT"); v != "" {
+			cfg.PrintPrompt = boolFromString(v)
+		}
 	}
 	if v := os.Getenv("LOOPER_MAX_ITERATIONS"); v != "" {
 		var i int
@@ -324,6 +332,12 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	fs.StringVar(&cfg.SchemaFile, "schema", cfg.SchemaFile, "Path to schema file")
 	fs.StringVar(&cfg.LogDir, "log-dir", cfg.LogDir, "Log directory")
 
+	// Dev-only flags (only work when LOOPER_PROMPT_MODE=dev)
+	if devModeEnabled() {
+		fs.StringVar(&cfg.PromptDir, "prompt-dir", cfg.PromptDir, "Prompt directory override (dev only)")
+		fs.BoolVar(&cfg.PrintPrompt, "print-prompt", cfg.PrintPrompt, "Print rendered prompts before running (dev only)")
+	}
+
 	// Loop settings
 	fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
 	fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
@@ -432,4 +446,10 @@ func (c *Config) GetAgentModel(agentType string) string {
 	default:
 		return ""
 	}
+}
+
+// devModeEnabled returns true if dev mode is enabled via LOOPER_PROMPT_MODE=dev.
+// Dev mode enables --prompt-dir and --print-prompt flags for prompt development.
+func devModeEnabled() bool {
+	return os.Getenv("LOOPER_PROMPT_MODE") == "dev"
 }
