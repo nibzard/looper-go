@@ -1,4 +1,4 @@
-module github.com/nibzard/looper
+module github.com/nibzard/looper-go
 
 go 1.22
 

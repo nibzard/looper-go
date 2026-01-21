@@ -5,8 +5,8 @@
     "root": "."
   },
   "source_files": [
-    "looper/README.md",
-    "looper/MIGRATION.md"
+    "README.md",
+    "MIGRATION.md"
   ],
   "tasks": [
     {
@@ -16,16 +16,16 @@
       "status": "done",
       "updated_at": "2026-01-20T21:12:51Z",
       "files": [
-        "looper/cmd/looper/main.go",
-        "looper/go.mod",
-        "looper/internal/agents/doc.go",
-        "looper/internal/config/doc.go",
-        "looper/internal/hooks/doc.go",
-        "looper/internal/logging/doc.go",
-        "looper/internal/loop/doc.go",
-        "looper/internal/prompts/doc.go",
-        "looper/internal/todo/doc.go",
-        "looper/internal/ui/doc.go",
+        "cmd/looper/main.go",
+        "go.mod",
+        "internal/agents/doc.go",
+        "internal/config/doc.go",
+        "internal/hooks/doc.go",
+        "internal/logging/doc.go",
+        "internal/loop/doc.go",
+        "internal/prompts/doc.go",
+        "internal/todo/doc.go",
+        "internal/ui/doc.go",
         "to-do.json"
       ]
     },
@@ -36,12 +36,12 @@
       "status": "done",
       "updated_at": "2026-01-20T21:18:02Z",
       "files": [
-        "looper/cmd/looper/main.go",
-        "looper/go.mod",
-        "looper/internal/config/config.go",
-        "looper/internal/config/config_test.go",
-        "looper/internal/config/doc.go",
-        "looper/internal/config/example.go",
+        "cmd/looper/main.go",
+        "go.mod",
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/config/doc.go",
+        "internal/config/example.go",
         "to-do.json"
       ]
     },
@@ -52,12 +52,12 @@
       "status": "done",
       "updated_at": "2026-01-20T21:23:59Z",
       "files": [
-        "looper/internal/prompts/prompts.go",
-        "looper/prompts/bootstrap.txt",
-        "looper/prompts/iteration.txt",
-        "looper/prompts/repair.txt",
-        "looper/prompts/review.txt",
-        "looper/prompts/summary.schema.json",
+        "internal/prompts/prompts.go",
+        "prompts/bootstrap.txt",
+        "prompts/iteration.txt",
+        "prompts/repair.txt",
+        "prompts/review.txt",
+        "prompts/summary.schema.json",
         "to-do.json"
       ]
     },
@@ -68,9 +68,9 @@
       "status": "done",
       "updated_at": "2026-01-20T21:40:48Z",
       "files": [
-        "looper/go.mod",
-        "looper/go.sum",
-        "looper/internal/todo/types.go",
+        "go.mod",
+        "go.sum",
+        "internal/todo/types.go",
         "to-do.json"
       ]
     },
@@ -81,8 +81,8 @@
       "status": "done",
       "updated_at": "2026-01-20T21:49:49Z",
       "files": [
-        "looper/internal/todo/types.go",
-        "looper/internal/todo/types_test.go",
+        "internal/todo/types.go",
+        "internal/todo/types_test.go",
         "to-do.json"
       ],
       "details": "Implementation already present in internal/todo types and tests; no code changes needed this iteration."
@@ -94,8 +94,8 @@
       "status": "done",
       "updated_at": "2026-01-20T22:13:02Z",
       "files": [
-        "looper/internal/agents/agents.go",
-        "looper/internal/agents/agents_test.go",
+        "internal/agents/agents.go",
+        "internal/agents/agents_test.go",
         "to-do.json"
       ]
     },
@@ -106,7 +106,7 @@
       "status": "done",
       "updated_at": "2026-01-20T22:25:53Z",
       "files": [
-        "looper/internal/loop/loop.go",
+        "internal/loop/loop.go",
         "to-do.json"
       ]
     },
@@ -117,9 +117,9 @@
       "status": "done",
       "updated_at": "2026-01-20T22:31:24Z",
       "files": [
-        "looper/internal/agents/agents.go",
-        "looper/internal/loop/loop.go",
-        "looper/prompts/summary.schema.json",
+        "internal/agents/agents.go",
+        "internal/loop/loop.go",
+        "prompts/summary.schema.json",
         "to-do.json"
       ]
     },
@@ -130,10 +130,10 @@
       "status": "done",
       "updated_at": "2026-01-20T22:46:02Z",
       "files": [
-        "looper/internal/agents/agents.go",
-        "looper/internal/config/config.go",
-        "looper/internal/logging/logging.go",
-        "looper/internal/loop/loop.go",
+        "internal/agents/agents.go",
+        "internal/config/config.go",
+        "internal/logging/logging.go",
+        "internal/loop/loop.go",
         "to-do.json"
       ]
     },
@@ -144,7 +144,7 @@
       "status": "done",
       "updated_at": "2026-01-20T23:01:36Z",
       "files": [
-        "looper/internal/loop/loop.go",
+        "internal/loop/loop.go",
         "to-do.json"
       ]
     },
@@ -155,8 +155,8 @@
       "status": "done",
       "updated_at": "2026-01-20T23:14:37Z",
       "files": [
-        "looper/internal/agents/agents.go",
-        "looper/internal/loop/loop.go",
+        "internal/agents/agents.go",
+        "internal/loop/loop.go",
         "to-do.json"
       ]
     },
@@ -167,7 +167,7 @@
       "status": "done",
       "updated_at": "2026-01-20T23:30:01Z",
       "files": [
-        "looper/cmd/root.go",
+        "cmd/root.go",
         "to-do.json"
       ]
     },
@@ -178,8 +178,8 @@
       "status": "done",
       "updated_at": "2026-01-21T00:00:12Z",
       "files": [
-        "looper/internal/config/config.go",
-        "looper/internal/config/config_test.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go",
         "to-do.json"
       ],
       "details": "Normalized iteration schedule aliases, added LOOPER_ITER_SCHEDULE env support, and fixed round-robin flag parsing."
@@ -191,8 +191,8 @@
       "status": "done",
       "updated_at": "2026-01-21T00:02:27Z",
       "files": [
-        "looper/cmd/root.go",
-        "looper/internal/logging/logging.go"
+        "cmd/root.go",
+        "internal/logging/logging.go"
       ],
       "details": "Tail command was already fully implemented. No code changes needed - verified existing implementation with -f/--follow and -n options working correctly."
     },
@@ -203,7 +203,7 @@
       "status": "done",
       "updated_at": "2026-01-21T00:25:20Z",
       "files": [
-        "looper/cmd/root.go",
+        "cmd/root.go",
         "to-do.json"
       ]
     },
@@ -214,7 +214,7 @@
       "status": "done",
       "updated_at": "2026-01-21T00:28:41Z",
       "files": [
-        "looper/cmd/root.go"
+        "cmd/root.go"
       ],
       "details": "ls command fully implemented with deterministic ordering (priority ascending, then ID ascending), status filtering, and verbose mode."
     },
@@ -225,8 +225,8 @@
       "status": "done",
       "updated_at": "2026-01-21T00:38:41Z",
       "files": [
-        "looper/internal/hooks/hooks.go",
-        "looper/internal/loop/loop.go",
+        "internal/hooks/hooks.go",
+        "internal/loop/loop.go",
         "to-do.json"
       ]
     },
@@ -237,9 +237,9 @@
       "status": "done",
       "updated_at": "2026-01-21T00:50:11Z",
       "files": [
-        "looper/cmd/root.go",
-        "looper/internal/config/config.go",
-        "looper/internal/loop/loop.go",
+        "cmd/root.go",
+        "internal/config/config.go",
+        "internal/loop/loop.go",
         "to-do.json"
       ]
     },
@@ -250,10 +250,10 @@
       "status": "done",
       "updated_at": "2026-01-21T00:53:43Z",
       "files": [
-        "looper/Formula/looper.rb",
-        "looper/Makefile",
-        "looper/install.sh",
-        "looper/uninstall.sh"
+        "Formula/looper.rb",
+        "Makefile",
+        "install.sh",
+        "uninstall.sh"
       ]
     },
     {
@@ -263,9 +263,9 @@
       "status": "done",
       "updated_at": "2026-01-20T23:45:56Z",
       "files": [
-        "looper/internal/loop/loop_test.go",
-        "looper/internal/prompts/prompts_test.go",
-        "looper/internal/todo/types_test.go",
+        "internal/loop/loop_test.go",
+        "internal/prompts/prompts_test.go",
+        "internal/todo/types_test.go",
         "to-do.json"
       ]
     },
@@ -276,9 +276,9 @@
       "status": "done",
       "updated_at": "2026-01-21T01:30:31Z",
       "files": [
-        "looper/go.mod",
-        "looper/go.sum",
-        "looper/internal/ui/tui.go",
+        "go.mod",
+        "go.sum",
+        "internal/ui/tui.go",
         "to-do.json"
       ],
       "details": "Implemented Bubble Tea TUI for the optional --ui tui mode and looper tui command, with loop status updates and periodic refresh."
@@ -290,8 +290,8 @@
       "status": "done",
       "updated_at": "2026-01-21T01:07:59Z",
       "files": [
-        "looper/MIGRATION.md",
-        "looper/README.md",
+        "MIGRATION.md",
+        "README.md",
         "to-do.json"
       ]
     },
@@ -302,8 +302,8 @@
       "status": "done",
       "details": "ApplySummary should no-op for skipped summaries to avoid resetting task state; add a regression test to match shell behavior.",
       "files": [
-        "looper/internal/loop/loop.go",
-        "looper/internal/loop/loop_test.go"
+        "internal/loop/loop.go",
+        "internal/loop/loop_test.go"
       ],
       "updated_at": "2026-01-21T07:42:59Z"
     },
@@ -314,9 +314,9 @@
       "status": "todo",
       "details": "Match shell id_sort_key behavior so IDs like T2 sort before T10; update SelectTask and ls ordering tests.",
       "files": [
-        "looper/internal/todo/types.go",
-        "looper/internal/todo/types_test.go",
-        "looper/cmd/root.go"
+        "internal/todo/types.go",
+        "internal/todo/types_test.go",
+        "cmd/root.go"
       ]
     },
     {
@@ -326,8 +326,8 @@
       "status": "todo",
       "details": "Preserve existing task files/blockers by appending unique entries instead of overwriting; add coverage.",
       "files": [
-        "looper/internal/loop/loop.go",
-        "looper/internal/loop/loop_test.go"
+        "internal/loop/loop.go",
+        "internal/loop/loop_test.go"
       ]
     },
     {
@@ -348,12 +348,12 @@
         "prompts"
       ],
       "files": [
-        "looper/README.md",
-        "looper/cmd/root.go",
-        "looper/internal/loop/loop.go",
-        "looper/internal/prompts/prompts.go",
-        "looper/internal/prompts/prompts_test.go",
-        "looper/prompts/bootstrap.txt"
+        "README.md",
+        "cmd/root.go",
+        "internal/loop/loop.go",
+        "internal/prompts/prompts.go",
+        "internal/prompts/prompts_test.go",
+        "prompts/bootstrap.txt"
       ],
       "updated_at": "2026-01-21T07:53:34Z"
     },
@@ -374,11 +374,11 @@
         "git"
       ],
       "files": [
-        "looper/cmd/root.go",
-        "looper/internal/prompts/prompts.go",
-        "looper/skills/release-runbook/SKILL.md",
-        "looper/skills/release-runbook/scripts/release.sh",
-        "looper/README.md"
+        "cmd/root.go",
+        "internal/prompts/prompts.go",
+        "skills/release-runbook/SKILL.md",
+        "skills/release-runbook/scripts/release.sh",
+        "README.md"
       ]
     },
     {
@@ -397,14 +397,14 @@
         "compat"
       ],
       "files": [
-        "looper/MIGRATION.md",
-        "looper/README.md",
-        "looper/cmd/root.go",
-        "looper/internal/agents/agents.go",
-        "looper/internal/agents/agents_test.go",
-        "looper/internal/config/config.go",
-        "looper/internal/config/config_test.go",
-        "looper/internal/config/example.go",
+        "MIGRATION.md",
+        "README.md",
+        "cmd/root.go",
+        "internal/agents/agents.go",
+        "internal/agents/agents_test.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/config/example.go",
         "to-do.json"
       ],
       "updated_at": "2026-01-21T08:06:03Z"
@@ -425,8 +425,8 @@
         "ux"
       ],
       "files": [
-        "looper/cmd/root.go",
-        "looper/README.md"
+        "cmd/root.go",
+        "README.md"
       ]
     },
     {
@@ -445,13 +445,13 @@
         "agents"
       ],
       "files": [
-        "looper/internal/config/config.go",
-        "looper/internal/loop/loop.go",
-        "looper/cmd/root.go",
-        "looper/internal/config/example.go",
-        "looper/README.md",
-        "looper/MIGRATION.md",
-        "looper/internal/config/config_test.go"
+        "internal/config/config.go",
+        "internal/loop/loop.go",
+        "cmd/root.go",
+        "internal/config/example.go",
+        "README.md",
+        "MIGRATION.md",
+        "internal/config/config_test.go"
       ],
       "updated_at": "2026-01-21T08:17:18Z"
     },
@@ -471,11 +471,11 @@
         "architecture"
       ],
       "files": [
-        "looper/internal/agents/agents.go",
-        "looper/internal/config/config.go",
-        "looper/internal/loop/loop.go",
-        "looper/cmd/root.go",
-        "looper/internal/agents/agents_test.go"
+        "internal/agents/agents.go",
+        "internal/config/config.go",
+        "internal/loop/loop.go",
+        "cmd/root.go",
+        "internal/agents/agents_test.go"
       ]
     },
     {
@@ -494,11 +494,11 @@
         "config"
       ],
       "files": [
-        "looper/internal/config/config.go",
-        "looper/internal/agents/agents.go",
-        "looper/cmd/root.go",
-        "looper/internal/config/example.go",
-        "looper/README.md"
+        "internal/config/config.go",
+        "internal/agents/agents.go",
+        "cmd/root.go",
+        "internal/config/example.go",
+        "README.md"
       ]
     },
     {
@@ -516,10 +516,10 @@
         "config"
       ],
       "files": [
-        "looper/internal/config/config.go",
-        "looper/internal/config/example.go",
-        "looper/README.md",
-        "looper/MIGRATION.md"
+        "internal/config/config.go",
+        "internal/config/example.go",
+        "README.md",
+        "MIGRATION.md"
       ]
     },
     {
@@ -539,10 +539,10 @@
       ],
       "files": [
         "to-do.schema.json",
-        "looper/internal/prompts/prompts.go",
-        "looper/internal/todo/types.go",
-        "looper/prompts/bootstrap.txt",
-        "looper/README.md"
+        "internal/prompts/prompts.go",
+        "internal/todo/types.go",
+        "prompts/bootstrap.txt",
+        "README.md"
       ]
     },
     {
@@ -561,11 +561,11 @@
         "bootstrap"
       ],
       "files": [
-        "looper/internal/loop/loop.go",
-        "looper/internal/config/config.go",
-        "looper/cmd/root.go",
-        "looper/README.md",
-        "looper/MIGRATION.md"
+        "internal/loop/loop.go",
+        "internal/config/config.go",
+        "cmd/root.go",
+        "README.md",
+        "MIGRATION.md"
       ]
     }
   ]

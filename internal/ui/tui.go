@@ -13,9 +13,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/nibzard/looper/internal/config"
-	"github.com/nibzard/looper/internal/loop"
-	"github.com/nibzard/looper/internal/todo"
+	"github.com/nibzard/looper-go/internal/config"
+	"github.com/nibzard/looper-go/internal/loop"
+	"github.com/nibzard/looper-go/internal/todo"
 )
 
 // TUIOption configures the TUI behavior.

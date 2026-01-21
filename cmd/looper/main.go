@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nibzard/looper/cmd"
+	"github.com/nibzard/looper-go/cmd"
 )
 
 func main() {

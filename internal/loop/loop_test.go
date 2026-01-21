@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nibzard/looper/internal/agents"
-	"github.com/nibzard/looper/internal/config"
-	"github.com/nibzard/looper/internal/prompts"
-	"github.com/nibzard/looper/internal/todo"
+	"github.com/nibzard/looper-go/internal/agents"
+	"github.com/nibzard/looper-go/internal/config"
+	"github.com/nibzard/looper-go/internal/prompts"
+	"github.com/nibzard/looper-go/internal/todo"
 )
 
 // TestApplySummary tests applying a summary to a task.

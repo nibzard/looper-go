@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nibzard/looper/internal/agents"
-	"github.com/nibzard/looper/internal/config"
-	"github.com/nibzard/looper/internal/hooks"
-	"github.com/nibzard/looper/internal/logging"
-	"github.com/nibzard/looper/internal/prompts"
-	"github.com/nibzard/looper/internal/todo"
+	"github.com/nibzard/looper-go/internal/agents"
+	"github.com/nibzard/looper-go/internal/config"
+	"github.com/nibzard/looper-go/internal/hooks"
+	"github.com/nibzard/looper-go/internal/logging"
+	"github.com/nibzard/looper-go/internal/prompts"
+	"github.com/nibzard/looper-go/internal/todo"
 )
 
 // Loop manages the iteration flow and state transitions.
