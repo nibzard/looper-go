@@ -689,10 +689,10 @@ func (l *Loop) applySummary(summary *agents.Summary) error {
 					t.Details = summary.Summary
 				}
 				if len(summary.Files) > 0 {
-					t.Files = summary.Files
+					t.Files = mergeStrings(t.Files, summary.Files)
 				}
 				if len(summary.Blockers) > 0 {
-					t.Blockers = summary.Blockers
+					t.Blockers = mergeStrings(t.Blockers, summary.Blockers)
 				}
 			}); err != nil {
 				return fmt.Errorf("update task: %w", err)
@@ -789,6 +789,31 @@ func (l *Loop) runHook(ctx context.Context, label string, logWriter agents.LogWr
 			Content:   fmt.Sprintf("hook: %v", err),
 		})
 	}
+}
+
+// mergeStrings merges two string slices, preserving order and uniqueness.
+// Elements from existing are kept, then any new elements from added are appended.
+func mergeStrings(existing, added []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+
+	// Add existing elements
+	for _, s := range existing {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+
+	// Add new elements
+	for _, s := range added {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+
+	return result
 }
 
 func iterationLabel(iter int) string {

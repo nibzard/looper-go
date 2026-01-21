@@ -186,6 +186,109 @@ func TestApplySummary(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "merge files with existing files",
+			tasks: []todo.Task{
+				{
+					ID:       "T001",
+					Title:    "Test task",
+					Priority: 1,
+					Status:   todo.StatusTodo,
+					Files:    []string{"file1.go", "file2.go"},
+				},
+			},
+			summary: &agents.Summary{
+				TaskID:  "T001",
+				Status:  "done",
+				Summary: "Completed",
+				Files:   []string{"file2.go", "file3.go"},
+			},
+			wantErr: false,
+			verifyFn: func(t *testing.T, f *todo.File) {
+				task := f.GetTask("T001")
+				if task == nil {
+					t.Fatal("Task T001 not found")
+				}
+				wantFiles := []string{"file1.go", "file2.go", "file3.go"}
+				if len(task.Files) != len(wantFiles) {
+					t.Errorf("Task files length = %d, want %d", len(task.Files), len(wantFiles))
+				}
+				for i, want := range wantFiles {
+					if i >= len(task.Files) || task.Files[i] != want {
+						t.Errorf("Task files[%d] = %q, want %q", i, task.Files[i], want)
+					}
+				}
+			},
+		},
+		{
+			name: "merge blockers with existing blockers",
+			tasks: []todo.Task{
+				{
+					ID:       "T001",
+					Title:    "Test task",
+					Priority: 1,
+					Status:   todo.StatusTodo,
+					Blockers: []string{"waiting for T002"},
+				},
+			},
+			summary: &agents.Summary{
+				TaskID:   "T001",
+				Status:   "blocked",
+				Summary:  "More blockers",
+				Blockers: []string{"waiting for T002", "API change needed"},
+			},
+			wantErr: false,
+			verifyFn: func(t *testing.T, f *todo.File) {
+				task := f.GetTask("T001")
+				if task == nil {
+					t.Fatal("Task T001 not found")
+				}
+				wantBlockers := []string{"waiting for T002", "API change needed"}
+				if len(task.Blockers) != len(wantBlockers) {
+					t.Errorf("Task blockers length = %d, want %d", len(task.Blockers), len(wantBlockers))
+				}
+				for i, want := range wantBlockers {
+					if i >= len(task.Blockers) || task.Blockers[i] != want {
+						t.Errorf("Task blockers[%d] = %q, want %q", i, task.Blockers[i], want)
+					}
+				}
+			},
+		},
+		{
+			name: "merge both files and blockers",
+			tasks: []todo.Task{
+				{
+					ID:       "T001",
+					Title:    "Test task",
+					Priority: 1,
+					Status:   todo.StatusTodo,
+					Files:    []string{"old.go"},
+					Blockers: []string{"old blocker"},
+				},
+			},
+			summary: &agents.Summary{
+				TaskID:   "T001",
+				Status:   "done",
+				Summary:  "Completed",
+				Files:    []string{"new.go"},
+				Blockers: []string{"new blocker"},
+			},
+			wantErr: false,
+			verifyFn: func(t *testing.T, f *todo.File) {
+				task := f.GetTask("T001")
+				if task == nil {
+					t.Fatal("Task T001 not found")
+				}
+				wantFiles := []string{"old.go", "new.go"}
+				if len(task.Files) != len(wantFiles) {
+					t.Errorf("Task files length = %d, want %d", len(task.Files), len(wantFiles))
+				}
+				wantBlockers := []string{"old blocker", "new blocker"}
+				if len(task.Blockers) != len(wantBlockers) {
+					t.Errorf("Task blockers length = %d, want %d", len(task.Blockers), len(wantBlockers))
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -952,6 +1055,86 @@ func TestStubAgentLogWriter(t *testing.T) {
 	// The stub agent doesn't write logs, so logged should be false
 	// This test verifies the log writer interface is correctly passed
 	t.Logf("Log writer called: %v", logged)
+}
+
+// TestMergeStrings tests the mergeStrings helper function.
+func TestMergeStrings(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing []string
+		added    []string
+		want     []string
+	}{
+		{
+			name:     "merge with empty existing",
+			existing: []string{},
+			added:    []string{"a", "b"},
+			want:     []string{"a", "b"},
+		},
+		{
+			name:     "merge with empty added",
+			existing: []string{"a", "b"},
+			added:    []string{},
+			want:     []string{"a", "b"},
+		},
+		{
+			name:     "merge with no duplicates",
+			existing: []string{"a", "b"},
+			added:    []string{"c", "d"},
+			want:     []string{"a", "b", "c", "d"},
+		},
+		{
+			name:     "merge with duplicates",
+			existing: []string{"a", "b"},
+			added:    []string{"b", "c"},
+			want:     []string{"a", "b", "c"},
+		},
+		{
+			name:     "merge with all duplicates",
+			existing: []string{"a", "b"},
+			added:    []string{"a", "b"},
+			want:     []string{"a", "b"},
+		},
+		{
+			name:     "merge preserves order",
+			existing: []string{"b", "a"},
+			added:    []string{"c", "a", "d"},
+			want:     []string{"b", "a", "c", "d"},
+		},
+		{
+			name:     "merge with duplicate in added",
+			existing: []string{"a"},
+			added:    []string{"b", "b", "c"},
+			want:     []string{"a", "b", "c"},
+		},
+		{
+			name:     "merge with duplicate in existing",
+			existing: []string{"a", "a", "b"},
+			added:    []string{"c"},
+			want:     []string{"a", "b", "c"},
+		},
+		{
+			name:     "merge with both nil",
+			existing: nil,
+			added:    nil,
+			want:     []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeStrings(tt.existing, tt.added)
+			if len(got) != len(tt.want) {
+				t.Errorf("mergeStrings() length = %d, want %d", len(got), len(tt.want))
+				return
+			}
+			for i, want := range tt.want {
+				if i >= len(got) || got[i] != want {
+					t.Errorf("mergeStrings()[%d] = %q, want %q", i, got[i], want)
+				}
+			}
+		})
+	}
 }
 
 // Helper functions
