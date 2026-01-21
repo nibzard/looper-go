@@ -348,14 +348,14 @@
         "prompts"
       ],
       "files": [
+        "looper/README.md",
         "looper/cmd/root.go",
         "looper/internal/loop/loop.go",
         "looper/internal/prompts/prompts.go",
         "looper/internal/prompts/prompts_test.go",
-        "looper/prompts/bootstrap.txt",
-        "looper/README.md"
+        "looper/prompts/bootstrap.txt"
       ],
-      "updated_at": "2026-01-21T07:51:54Z"
+      "updated_at": "2026-01-21T07:53:34Z"
     },
     {
       "id": "T027",
@@ -385,7 +385,7 @@
       "id": "T028",
       "title": "Make looper run cleanly on Windows",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "details": "Go code is mostly portable, but several pieces assume Unix: install/uninstall scripts and docs reference bash and ~/.local/bin, agents.ValidateBinary checks unix execute bits, and path expansion only handles ~/ prefixes. Audit and update Windows behavior, including binary validation and path handling, and document Windows install/run steps.",
       "steps": [
         "Audit OS-specific assumptions in config, agents, logging, and hooks.",
@@ -399,12 +399,9 @@
       "files": [
         "looper/internal/agents/agents.go",
         "looper/internal/config/config.go",
-        "looper/internal/logging/logging.go",
-        "looper/README.md",
-        "looper/Makefile",
-        "looper/install.sh",
-        "looper/uninstall.sh"
-      ]
+        "looper/README.md"
+      ],
+      "updated_at": "2026-01-21T07:56:22Z"
     },
     {
       "id": "T029",

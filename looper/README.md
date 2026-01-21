@@ -28,7 +28,7 @@ against `to-do.schema.json`, and repairs it if needed.
 
 ## Install
 
-### From source
+### From source (Unix/Linux/macOS)
 
 ```bash
 make install
@@ -36,13 +36,40 @@ make install
 
 The binary is installed to `~/.local/bin/looper` by default.
 
+### From source (Windows)
+
+On Windows, build the binary directly with Go:
+
+```powershell
+go build -o looper.exe ./cmd/looper
+```
+
+Or use the provided build script:
+
+```powershell
+go build -ldflags "-X main.Version=dev" -o bin/looper.exe ./cmd/looper
+```
+
+The binary can be placed anywhere on your PATH. A common location is `%USERPROFILE%\bin` or a directory added to your PATH.
+
+To add to PATH (PowerShell):
+
+```powershell
+$env:PATH += ";$env:USERPROFILE\bin"
+# To make permanent, add to System Environment Variables
+```
+
 ### Uninstall
 
+**Unix/Linux/macOS:**
 ```bash
 make uninstall
 ```
 
-### Homebrew
+**Windows:**
+Simply delete the binary file.
+
+### Homebrew (Unix/Linux/macOS only)
 
 ```bash
 brew install nibzard/tap/looper
@@ -184,7 +211,7 @@ Looper reads the config file from the current working directory (not the todo fi
 - `LOOPER_LOOP_DELAY` - Delay between iterations (seconds)
 - `LOOPER_PROMPT_DIR` - Prompt directory override (dev only, requires `LOOPER_PROMPT_MODE=dev`)
 - `LOOPER_PRINT_PROMPT` - Print rendered prompts (1/0, dev only)
-- `CODEX_BIN` / `CLAUDE_BIN` - Agent binary paths
+- `CODEX_BIN` / `CLAUDE_BIN` - Agent binary paths (on Windows, use `codex.exe` / `claude.exe`)
 - `CODEX_MODEL` / `CLAUDE_MODEL` - Model selection
 
 ### CLI Flags
@@ -229,8 +256,14 @@ Minimal example:
 
 Logs are stored per project under:
 
+**Unix/Linux/macOS:**
 ```
 ~/.looper/<project>-<hash>/
+```
+
+**Windows:**
+```
+%USERPROFILE%\.looper\<project>-<hash>\
 ```
 
 Each run produces:

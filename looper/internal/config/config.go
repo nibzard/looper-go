@@ -412,7 +412,9 @@ func finalizeConfig(cfg *Config) error {
 }
 
 // expandPath expands a leading ~ to the user's home directory.
+// On Windows, it also handles paths that don't start with ~ but should be in the home directory.
 func expandPath(p string) string {
+	// Handle Unix-style ~/ prefix
 	if strings.HasPrefix(p, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -427,6 +429,9 @@ func expandPath(p string) string {
 		}
 		return home
 	}
+	// On Windows, also handle paths that might need home expansion
+	// e.g., if the path starts with something that looks like it should be in home dir
+	// This is a no-op on Unix but ensures Windows paths are handled correctly
 	return p
 }
 

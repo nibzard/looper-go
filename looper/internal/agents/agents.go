@@ -1355,6 +1355,8 @@ func FindAgentBinary(agentType AgentType) (string, error) {
 }
 
 // ValidateBinary checks if a binary exists and is executable.
+// On Windows, we only check if the file exists and has a valid executable extension.
+// On Unix, we also check the execute permission bit.
 func ValidateBinary(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -1364,9 +1366,20 @@ func ValidateBinary(path string) error {
 		return fmt.Errorf("stat binary: %w", err)
 	}
 
-	// Check if it's executable (Unix)
+	// On Unix, check if it's executable
+	// On Windows, the existence check above is sufficient (Windows uses file extensions and PATHEXT)
 	if info.Mode().Perm()&0111 == 0 {
-		return fmt.Errorf("binary is not executable: %s", path)
+		// Check if this might be Windows (file has an executable extension or the path indicates Windows)
+		ext := strings.ToLower(filepath.Ext(path))
+		windowsExeExts := map[string]bool{
+			".exe": true,
+			".bat": true,
+			".cmd": true,
+			".ps1": true,
+		}
+		if !windowsExeExts[ext] {
+			return fmt.Errorf("binary is not executable: %s", path)
+		}
 	}
 
 	return nil
