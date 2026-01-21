@@ -5,7 +5,9 @@ usage() {
     cat <<'USAGE'
 Usage: ./install.sh [options]
 
-Installs looper.sh and Codex skills into user-appropriate locations.
+Installs the looper Go binary and optional Codex skills into user-appropriate
+locations. By default, only the binary is installed; use --with-skills to
+install skills.
 
 Options:
   --prefix <path>      Install into a prefix (bin -> <prefix>/bin,
@@ -13,7 +15,8 @@ Options:
   --bin-dir <path>     Override bin dir (default: <prefix>/bin)
   --codex-home <path>  Override CODEX_HOME (default: ~/.codex)
   --skills-dir <path>  Override skills dir (default: <CODEX_HOME>/skills)
-  --skip-bin           Skip installing looper.sh
+  --with-skills        Also install skills into ~/.codex/skills
+  --skip-bin           Skip installing the looper binary
   --skip-skills        Skip installing skills
   --dry-run            Print actions without making changes
   -h, --help           Show help
@@ -29,7 +32,7 @@ BIN_DIR_OVERRIDE=""
 SKILLS_DIR_OVERRIDE=""
 CODEX_HOME_OVERRIDE=""
 INSTALL_BIN=1
-INSTALL_SKILLS=1
+INSTALL_SKILLS=0
 DRY_RUN=0
 PREFIX_MODE=0
 
@@ -51,6 +54,10 @@ while [ "$#" -gt 0 ]; do
         --codex-home)
             CODEX_HOME_OVERRIDE="$2"
             shift 2
+            ;;
+        --with-skills)
+            INSTALL_SKILLS=1
+            shift
             ;;
         --skip-bin)
             INSTALL_BIN=0
@@ -106,15 +113,16 @@ fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR="$SCRIPT_DIR"
-SRC_BIN="$ROOT_DIR/bin/looper.sh"
+SRC_BIN="$ROOT_DIR/bin/looper"
 SRC_SKILLS="$ROOT_DIR/skills"
 
-if [ ! -f "$SRC_BIN" ]; then
+if [ "$INSTALL_BIN" -eq 1 ] && [ ! -f "$SRC_BIN" ]; then
     echo "Error: missing $SRC_BIN" >&2
+    echo "Run 'make build' first to build the binary." >&2
     exit 1
 fi
 
-if [ ! -d "$SRC_SKILLS" ]; then
+if [ "$INSTALL_SKILLS" -eq 1 ] && [ ! -d "$SRC_SKILLS" ]; then
     echo "Error: missing $SRC_SKILLS" >&2
     exit 1
 fi
@@ -136,7 +144,7 @@ warn_missing() {
 
 if [ "$INSTALL_BIN" -eq 1 ]; then
     run install -d "$BIN_DIR"
-    run install -m 0755 "$SRC_BIN" "$BIN_DIR/looper.sh"
+    run install -m 0755 "$SRC_BIN" "$BIN_DIR/looper"
 fi
 
 if [ "$INSTALL_SKILLS" -eq 1 ]; then
@@ -157,7 +165,12 @@ warn_missing jq
 warn_missing codex
 
 echo "Install complete."
-echo "  looper.sh -> $BIN_DIR/looper.sh"
+if [ "$INSTALL_BIN" -eq 1 ]; then
+    echo "  looper -> $BIN_DIR/looper"
+fi
 if [ "$INSTALL_SKILLS" -eq 1 ]; then
     echo "  skills -> $SKILLS_DIR"
+fi
+if [ "$INSTALL_SKILLS" -eq 0 ]; then
+    echo "Note: Skills were not installed. Use --with-skills to install them." >&2
 fi

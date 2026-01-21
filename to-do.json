@@ -235,18 +235,26 @@
       "title": "Add dev-only prompt overrides and optional print-prompt gating (env or build tag)",
       "priority": 4,
       "status": "done",
-      "updated_at": "2026-01-21T00:49:19Z",
+      "updated_at": "2026-01-21T00:50:11Z",
       "files": [
-        "looper/internal/config/config.go",
         "looper/cmd/root.go",
-        "looper/internal/loop/loop.go"
+        "looper/internal/config/config.go",
+        "looper/internal/loop/loop.go",
+        "to-do.json"
       ]
     },
     {
       "id": "T019",
       "title": "Update install/build scripts and Homebrew formula for the Go binary",
       "priority": 4,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-21T00:53:00Z",
+      "files": [
+        "looper/Makefile",
+        "looper/install.sh",
+        "looper/uninstall.sh",
+        "looper/Formula/looper.rb"
+      ]
     },
     {
       "id": "T020",
