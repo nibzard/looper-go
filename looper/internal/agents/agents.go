@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1365,22 +1366,46 @@ func ValidateBinary(path string) error {
 		}
 		return fmt.Errorf("stat binary: %w", err)
 	}
+	if info.IsDir() {
+		return fmt.Errorf("binary path is a directory: %s", path)
+	}
 
-	// On Unix, check if it's executable
-	// On Windows, the existence check above is sufficient (Windows uses file extensions and PATHEXT)
-	if info.Mode().Perm()&0111 == 0 {
-		// Check if this might be Windows (file has an executable extension or the path indicates Windows)
-		ext := strings.ToLower(filepath.Ext(path))
-		windowsExeExts := map[string]bool{
-			".exe": true,
-			".bat": true,
-			".cmd": true,
-			".ps1": true,
-		}
-		if !windowsExeExts[ext] {
+	if runtime.GOOS == "windows" {
+		if !isWindowsExecutable(path) {
 			return fmt.Errorf("binary is not executable: %s", path)
 		}
+		return nil
+	}
+	if info.Mode().Perm()&0111 == 0 {
+		return fmt.Errorf("binary is not executable: %s", path)
 	}
 
 	return nil
+}
+
+func isWindowsExecutable(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == "" {
+		return false
+	}
+	return windowsExecutableExts()[ext]
+}
+
+func windowsExecutableExts() map[string]bool {
+	exts := map[string]bool{}
+	pathext := os.Getenv("PATHEXT")
+	if pathext == "" {
+		pathext = ".COM;.EXE;.BAT;.CMD"
+	}
+	for _, ext := range strings.Split(pathext, ";") {
+		ext = strings.TrimSpace(ext)
+		if ext == "" {
+			continue
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		exts[strings.ToLower(ext)] = true
+	}
+	return exts
 }

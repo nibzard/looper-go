@@ -124,13 +124,15 @@ looper ls -v                 # Verbose output with details
 
 ### Install/Uninstall Scripts
 
-The Go version has native install/uninstall via Makefile and Homebrew:
+The Go version has native install/uninstall via Makefile and Homebrew (Unix/Linux/macOS):
 
 ```bash
 make install     # Installs to ~/.local/bin/looper
 make uninstall   # Removes the binary
 brew install nibzard/tap/looper
 ```
+
+On Windows, build the binary directly with Go and place `looper.exe` on your PATH.
 
 ## Behavior Changes
 
@@ -238,11 +240,13 @@ rm -f ~/.codex/skills/looper
 
 ### "Command not found: looper"
 
-Ensure `~/.local/bin` is on your PATH:
+Ensure `~/.local/bin` is on your PATH (Unix/Linux/macOS):
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+On Windows, add the directory containing `looper.exe` (for example `%USERPROFILE%\bin`) to your PATH.
 
 Add this to your `~/.bashrc` or `~/.zshrc`.
 

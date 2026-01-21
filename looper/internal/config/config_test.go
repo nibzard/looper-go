@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -156,6 +157,21 @@ func TestExpandPath(t *testing.T) {
 		{"~", home},
 		{"/absolute/path", "/absolute/path"},
 		{"relative", "relative"},
+	}
+	if runtime.GOOS == "windows" {
+		t.Setenv("LOOPER_TEST_HOME", home)
+		tests = append(tests, struct {
+			input string
+			want  string
+		}{
+			{`~\test`, filepath.Join(home, "test")},
+			{`%LOOPER_TEST_HOME%\logs`, filepath.Join(home, "logs")},
+		}...)
+	} else {
+		tests = append(tests, struct {
+			input string
+			want  string
+		}{input: `~\test`, want: `~\test`})
 	}
 
 	for _, tt := range tests {

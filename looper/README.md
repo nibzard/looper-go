@@ -50,6 +50,9 @@ Or use the provided build script:
 go build -ldflags "-X main.Version=dev" -o bin/looper.exe ./cmd/looper
 ```
 
+The Makefile and install/uninstall scripts are Unix-only; on Windows use `go build`
+or `go install` and place `looper.exe` on your PATH.
+
 The binary can be placed anywhere on your PATH. A common location is `%USERPROFILE%\bin` or a directory added to your PATH.
 
 To add to PATH (PowerShell):
@@ -198,7 +201,7 @@ Looper reads the config file from the current working directory (not the todo fi
 
 - `LOOPER_TODO` - Task file path (default: `to-do.json`)
 - `LOOPER_SCHEMA` - Schema file path
-- `LOOPER_BASE_DIR` / `LOOPER_LOG_DIR` - Log directory
+- `LOOPER_BASE_DIR` / `LOOPER_LOG_DIR` - Log directory (supports `~`, `$HOME`, or `%USERPROFILE%` on Windows)
 - `LOOPER_MAX_ITERATIONS` - Maximum iterations
 - `LOOPER_ITER_SCHEDULE` / `LOOPER_SCHEDULE` - Iteration schedule
 - `LOOPER_REPAIR_AGENT` - Agent for repair operations

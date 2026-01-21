@@ -398,10 +398,16 @@
       ],
       "files": [
         "looper/internal/agents/agents.go",
+        "looper/internal/agents/agents_test.go",
         "looper/internal/config/config.go",
-        "looper/README.md"
+        "looper/internal/config/config_test.go",
+        "looper/internal/config/example.go",
+        "looper/cmd/root.go",
+        "looper/README.md",
+        "looper/MIGRATION.md",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-21T07:56:22Z"
+      "updated_at": "2026-01-21T08:04:52Z"
     },
     {
       "id": "T029",

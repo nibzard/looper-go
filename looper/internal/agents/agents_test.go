@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -176,26 +177,44 @@ func TestNullLogWriter(t *testing.T) {
 
 // TestValidateBinary tests the ValidateBinary function.
 func TestValidateBinary(t *testing.T) {
-	// Create a temporary executable file
 	tmpDir := t.TempDir()
-	execPath := filepath.Join(tmpDir, "test_exec")
+	if runtime.GOOS == "windows" {
+		execPath := filepath.Join(tmpDir, "test_exec.exe")
+		if err := os.WriteFile(execPath, []byte("fake exe"), 0644); err != nil {
+			t.Fatalf("Failed to create test executable: %v", err)
+		}
 
-	// Create the file
+		if err := ValidateBinary(execPath); err != nil {
+			t.Errorf("ValidateBinary() on valid executable error = %v", err)
+		}
+
+		if err := ValidateBinary(filepath.Join(tmpDir, "missing.exe")); err == nil {
+			t.Error("ValidateBinary() on non-existent file expected error, got nil")
+		}
+
+		nonExecPath := filepath.Join(tmpDir, "non_exec.txt")
+		if err := os.WriteFile(nonExecPath, []byte("not executable"), 0644); err != nil {
+			t.Fatalf("Failed to create non-executable file: %v", err)
+		}
+		if err := ValidateBinary(nonExecPath); err == nil {
+			t.Error("ValidateBinary() on non-executable file expected error, got nil")
+		}
+		return
+	}
+
+	execPath := filepath.Join(tmpDir, "test_exec")
 	if err := os.WriteFile(execPath, []byte("#!/bin/sh\necho test\n"), 0755); err != nil {
 		t.Fatalf("Failed to create test executable: %v", err)
 	}
 
-	// Test valid executable
 	if err := ValidateBinary(execPath); err != nil {
 		t.Errorf("ValidateBinary() on valid executable error = %v", err)
 	}
 
-	// Test non-existent file
 	if err := ValidateBinary("/nonexistent/path/to/binary"); err == nil {
 		t.Error("ValidateBinary() on non-existent file expected error, got nil")
 	}
 
-	// Test non-executable file
 	nonExecPath := filepath.Join(tmpDir, "non_exec")
 	if err := os.WriteFile(nonExecPath, []byte("not executable"), 0644); err != nil {
 		t.Fatalf("Failed to create non-executable file: %v", err)
@@ -721,4 +740,3 @@ func TestSummaryValidationError(t *testing.T) {
 		t.Errorf("Error() without path = %q, want %q", err2.Error(), expected2)
 	}
 }
-

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -411,28 +412,69 @@ func finalizeConfig(cfg *Config) error {
 	return nil
 }
 
-// expandPath expands a leading ~ to the user's home directory.
-// On Windows, it also handles paths that don't start with ~ but should be in the home directory.
+// expandPath expands home directory and environment variables in paths.
+// It supports ~/ or ~\ prefixes and %VAR% expansion on Windows.
 func expandPath(p string) string {
-	// Handle Unix-style ~/ prefix
-	if strings.HasPrefix(p, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return p
-		}
-		return filepath.Join(home, p[2:])
+	if p == "" {
+		return p
 	}
-	if p == "~" {
+
+	expanded := expandEnv(p)
+	if expanded == "~" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return p
+			return expanded
 		}
 		return home
 	}
-	// On Windows, also handle paths that might need home expansion
-	// e.g., if the path starts with something that looks like it should be in home dir
-	// This is a no-op on Unix but ensures Windows paths are handled correctly
-	return p
+	if strings.HasPrefix(expanded, "~/") || (runtime.GOOS == "windows" && strings.HasPrefix(expanded, "~\\")) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return expanded
+		}
+		return filepath.Join(home, expanded[2:])
+	}
+	return expanded
+}
+
+func expandEnv(p string) string {
+	expanded := os.ExpandEnv(p)
+	if runtime.GOOS != "windows" {
+		return expanded
+	}
+	return expandWindowsEnv(expanded)
+}
+
+func expandWindowsEnv(p string) string {
+	if !strings.Contains(p, "%") {
+		return p
+	}
+	var b strings.Builder
+	for i := 0; i < len(p); {
+		if p[i] == '%' {
+			end := strings.IndexByte(p[i+1:], '%')
+			if end >= 0 {
+				key := p[i+1 : i+1+end]
+				if key == "" {
+					b.WriteByte('%')
+					i++
+					continue
+				}
+				if val, ok := os.LookupEnv(key); ok {
+					b.WriteString(val)
+				} else {
+					b.WriteByte('%')
+					b.WriteString(key)
+					b.WriteByte('%')
+				}
+				i += end + 2
+				continue
+			}
+		}
+		b.WriteByte(p[i])
+		i++
+	}
+	return b.String()
 }
 
 // GetAgentBinary returns the binary path for the given agent type.

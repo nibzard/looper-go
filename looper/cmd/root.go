@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -858,7 +859,7 @@ func checkBinary(label, binary string, required bool) bool {
 			fmt.Println("  ⚠️  Path is a directory")
 			return true
 		}
-		if info.Mode().Perm()&0111 == 0 {
+		if !isExecutablePath(binary, info) {
 			if required {
 				fmt.Println("  ❌ Not executable")
 				return false
@@ -872,13 +873,23 @@ func checkBinary(label, binary string, required bool) bool {
 
 	resolved, err := exec.LookPath(binary)
 	if err == nil {
-		if info, err := os.Stat(resolved); err == nil && info.Mode().Perm()&0111 == 0 {
-			if required {
-				fmt.Printf("  ❌ Found in PATH but not executable: %s\n", resolved)
-				return false
+		if info, err := os.Stat(resolved); err == nil {
+			if info.IsDir() {
+				if required {
+					fmt.Printf("  ❌ Found in PATH but is a directory: %s\n", resolved)
+					return false
+				}
+				fmt.Printf("  ⚠️  Found in PATH but is a directory: %s\n", resolved)
+				return true
 			}
-			fmt.Printf("  ⚠️  Found in PATH but not executable: %s\n", resolved)
-			return true
+			if !isExecutablePath(resolved, info) {
+				if required {
+					fmt.Printf("  ❌ Found in PATH but not executable: %s\n", resolved)
+					return false
+				}
+				fmt.Printf("  ⚠️  Found in PATH but not executable: %s\n", resolved)
+				return true
+			}
 		}
 		fmt.Printf("  ✅ OK (found in PATH: %s)\n", resolved)
 		return true
@@ -890,6 +901,43 @@ func checkBinary(label, binary string, required bool) bool {
 	}
 	fmt.Printf("  ⚠️  Not found: %v\n", err)
 	return true
+}
+
+func isExecutablePath(path string, info os.FileInfo) bool {
+	if info == nil {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return isWindowsExecutable(path)
+	}
+	return info.Mode().Perm()&0111 != 0
+}
+
+func isWindowsExecutable(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == "" {
+		return false
+	}
+	return windowsExecutableExts()[ext]
+}
+
+func windowsExecutableExts() map[string]bool {
+	exts := map[string]bool{}
+	pathext := os.Getenv("PATHEXT")
+	if pathext == "" {
+		pathext = ".COM;.EXE;.BAT;.CMD"
+	}
+	for _, ext := range strings.Split(pathext, ";") {
+		ext = strings.TrimSpace(ext)
+		if ext == "" {
+			continue
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		exts[strings.ToLower(ext)] = true
+	}
+	return exts
 }
 
 func resolvePromptDir(cfg *config.Config) string {

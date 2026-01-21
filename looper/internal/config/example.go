@@ -12,7 +12,7 @@ todo_file = "to-do.json"
 # Schema file (auto-generated if missing)
 schema_file = "to-do.schema.json"
 
-# Log directory (supports ~ expansion)
+# Log directory (supports ~ expansion and %VAR% on Windows)
 log_dir = "~/.looper"
 
 # Maximum loop iterations
