@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/nibzard/looper/internal/config"
@@ -600,6 +601,8 @@ func printTasksByStatus(label string, tasks []todo.Task, status todo.Status, ver
 	if len(matching) == 0 {
 		return
 	}
+	// Sort deterministically by priority then ID
+	sortTasks(matching)
 	fmt.Printf("%s (%d):\n", label, len(matching))
 	for _, t := range matching {
 		printTask(t, verbose)
@@ -613,7 +616,11 @@ func printTaskList(tasks []todo.Task, verbose bool) {
 		fmt.Println("No tasks found.")
 		return
 	}
-	for _, t := range tasks {
+	// Sort deterministically by priority then ID
+	sorted := make([]todo.Task, len(tasks))
+	copy(sorted, tasks)
+	sortTasks(sorted)
+	for _, t := range sorted {
 		printTask(t, verbose)
 	}
 }
@@ -658,6 +665,16 @@ func splitAndTrim(s, sep string) []string {
 		}
 	}
 	return result
+}
+
+// sortTasks sorts tasks deterministically by priority (ascending) then ID (ascending).
+func sortTasks(tasks []todo.Task) {
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].Priority != tasks[j].Priority {
+			return tasks[i].Priority < tasks[j].Priority
+		}
+		return tasks[i].ID < tasks[j].ID
+	})
 }
 
 func normalizeSchedule(input string) (string, bool) {

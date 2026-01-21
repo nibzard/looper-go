@@ -201,7 +201,7 @@
       "title": "Implement doctor checks for dependencies, config, prompts, and task file validity",
       "priority": 3,
       "status": "done",
-      "updated_at": "2026-01-21T00:15:00Z",
+      "updated_at": "2026-01-21T00:25:20Z",
       "files": [
         "looper/cmd/root.go",
         "to-do.json"
@@ -211,7 +211,11 @@
       "id": "T016",
       "title": "Implement ls command to list tasks by status with deterministic ordering",
       "priority": 3,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-21T00:26:53Z",
+      "files": [
+        "looper/cmd/root.go"
+      ]
     },
     {
       "id": "T017",
