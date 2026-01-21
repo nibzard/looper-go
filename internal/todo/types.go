@@ -13,6 +13,38 @@ import (
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
 )
 
+// idSortKey extracts the numeric value from a task ID for sorting.
+// For IDs like "T001", "T2", "T10", it returns 1, 2, 10 respectively.
+// If the ID doesn't contain a number, it returns -1.
+func idSortKey(id string) int {
+	// Find the numeric part after the prefix
+	i := 0
+	for i < len(id) && (id[i] < '0' || id[i] > '9') {
+		i++
+	}
+	if i == len(id) {
+		return -1
+	}
+	numStr := id[i:]
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return -1
+	}
+	return num
+}
+
+// CompareIDs returns true if id1 should come before id2 in numeric-aware ordering.
+// If both IDs have numeric parts, compares numerically. Otherwise falls back to
+// lexicographic comparison.
+func CompareIDs(id1, id2 string) bool {
+	k1 := idSortKey(id1)
+	k2 := idSortKey(id2)
+	if k1 >= 0 && k2 >= 0 {
+		return k1 < k2
+	}
+	return id1 < id2
+}
+
 // Status represents a task status.
 type Status string
 
@@ -427,16 +459,17 @@ func (f *File) UpdateTask(id string, updater func(*Task)) error {
 
 // SelectTask selects the next task to work on using a deterministic algorithm.
 // The selection order is:
-// 1. Any task with status "doing" (lowest id wins)
+// 1. Any task with status "doing" (lowest id wins, using numeric-aware ordering)
 // 2. Otherwise highest priority "todo" (priority 1 is highest), tie-break by lowest id
 // 3. Otherwise highest priority "blocked", tie-break by lowest id
 // Returns nil if no tasks are found.
+// ID comparison is numeric-aware: T2 sorts before T10.
 func (f *File) SelectTask() *Task {
 	// First, look for any "doing" task (lowest id wins)
 	var selected *Task
 	for i := range f.Tasks {
 		if f.Tasks[i].Status == StatusDoing {
-			if selected == nil || f.Tasks[i].ID < selected.ID {
+			if selected == nil || CompareIDs(f.Tasks[i].ID, selected.ID) {
 				selected = &f.Tasks[i]
 			}
 		}
@@ -450,7 +483,7 @@ func (f *File) SelectTask() *Task {
 	for i := range f.Tasks {
 		if f.Tasks[i].Status == StatusTodo {
 			if selected == nil || f.Tasks[i].Priority < bestPriority ||
-				(f.Tasks[i].Priority == bestPriority && f.Tasks[i].ID < selected.ID) {
+				(f.Tasks[i].Priority == bestPriority && CompareIDs(f.Tasks[i].ID, selected.ID)) {
 				selected = &f.Tasks[i]
 				bestPriority = f.Tasks[i].Priority
 			}
@@ -465,7 +498,7 @@ func (f *File) SelectTask() *Task {
 	for i := range f.Tasks {
 		if f.Tasks[i].Status == StatusBlocked {
 			if selected == nil || f.Tasks[i].Priority < bestPriority ||
-				(f.Tasks[i].Priority == bestPriority && f.Tasks[i].ID < selected.ID) {
+				(f.Tasks[i].Priority == bestPriority && CompareIDs(f.Tasks[i].ID, selected.ID)) {
 				selected = &f.Tasks[i]
 				bestPriority = f.Tasks[i].Priority
 			}

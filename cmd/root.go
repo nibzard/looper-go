@@ -771,12 +771,13 @@ func splitAndTrim(s, sep string) []string {
 }
 
 // sortTasks sorts tasks deterministically by priority (ascending) then ID (ascending).
+// ID comparison is numeric-aware: T2 sorts before T10.
 func sortTasks(tasks []todo.Task) {
 	sort.Slice(tasks, func(i, j int) bool {
 		if tasks[i].Priority != tasks[j].Priority {
 			return tasks[i].Priority < tasks[j].Priority
 		}
-		return tasks[i].ID < tasks[j].ID
+		return todo.CompareIDs(tasks[i].ID, tasks[j].ID)
 	})
 }
 

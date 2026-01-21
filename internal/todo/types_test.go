@@ -638,6 +638,149 @@ func TestSelectTask(t *testing.T) {
 	}
 }
 
+func TestIDSortKey(t *testing.T) {
+	tests := []struct {
+		id    string
+		want  int
+		desc  string
+	}{
+		{"T001", 1, "standard T-prefixed ID"},
+		{"T2", 2, "short T-prefixed ID"},
+		{"T10", 10, "two-digit T-prefixed ID"},
+		{"T100", 100, "three-digit T-prefixed ID"},
+		{"task-1", 1, "dash-prefixed ID"},
+		{"ABC123", 123, "letter prefix with number"},
+		{"123", 123, "numeric only ID"},
+		{"NOTHING", -1, "no numeric part"},
+		{"", -1, "empty string"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			got := idSortKey(tt.id)
+			if got != tt.want {
+				t.Errorf("idSortKey(%q) = %d, want %d (%s)", tt.id, got, tt.want, tt.desc)
+			}
+		})
+	}
+}
+
+func TestCompareIDs(t *testing.T) {
+	tests := []struct {
+		id1     string
+		id2     string
+		wantLT  bool  // true if id1 < id2
+		desc    string
+	}{
+		{"T1", "T2", true, "T1 before T2"},
+		{"T2", "T10", true, "T2 before T10 (numeric-aware)"},
+		{"T9", "T10", true, "T9 before T10 (numeric-aware)"},
+		{"T001", "T2", true, "T001 before T2 (same numeric value, different format)"},
+		{"T10", "T2", false, "T10 after T2 (numeric-aware)"},
+		{"A1", "A2", true, "A1 before A2"},
+		{"A2", "A10", true, "A2 before A10 (numeric-aware)"},
+		{"A", "B", true, "non-numeric IDs fall back to lexicographic"},
+		{"Z", "A", false, "non-numeric IDs fall back to lexicographic"},
+		{"T1", "A1", false, "mixed: T after A lexicographically"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id1+"_vs_"+tt.id2, func(t *testing.T) {
+			got := CompareIDs(tt.id1, tt.id2)
+			if got != tt.wantLT {
+				t.Errorf("CompareIDs(%q, %q) = %v, want %v (%s)", tt.id1, tt.id2, got, tt.wantLT, tt.desc)
+			}
+		})
+	}
+}
+
+func TestSelectTaskNumericIDOrdering(t *testing.T) {
+	tests := []struct {
+		name     string
+		tasks    []Task
+		wantID   string
+		wantDesc string
+	}{
+		{
+			name: "select doing task with numeric ID ordering (T2 before T10)",
+			tasks: []Task{
+				{ID: "T10", Title: "Tenth task", Priority: 1, Status: StatusDoing},
+				{ID: "T2", Title: "Second task", Priority: 1, Status: StatusDoing},
+				{ID: "T1", Title: "First task", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T1",
+			wantDesc: "T1 (lowest numeric ID among doing tasks: T1, T2, T10)",
+		},
+		{
+			name: "select todo task with numeric ID ordering (T2 before T10)",
+			tasks: []Task{
+				{ID: "T10", Title: "Tenth task", Priority: 1, Status: StatusTodo},
+				{ID: "T2", Title: "Second task", Priority: 1, Status: StatusTodo},
+				{ID: "T1", Title: "First task", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T1",
+			wantDesc: "T1 (lowest numeric ID among same-priority todos)",
+		},
+		{
+			name: "select blocked task with numeric ID ordering",
+			tasks: []Task{
+				{ID: "T100", Title: "Hundredth blocked", Priority: 2, Status: StatusBlocked},
+				{ID: "T20", Title: "Twentieth blocked", Priority: 2, Status: StatusBlocked},
+				{ID: "T3", Title: "Third blocked", Priority: 2, Status: StatusBlocked},
+			},
+			wantID:   "T3",
+			wantDesc: "T3 (lowest numeric ID among same-priority blocked: 3 < 20 < 100)",
+		},
+		{
+			name: "mixed ID formats with same numeric value",
+			tasks: []Task{
+				{ID: "T001", Title: "T001 task", Priority: 1, Status: StatusDoing},
+				{ID: "T1", Title: "T1 task", Priority: 1, Status: StatusDoing},
+				{ID: "T2", Title: "T2 task", Priority: 1, Status: StatusDoing},
+			},
+			wantID:   "T001",
+			wantDesc: "T001 selected (both T001 and T1 have value 1, T001 < T1 lexicographically)",
+		},
+		{
+			name: "large ID numbers",
+			tasks: []Task{
+				{ID: "T99", Title: "Ninety-ninth", Priority: 1, Status: StatusTodo},
+				{ID: "T100", Title: "Hundredth", Priority: 1, Status: StatusTodo},
+				{ID: "T9", Title: "Ninth", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T9",
+			wantDesc: "T9 (lowest numeric value: 9 < 99 < 100)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &File{
+				SchemaVersion: 1,
+				SourceFiles:   []string{"README.md"},
+				Tasks:         tt.tasks,
+			}
+
+			got := f.SelectTask()
+
+			if tt.wantID == "" {
+				if got != nil {
+					t.Errorf("%s: SelectTask() = %v (%s), want nil", tt.name, got, got.ID)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Fatalf("%s: SelectTask() = nil, want task with ID %s (%s)", tt.name, tt.wantID, tt.wantDesc)
+			}
+
+			if got.ID != tt.wantID {
+				t.Errorf("%s: SelectTask() ID = %s, want %s (%s)", tt.name, got.ID, tt.wantID, tt.wantDesc)
+			}
+		})
+	}
+}
+
 func TestSetTaskDoing(t *testing.T) {
 	f := &File{
 		SchemaVersion: 1,
