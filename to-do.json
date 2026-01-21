@@ -212,10 +212,11 @@
       "title": "Implement ls command to list tasks by status with deterministic ordering",
       "priority": 3,
       "status": "done",
-      "updated_at": "2026-01-21T00:26:53Z",
+      "updated_at": "2026-01-21T00:28:16Z",
       "files": [
         "looper/cmd/root.go"
-      ]
+      ],
+      "details": "ls command fully implemented with deterministic ordering (priority ascending, then ID ascending), status filtering, and verbose mode."
     },
     {
       "id": "T017",
