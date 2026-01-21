@@ -38,6 +38,9 @@ type Config struct {
 	// Dev options (hidden, require LOOPER_PROMPT_MODE=dev)
 	PrintPrompt bool `toml:"-"` // Print rendered prompts before running
 
+	// User prompt for bootstrap (not persisted in config file)
+	UserPrompt string `toml:"-"` // User-provided prompt to drive bootstrap
+
 	// Loop settings
 	MaxIterations int    `toml:"max_iterations"`
 	Schedule      string `toml:"schedule"` // codex, claude, odd-even, round-robin
@@ -217,6 +220,9 @@ func loadFromEnv(cfg *Config) {
 		if v := os.Getenv("LOOPER_PRINT_PROMPT"); v != "" {
 			cfg.PrintPrompt = boolFromString(v)
 		}
+	}
+	if v := os.Getenv("LOOPER_PROMPT"); v != "" {
+		cfg.UserPrompt = v
 	}
 	if v := os.Getenv("LOOPER_MAX_ITERATIONS"); v != "" {
 		var i int

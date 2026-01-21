@@ -334,7 +334,7 @@
       "id": "T026",
       "title": "Allow a user prompt argument to drive bootstrap (looper \"...\")",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "details": "CLI currently treats a non-flag argument as a subcommand or an existing todo path only (cmd/root.go), so a free-form prompt is rejected. Bootstrap uses prompts/bootstrap.txt, which always instructs scanning markdown docs, and prompts.Data has no user-prompt field; loop.bootstrapTodo only passes paths. Add a prompt input (positional or --prompt) that is injected into the bootstrap prompt, and update the prompt to brainstorm the user idea before emitting to-do.json, skipping markdown scanning when a prompt is provided.",
       "steps": [
         "Extend CLI parsing to accept a prompt string without conflicting with todo file args.",
@@ -354,7 +354,8 @@
         "looper/internal/prompts/prompts_test.go",
         "looper/prompts/bootstrap.txt",
         "looper/README.md"
-      ]
+      ],
+      "updated_at": "2026-01-21T07:51:54Z"
     },
     {
       "id": "T027",

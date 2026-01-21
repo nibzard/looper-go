@@ -105,6 +105,7 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	maxIter := fs.Int("max-iterations", cfg.MaxIterations, "Maximum iterations")
 	schedule := fs.String("schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
 	uiMode := fs.String("ui", "", "UI mode (tui for terminal UI)")
+	promptArg := fs.String("prompt", "", "User prompt to drive bootstrap (skips markdown scanning)")
 	var promptDir *string
 	var printPrompt *bool
 	if devMode {
@@ -137,6 +138,11 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	}
 	if len(remaining) == 1 {
 		cfg.TodoFile = remaining[0]
+	}
+
+	// Store user prompt in config for bootstrap
+	if *promptArg != "" {
+		cfg.UserPrompt = *promptArg
 	}
 
 	// Update config with parsed values
@@ -611,6 +617,8 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "Run Options (use with 'run' command):")
 	fmt.Fprintln(w, "  -ui string")
 	fmt.Fprintln(w, "        UI mode (tui for terminal UI)")
+	fmt.Fprintln(w, "  -prompt string")
+	fmt.Fprintln(w, "        User prompt to drive bootstrap (skips markdown scanning)")
 	fmt.Fprintln(w, "  -max-iterations int")
 	fmt.Fprintln(w, "        Maximum iterations (default 50)")
 	fmt.Fprintln(w, "  -schedule string")

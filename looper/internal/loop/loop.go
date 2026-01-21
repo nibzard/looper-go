@@ -259,13 +259,11 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 	ctx := context.Background()
 
 	renderer := prompts.NewRenderer(promptStore)
-	promptData := prompts.NewData(
+	promptData := prompts.NewDataForBootstrap(
 		todoPath,
 		schemaPath,
 		workDir,
-		prompts.Task{},
-		0,
-		"bootstrap",
+		cfg.UserPrompt,
 		time.Now(),
 	)
 	prompt, err := renderer.Render(prompts.BootstrapPrompt, promptData)

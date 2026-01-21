@@ -122,6 +122,7 @@ type Data struct {
 	Schedule     string
 	Now          string
 	ErrorMessage string // Validation errors for repair prompt
+	UserPrompt   string // User-provided prompt for bootstrap
 }
 
 // NewData builds prompt data with a UTC timestamp formatted in RFC3339.
@@ -134,6 +135,17 @@ func NewData(todoPath, schemaPath, workDir string, selected Task, iteration int,
 		Iteration:    iteration,
 		Schedule:     schedule,
 		Now:          now.UTC().Format(time.RFC3339),
+	}
+}
+
+// NewDataForBootstrap builds prompt data for bootstrap flow with optional user prompt.
+func NewDataForBootstrap(todoPath, schemaPath, workDir, userPrompt string, now time.Time) Data {
+	return Data{
+		TodoPath:   todoPath,
+		SchemaPath: schemaPath,
+		WorkDir:    workDir,
+		UserPrompt: userPrompt,
+		Now:        now.UTC().Format(time.RFC3339),
 	}
 }
 

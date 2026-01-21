@@ -1,5 +1,22 @@
 Initialize a task backlog for this project.
 
+{{if .UserPrompt}}
+User Prompt:
+{{.UserPrompt}}
+
+Rules:
+- Brainstorm and expand the user's idea into a comprehensive set of actionable tasks.
+- Create "{{.TodoPath}}" using the schema in "{{.SchemaPath}}".
+- Set source_files to [] since this is prompt-driven bootstrapping.
+- Break down the user's idea into specific, implementable tasks.
+- Assign each task priority (1 is highest).
+- Set all task statuses to "todo".
+- Do not modify code or other files.
+- Use jq if helpful.
+- Do not ask for confirmation.
+
+Return a brief summary of what you created.
+{{else}}
 Rules:
 - Read the current directory ({{.WorkDir}}) to understand the project.
 - Search for markdown source docs like PROJECT.md, PROJECT_SPEC.md, SPECS.md, SPECIFICATION.md, README.md, DESIGN.md, IDEA.md, etc.
@@ -13,3 +30,4 @@ Rules:
 - Do not ask for confirmation.
 
 Return a brief summary of what you created.
+{{end}}

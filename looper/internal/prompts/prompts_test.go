@@ -404,7 +404,7 @@ func TestRenderBootstrapPrompt(t *testing.T) {
 	bootstrapPrompt := `Bootstrap: {{.TodoPath}}
 Schema: {{.SchemaPath}}
 WorkDir: {{.WorkDir}}
-`
+{{if .UserPrompt}}User Prompt: {{.UserPrompt}}{{end}}`
 	promptPath := filepath.Join(promptsDir, BootstrapPrompt)
 	if err := os.WriteFile(promptPath, []byte(bootstrapPrompt), 0644); err != nil {
 		t.Fatalf("Failed to write bootstrap prompt: %v", err)
@@ -413,12 +413,11 @@ WorkDir: {{.WorkDir}}
 	store := NewStore(tmpDir, "")
 	renderer := NewRenderer(store)
 
-	data := NewData(
+	// Test without user prompt
+	data := NewDataForBootstrap(
 		"/todo.json",
 		"/schema.json",
 		"/work",
-		Task{},
-		0,
 		"",
 		time.Now(),
 	)
@@ -436,6 +435,59 @@ WorkDir: {{.WorkDir}}
 	}
 	if !strings.Contains(output, "WorkDir: /work") {
 		t.Errorf("Output should contain workdir, got: %s", output)
+	}
+	if strings.Contains(output, "User Prompt:") {
+		t.Errorf("Output should not contain user prompt when empty, got: %s", output)
+	}
+
+	// Test with user prompt
+	dataWithPrompt := NewDataForBootstrap(
+		"/todo.json",
+		"/schema.json",
+		"/work",
+		"Build a REST API for task management",
+		time.Now(),
+	)
+
+	outputWithPrompt, err := renderer.Render(BootstrapPrompt, dataWithPrompt)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	if !strings.Contains(outputWithPrompt, "User Prompt: Build a REST API for task management") {
+		t.Errorf("Output should contain user prompt, got: %s", outputWithPrompt)
+	}
+}
+
+// TestNewDataForBootstrap tests creating prompt data for bootstrap flow.
+func TestNewDataForBootstrap(t *testing.T) {
+	now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	// Test without user prompt
+	data := NewDataForBootstrap("/todo.json", "/schema.json", "/work", "", now)
+
+	if data.TodoPath != "/todo.json" {
+		t.Errorf("TodoPath = %q, want %q", data.TodoPath, "/todo.json")
+	}
+	if data.SchemaPath != "/schema.json" {
+		t.Errorf("SchemaPath = %q, want %q", data.SchemaPath, "/schema.json")
+	}
+	if data.WorkDir != "/work" {
+		t.Errorf("WorkDir = %q, want %q", data.WorkDir, "/work")
+	}
+	if data.UserPrompt != "" {
+		t.Errorf("UserPrompt = %q, want empty", data.UserPrompt)
+	}
+	if data.Now != now.UTC().Format(time.RFC3339) {
+		t.Errorf("Now = %q, want %q", data.Now, "2024-01-01T12:00:00Z")
+	}
+
+	// Test with user prompt
+	userPrompt := "Build a web scraper for news articles"
+	dataWithPrompt := NewDataForBootstrap("/todo.json", "/schema.json", "/work", userPrompt, now)
+
+	if dataWithPrompt.UserPrompt != userPrompt {
+		t.Errorf("UserPrompt = %q, want %q", dataWithPrompt.UserPrompt, userPrompt)
 	}
 }
 
