@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -34,6 +35,14 @@ type Loop struct {
 
 // New creates a new loop instance.
 func New(cfg *config.Config, workDir string) (*Loop, error) {
+	// Run git init if enabled before bootstrap
+	if cfg.GitInit {
+		if err := ensureGitRepo(workDir); err != nil {
+			// Non-fatal: log and continue
+			fmt.Fprintf(os.Stderr, "Note: %v\n", err)
+		}
+	}
+
 	// Create prompt store
 	promptDir := cfg.PromptDir
 	if !config.PromptDevModeEnabled() {
@@ -192,6 +201,41 @@ func ensureSchemaHasSourceFiles(schemaPath string) error {
 		return fmt.Errorf("write schema file: %w", err)
 	}
 
+	return nil
+}
+
+// ensureGitRepo initializes a git repository if one doesn't exist.
+// It checks for git availability and returns an error (non-fatal) if git is not available
+// or if initialization fails.
+func ensureGitRepo(workDir string) error {
+	// Check if git is available
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		return fmt.Errorf("git not found in PATH, skipping git init")
+	}
+
+	// Check if .git directory already exists
+	gitDir := filepath.Join(workDir, ".git")
+	if info, err := os.Stat(gitDir); err == nil {
+		if info.IsDir() {
+			// Already a git repo
+			return nil
+		}
+		return fmt.Errorf(".git exists but is not a directory")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat .git: %w", err)
+	}
+
+	// Run git init
+	cmd := exec.Command(gitPath, "init")
+	cmd.Dir = workDir
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git init failed: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Initialized git repository in %s\n", workDir)
 	return nil
 }
 

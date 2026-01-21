@@ -538,19 +538,20 @@
         "bootstrap"
       ],
       "files": [
-        "to-do.schema.json",
+        "README.md",
         "internal/prompts/prompts.go",
         "internal/todo/types.go",
         "prompts/bootstrap.txt",
-        "README.md"
+        "to-do.json",
+        "to-do.schema.json"
       ],
-      "updated_at": "2026-01-21T12:59:22Z"
+      "updated_at": "2026-01-21T12:59:59Z"
     },
     {
       "id": "T035",
       "title": "Run git init before bootstrap when enabled",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "details": "cfg.GitInit is already available via config/env/flags, but the Go loop never runs git init; README says auto-init is not supported. Implement git init (like the shell ensure_git_repo) before bootstrap or the first iteration when git_init is true, and keep a clean fallback when git is missing.",
       "steps": [
         "Add a git init check when GitInit is true and git is available.",
@@ -562,12 +563,9 @@
         "bootstrap"
       ],
       "files": [
-        "internal/loop/loop.go",
-        "internal/config/config.go",
-        "cmd/root.go",
-        "README.md",
-        "MIGRATION.md"
-      ]
+        "internal/loop/loop.go"
+      ],
+      "updated_at": "2026-01-21T13:01:50Z"
     }
   ]
 }
