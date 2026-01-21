@@ -12,6 +12,7 @@ import (
 
 	"github.com/nibzard/looper/internal/agents"
 	"github.com/nibzard/looper/internal/config"
+	"github.com/nibzard/looper/internal/hooks"
 	"github.com/nibzard/looper/internal/logging"
 	"github.com/nibzard/looper/internal/prompts"
 	"github.com/nibzard/looper/internal/todo"
@@ -423,6 +424,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	taskID := task.ID
 	taskTitle := task.Title
 	taskStatus := string(task.Status)
+	label := iterationLabel(iter)
 
 	// Mark task as doing
 	if err := l.todoFile.SetTaskDoing(taskID); err != nil {
@@ -471,7 +473,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 		Binary:          l.cfg.GetAgentBinary(agentType),
 		Model:           l.cfg.GetAgentModel(agentType),
 		WorkDir:         l.workDir,
-		LastMessagePath: l.lastMessagePath(iterationLabel(iter)),
+		LastMessagePath: l.lastMessagePath(label),
 	}
 	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
 	if err != nil {
@@ -479,6 +481,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	}
 
 	summary, err := agent.Run(ctx, prompt, multiLogWriter)
+	l.runHook(ctx, label, multiLogWriter)
 	if err != nil {
 		// Mark task as blocked on error
 		_ = l.todoFile.SetTaskStatus(taskID, todo.StatusBlocked)
@@ -551,15 +554,17 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 	}
 
 	// Run review agent (always codex)
+	label := reviewLabel(iter)
 	agentCfg := agents.Config{
 		Binary:          l.cfg.GetAgentBinary("codex"),
 		Model:           l.cfg.GetAgentModel("codex"),
 		WorkDir:         l.workDir,
-		LastMessagePath: l.lastMessagePath(reviewLabel(iter)),
+		LastMessagePath: l.lastMessagePath(label),
 	}
 	agent := agents.NewCodexAgent(agentCfg)
 
 	summary, err := agent.Run(ctx, prompt, multiLogWriter)
+	l.runHook(ctx, label, multiLogWriter)
 	if err != nil {
 		return fmt.Errorf("run review agent: %w", err)
 	}
@@ -690,6 +695,36 @@ func (l *Loop) reloadTodo() error {
 	}
 	l.todoFile = todoFile
 	return nil
+}
+
+func (l *Loop) runHook(ctx context.Context, label string, logWriter agents.LogWriter) {
+	if l.cfg.HookCommand == "" {
+		return
+	}
+	if logWriter == nil {
+		logWriter = agents.NullLogWriter{}
+	}
+	result, err := hooks.Invoke(ctx, hooks.Options{
+		Command:         l.cfg.HookCommand,
+		LastMessagePath: l.lastMessagePath(label),
+		Label:           label,
+		WorkDir:         l.workDir,
+	})
+	if result.Ran {
+		_ = logWriter.Write(agents.LogEvent{
+			Type:      "command",
+			Timestamp: time.Now().UTC(),
+			Command:   result.Command,
+			ExitCode:  result.ExitCode,
+		})
+	}
+	if err != nil {
+		_ = logWriter.Write(agents.LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   fmt.Sprintf("hook: %v", err),
+		})
+	}
 }
 
 func iterationLabel(iter int) string {
