@@ -325,12 +325,12 @@
       "title": "Merge summary files/blockers when applying summaries",
       "priority": 3,
       "status": "done",
-      "details": "Preserve existing task files/blockers by appending unique entries instead of overwriting; add coverage.",
+      "details": "Merge functionality already fully implemented in mergeStrings() and used in applySummary() for both files and blockers. Comprehensive test coverage exists with TestMergeStrings (9 sub-tests) and TestApplySummary merge tests.",
       "files": [
         "internal/loop/loop.go",
         "internal/loop/loop_test.go"
       ],
-      "updated_at": "2026-01-21T13:23:29Z"
+      "updated_at": "2026-01-21T13:27:12Z"
     },
     {
       "id": "T026",
