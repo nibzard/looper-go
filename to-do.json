@@ -189,18 +189,23 @@
       "title": "Implement tail command with optional follow of the latest log",
       "priority": 3,
       "status": "done",
-      "updated_at": "2026-01-21T00:00:59Z",
+      "updated_at": "2026-01-21T00:02:27Z",
       "files": [
         "looper/cmd/root.go",
         "looper/internal/logging/logging.go"
       ],
-      "details": "Tail command already fully implemented with -f/--follow and -n options. Uses FindLatestLog to locate the most recent JSONL log file and TailLog for output with optional follow mode."
+      "details": "Tail command was already fully implemented. No code changes needed - verified existing implementation with -f/--follow and -n options working correctly."
     },
     {
       "id": "T015",
       "title": "Implement doctor checks for dependencies, config, prompts, and task file validity",
       "priority": 3,
-      "status": "todo"
+      "status": "done",
+      "updated_at": "2026-01-21T00:15:00Z",
+      "files": [
+        "looper/cmd/root.go",
+        "to-do.json"
+      ]
     },
     {
       "id": "T016",

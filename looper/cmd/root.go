@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/nibzard/looper/internal/config"
 	"github.com/nibzard/looper/internal/logging"
 	"github.com/nibzard/looper/internal/loop"
+	"github.com/nibzard/looper/internal/prompts"
 	"github.com/nibzard/looper/internal/todo"
 )
 
@@ -168,6 +170,14 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	if len(remaining) == 1 {
 		todoPath = remaining[0]
 	}
+	if !filepath.IsAbs(todoPath) {
+		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
+	}
+	schemaPath := cfg.SchemaFile
+	if !filepath.IsAbs(schemaPath) {
+		schemaPath = filepath.Join(cfg.ProjectRoot, schemaPath)
+	}
+	promptDir := resolvePromptDir(cfg)
 
 	fmt.Println("Looper Doctor")
 	fmt.Println("=============")
@@ -185,10 +195,93 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	}
 	fmt.Println()
 
-	// Check todo file
-	if !filepath.IsAbs(todoPath) {
-		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
+	// Check config
+	configOK := true
+	normalizedSchedule, scheduleOK := normalizeSchedule(cfg.Schedule)
+	repairAgent := normalizeAgent(cfg.RepairAgent)
+
+	fmt.Println("Config:")
+	if scheduleOK {
+		fmt.Printf("  ✅ Schedule: %s\n", normalizedSchedule)
+	} else {
+		fmt.Printf("  ❌ Schedule: %s (expected codex|claude|odd-even|round-robin)\n", cfg.Schedule)
+		configOK = false
 	}
+	if repairAgent == "" {
+		fmt.Println("  ❌ Repair agent: empty (expected codex|claude)")
+		configOK = false
+	} else if !isValidAgent(repairAgent) {
+		fmt.Printf("  ❌ Repair agent: %s (expected codex|claude)\n", repairAgent)
+		configOK = false
+	} else {
+		fmt.Printf("  ✅ Repair agent: %s\n", repairAgent)
+	}
+
+	switch normalizedSchedule {
+	case "odd-even":
+		oddAgent, oddOK, oddDefault := normalizeAgentOrDefault(cfg.OddAgent, "codex")
+		if oddOK {
+			if oddDefault {
+				fmt.Printf("  ✅ Odd agent: %s (default)\n", oddAgent)
+			} else {
+				fmt.Printf("  ✅ Odd agent: %s\n", oddAgent)
+			}
+		} else {
+			fmt.Printf("  ❌ Odd agent: %s (expected codex|claude)\n", cfg.OddAgent)
+			configOK = false
+		}
+
+		evenAgent, evenOK, evenDefault := normalizeAgentOrDefault(cfg.EvenAgent, "claude")
+		if evenOK {
+			if evenDefault {
+				fmt.Printf("  ✅ Even agent: %s (default)\n", evenAgent)
+			} else {
+				fmt.Printf("  ✅ Even agent: %s\n", evenAgent)
+			}
+		} else {
+			fmt.Printf("  ❌ Even agent: %s (expected codex|claude)\n", cfg.EvenAgent)
+			configOK = false
+		}
+	case "round-robin":
+		rrAgents := normalizeAgentList(cfg.RRAgents)
+		invalidAgents := invalidAgentList(cfg.RRAgents)
+		if len(invalidAgents) > 0 {
+			fmt.Printf("  ❌ Round-robin agents: invalid values: %s\n", strings.Join(invalidAgents, ", "))
+			configOK = false
+		} else if len(rrAgents) == 0 {
+			fmt.Println("  ✅ Round-robin agents: claude,codex (default)")
+		} else {
+			fmt.Printf("  ✅ Round-robin agents: %s\n", strings.Join(rrAgents, ","))
+		}
+	}
+
+	if !configOK {
+		allOK = false
+	}
+	fmt.Println()
+
+	// Check dependencies
+	needsClaude := false
+	if repairAgent == "claude" {
+		needsClaude = true
+	}
+	if scheduleOK && scheduleUsesClaude(normalizedSchedule, cfg.OddAgent, cfg.EvenAgent, cfg.RRAgents) {
+		needsClaude = true
+	}
+
+	fmt.Println("Dependencies:")
+	if !checkBinary("codex", cfg.Agents.Codex.Binary, true) {
+		allOK = false
+	}
+	if !checkBinary("claude", cfg.Agents.Claude.Binary, needsClaude) {
+		allOK = false
+	}
+	if cfg.GitInit || *verbose {
+		_ = checkBinary("git (optional)", "git", false)
+	}
+	fmt.Println()
+
+	// Check todo file
 	fmt.Printf("Todo file: %s\n", todoPath)
 	todoInfo, err := os.Stat(todoPath)
 	if err != nil {
@@ -209,11 +302,10 @@ func doctorCommand(cfg *config.Config, args []string) error {
 			fmt.Printf("  ❌ Load error: %v\n", loadErr)
 			allOK = false
 		} else {
-			schemaPath := cfg.SchemaFile
-			if !filepath.IsAbs(schemaPath) {
-				schemaPath = filepath.Join(cfg.ProjectRoot, schemaPath)
-			}
 			result := todoFile.Validate(todo.ValidationOptions{SchemaPath: schemaPath})
+			for _, w := range result.Warnings {
+				fmt.Printf("  ⚠️  %s\n", w)
+			}
 			if result.Valid {
 				fmt.Println("  ✅ Valid")
 			} else {
@@ -234,48 +326,19 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	fmt.Println()
 
 	// Check schema file
-	schemaPath := cfg.SchemaFile
-	if !filepath.IsAbs(schemaPath) {
-		schemaPath = filepath.Join(cfg.ProjectRoot, schemaPath)
-	}
 	fmt.Printf("Schema file: %s\n", schemaPath)
-	if _, err := os.Stat(schemaPath); err != nil {
+	if info, err := os.Stat(schemaPath); err != nil {
 		if os.IsNotExist(err) {
 			fmt.Println("  ⚠️  Not found (will be created on run)")
 		} else {
 			fmt.Printf("  ❌ Error: %v\n", err)
 			allOK = false
 		}
+	} else if info.IsDir() {
+		fmt.Println("  ❌ Error: path is a directory")
+		allOK = false
 	} else {
 		fmt.Println("  ✅ OK")
-	}
-	fmt.Println()
-
-	// Check agent binaries
-	agents := []struct {
-		name   string
-		binary string
-	}{
-		{"codex", cfg.Agents.Codex.Binary},
-		{"claude", cfg.Agents.Claude.Binary},
-	}
-	for _, agent := range agents {
-		fmt.Printf("Agent binary (%s): %s\n", agent.name, agent.binary)
-		if agent.binary == "" {
-			fmt.Println("  ⚠️  Not configured")
-			continue
-		}
-		if _, err := os.Stat(agent.binary); err == nil {
-			fmt.Println("  ✅ OK")
-		} else {
-			// Try to find it in PATH
-			if _, err := exec.LookPath(agent.binary); err == nil {
-				fmt.Println("  ✅ OK (found in PATH)")
-			} else {
-				fmt.Printf("  ❌ Not found: %v\n", err)
-				allOK = false
-			}
-		}
 	}
 	fmt.Println()
 
@@ -294,12 +357,12 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	fmt.Println()
 
 	// Check prompts directory
-	promptDir := filepath.Join(cfg.ProjectRoot, "prompts")
 	fmt.Printf("Prompts directory: %s\n", promptDir)
 	promptInfo, err := os.Stat(promptDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Println("  ⚠️  Not found (will use embedded prompts)")
+			fmt.Println("  ❌ Not found")
+			allOK = false
 		} else {
 			fmt.Printf("  ❌ Error: %v\n", err)
 			allOK = false
@@ -309,18 +372,40 @@ func doctorCommand(cfg *config.Config, args []string) error {
 		allOK = false
 	} else {
 		fmt.Println("  ✅ OK")
-		if *verbose {
-			promptFiles := []string{
-				"bootstrap.txt", "iteration.txt", "repair.txt", "review.txt",
-				"summary.schema.json",
+		promptFiles := []string{
+			prompts.BootstrapPrompt,
+			prompts.IterationPrompt,
+			prompts.RepairPrompt,
+			prompts.ReviewPrompt,
+		}
+		for _, pf := range promptFiles {
+			p := filepath.Join(promptDir, pf)
+			if _, err := os.ReadFile(p); err != nil {
+				fmt.Printf("  ❌ %s: %v\n", pf, err)
+				allOK = false
+				continue
 			}
-			for _, pf := range promptFiles {
-				p := filepath.Join(promptDir, pf)
-				if _, err := os.Stat(p); err != nil {
-					fmt.Printf("    ⚠️  %s: not found\n", pf)
-				} else {
-					fmt.Printf("    ✅ %s\n", pf)
-				}
+			if *verbose {
+				fmt.Printf("  ✅ %s\n", pf)
+			}
+		}
+
+		summaryPath := filepath.Join(promptDir, prompts.SummarySchema)
+		summaryData, err := os.ReadFile(summaryPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf("  ⚠️  %s: not found\n", prompts.SummarySchema)
+			} else {
+				fmt.Printf("  ❌ %s: %v\n", prompts.SummarySchema, err)
+				allOK = false
+			}
+		} else {
+			var parsed any
+			if err := json.Unmarshal(summaryData, &parsed); err != nil {
+				fmt.Printf("  ❌ %s: invalid JSON (%v)\n", prompts.SummarySchema, err)
+				allOK = false
+			} else if *verbose {
+				fmt.Printf("  ✅ %s\n", prompts.SummarySchema)
 			}
 		}
 	}
@@ -573,4 +658,162 @@ func splitAndTrim(s, sep string) []string {
 		}
 	}
 	return result
+}
+
+func normalizeSchedule(input string) (string, bool) {
+	s := strings.ToLower(strings.TrimSpace(input))
+	switch s {
+	case "codex", "claude":
+		return s, true
+	case "odd_even", "odd-even", "oddeven":
+		return "odd-even", true
+	case "round_robin", "round-robin", "roundrobin", "rr":
+		return "round-robin", true
+	default:
+		if s == "" {
+			return "", false
+		}
+		return s, false
+	}
+}
+
+func normalizeAgent(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
+}
+
+func normalizeAgentList(agents []string) []string {
+	if len(agents) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		normalized := normalizeAgent(agent)
+		if normalized != "" {
+			result = append(result, normalized)
+		}
+	}
+	return result
+}
+
+func normalizeAgentOrDefault(agent, defaultAgent string) (string, bool, bool) {
+	normalized := normalizeAgent(agent)
+	if normalized == "" {
+		return defaultAgent, true, true
+	}
+	if !isValidAgent(normalized) {
+		return normalized, false, false
+	}
+	return normalized, true, false
+}
+
+func isValidAgent(agent string) bool {
+	return agent == "codex" || agent == "claude"
+}
+
+func invalidAgentList(agents []string) []string {
+	var invalid []string
+	for _, agent := range agents {
+		normalized := normalizeAgent(agent)
+		if normalized == "" {
+			continue
+		}
+		if !isValidAgent(normalized) {
+			invalid = append(invalid, normalized)
+		}
+	}
+	return invalid
+}
+
+func scheduleUsesClaude(schedule, oddAgent, evenAgent string, rrAgents []string) bool {
+	switch schedule {
+	case "claude":
+		return true
+	case "odd-even":
+		odd := normalizeAgent(oddAgent)
+		if odd == "" {
+			odd = "codex"
+		}
+		even := normalizeAgent(evenAgent)
+		if even == "" {
+			even = "claude"
+		}
+		return odd == "claude" || even == "claude"
+	case "round-robin":
+		agents := normalizeAgentList(rrAgents)
+		if len(agents) == 0 {
+			agents = []string{"claude", "codex"}
+		}
+		for _, agent := range agents {
+			if agent == "claude" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func checkBinary(label, binary string, required bool) bool {
+	fmt.Printf("  %s: %s\n", label, binary)
+	if strings.TrimSpace(binary) == "" {
+		if required {
+			fmt.Println("  ❌ Not configured")
+			return false
+		}
+		fmt.Println("  ⚠️  Not configured")
+		return true
+	}
+	if info, err := os.Stat(binary); err == nil {
+		if info.IsDir() {
+			if required {
+				fmt.Println("  ❌ Path is a directory")
+				return false
+			}
+			fmt.Println("  ⚠️  Path is a directory")
+			return true
+		}
+		if info.Mode().Perm()&0111 == 0 {
+			if required {
+				fmt.Println("  ❌ Not executable")
+				return false
+			}
+			fmt.Println("  ⚠️  Not executable")
+			return true
+		}
+		fmt.Println("  ✅ OK")
+		return true
+	}
+
+	resolved, err := exec.LookPath(binary)
+	if err == nil {
+		if info, err := os.Stat(resolved); err == nil && info.Mode().Perm()&0111 == 0 {
+			if required {
+				fmt.Printf("  ❌ Found in PATH but not executable: %s\n", resolved)
+				return false
+			}
+			fmt.Printf("  ⚠️  Found in PATH but not executable: %s\n", resolved)
+			return true
+		}
+		fmt.Printf("  ✅ OK (found in PATH: %s)\n", resolved)
+		return true
+	}
+
+	if required {
+		fmt.Printf("  ❌ Not found: %v\n", err)
+		return false
+	}
+	fmt.Printf("  ⚠️  Not found: %v\n", err)
+	return true
+}
+
+func resolvePromptDir(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	promptDir := cfg.PromptDir
+	if promptDir == "" {
+		promptDir = prompts.DefaultPromptDir(cfg.ProjectRoot)
+	} else if !filepath.IsAbs(promptDir) && cfg.ProjectRoot != "" {
+		promptDir = filepath.Join(cfg.ProjectRoot, promptDir)
+	}
+	return promptDir
 }
