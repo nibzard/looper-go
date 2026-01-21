@@ -756,3 +756,72 @@ func (l *Loop) lastMessagePath(label string) string {
 	}
 	return l.runLogger.LastMessagePath(label)
 }
+
+// Status represents a status update for TUI monitoring.
+type Status struct {
+	Iteration int
+	TaskID    string
+	Status    string
+	Message   string
+	Error     error
+}
+
+// RunWithStatus executes the main loop and sends status updates to the channel.
+func (l *Loop) RunWithStatus(ctx context.Context, statusCh chan<- Status) error {
+	defer close(statusCh)
+
+	if l.runLogger != nil {
+		defer l.runLogger.Close()
+	}
+
+	for i := 1; i <= l.cfg.MaxIterations; i++ {
+		// Check context
+		if ctx.Err() != nil {
+			statusCh <- Status{Error: ctx.Err()}
+			return ctx.Err()
+		}
+
+		// Select task
+		task := l.todoFile.SelectTask()
+		if task == nil {
+			// No tasks found - run review pass
+			statusCh <- Status{Iteration: i, Status: "review", Message: "Running review pass..."}
+			if err := l.runReview(ctx, i); err != nil {
+				statusCh <- Status{Iteration: i, Error: err}
+				return fmt.Errorf("review pass: %w", err)
+			}
+			// Check if any tasks were added
+			task = l.todoFile.SelectTask()
+			if task == nil {
+				// Still no tasks - add project-done marker
+				statusCh <- Status{Iteration: i, Status: "done", Message: "All tasks complete"}
+				l.addProjectDoneMarker()
+				break
+			}
+			continue
+		}
+
+		// Send status update
+		statusCh <- Status{Iteration: i, TaskID: task.ID, Status: "starting", Message: "Starting: " + task.Title}
+
+		// Run iteration
+		if err := l.runIteration(ctx, i, task); err != nil {
+			statusCh <- Status{Iteration: i, TaskID: task.ID, Error: err}
+			return fmt.Errorf("iteration %d: %w", i, err)
+		}
+
+		statusCh <- Status{Iteration: i, TaskID: task.ID, Status: "complete", Message: "Complete: " + task.Title}
+
+		// Delay between iterations
+		if l.cfg.LoopDelaySeconds > 0 {
+			select {
+			case <-ctx.Done():
+				statusCh <- Status{Error: ctx.Err()}
+				return ctx.Err()
+			case <-time.After(time.Duration(l.cfg.LoopDelaySeconds) * time.Second):
+			}
+		}
+	}
+
+	return nil
+}

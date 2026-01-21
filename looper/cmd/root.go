@@ -18,6 +18,7 @@ import (
 	"github.com/nibzard/looper/internal/loop"
 	"github.com/nibzard/looper/internal/prompts"
 	"github.com/nibzard/looper/internal/todo"
+	"github.com/nibzard/looper/internal/ui"
 )
 
 // Version is set via ldflags at build time.
@@ -69,6 +70,8 @@ func Run(ctx context.Context, args []string) error {
 	switch subcommand {
 	case "run":
 		return runCommand(ctx, cfg, remainingArgs)
+	case "tui":
+		return tuiCommand(ctx, cfg, remainingArgs)
 	case "doctor":
 		return doctorCommand(cfg, remainingArgs)
 	case "tail":
@@ -101,6 +104,7 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	devMode := config.PromptDevModeEnabled()
 	maxIter := fs.Int("max-iterations", cfg.MaxIterations, "Maximum iterations")
 	schedule := fs.String("schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
+	uiMode := fs.String("ui", "", "UI mode (tui for terminal UI)")
 	var promptDir *string
 	var printPrompt *bool
 	if devMode {
@@ -161,6 +165,11 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		cfg.TodoFile = filepath.Join(cfg.ProjectRoot, cfg.TodoFile)
 	}
 
+	// Check if TUI mode is requested
+	if *uiMode == "tui" {
+		return ui.RunTUI(ctx, cfg, cfg.TodoFile, ui.WithRunLoop(true))
+	}
+
 	// Create and run loop
 	l, err := loop.New(cfg, cfg.ProjectRoot)
 	if err != nil {
@@ -168,6 +177,31 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	}
 
 	return l.Run(ctx)
+}
+
+// tuiCommand launches the TUI.
+func tuiCommand(ctx context.Context, cfg *config.Config, args []string) error {
+	// Parse tui-specific flags
+	fs := flag.NewFlagSet("looper tui", flag.ContinueOnError)
+	runLoop := fs.Bool("run", false, "Run the loop in the background")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[1:])
+	}
+	todoPath := cfg.TodoFile
+	if len(remaining) == 1 {
+		todoPath = remaining[0]
+	}
+	if !filepath.IsAbs(todoPath) {
+		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
+	}
+
+	return ui.RunTUI(ctx, cfg, todoPath, ui.WithRunLoop(*runLoop))
 }
 
 // doctorCommand checks dependencies, config, prompts, and task file validity.
@@ -563,6 +597,7 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  run [file]    Run the loop (default command)")
+	fmt.Fprintln(w, "  tui [file]    Launch terminal UI")
 	fmt.Fprintln(w, "  doctor [file] Check dependencies, config, and task file validity")
 	fmt.Fprintln(w, "  tail          Tail the latest log file")
 	fmt.Fprintln(w, "  ls [status] [file]  List tasks by status")
@@ -574,6 +609,8 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fs.PrintDefaults()
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Run Options (use with 'run' command):")
+	fmt.Fprintln(w, "  -ui string")
+	fmt.Fprintln(w, "        UI mode (tui for terminal UI)")
 	fmt.Fprintln(w, "  -max-iterations int")
 	fmt.Fprintln(w, "        Maximum iterations (default 50)")
 	fmt.Fprintln(w, "  -schedule string")
