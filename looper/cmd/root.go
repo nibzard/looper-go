@@ -98,10 +98,18 @@ func Run(ctx context.Context, args []string) error {
 func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	// Parse any additional flags for the run command
 	fs := flag.NewFlagSet("looper run", flag.ContinueOnError)
+	devMode := config.PromptDevModeEnabled()
 	maxIter := fs.Int("max-iterations", cfg.MaxIterations, "Maximum iterations")
 	schedule := fs.String("schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
-	promptDir := fs.String("prompt-dir", cfg.PromptDir, "Prompt directory override (dev only, requires LOOPER_PROMPT_MODE=dev)")
-	printPrompt := fs.Bool("print-prompt", cfg.PrintPrompt, "Print rendered prompts before running (dev only, requires LOOPER_PROMPT_MODE=dev)")
+	var promptDir *string
+	var printPrompt *bool
+	if devMode {
+		promptDir = fs.String("prompt-dir", cfg.PromptDir, "Prompt directory override (dev only, requires LOOPER_PROMPT_MODE=dev)")
+		printPrompt = fs.Bool("print-prompt", cfg.PrintPrompt, "Print rendered prompts before running (dev only, requires LOOPER_PROMPT_MODE=dev)")
+	} else {
+		promptDir = fs.String("prompt-dir", "", "")
+		printPrompt = fs.Bool("print-prompt", false, "")
+	}
 	oddAgent := fs.String("odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule (codex|claude)")
 	evenAgent := fs.String("even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule (codex|claude)")
 	var rrAgentsStr string
@@ -130,8 +138,13 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	// Update config with parsed values
 	cfg.MaxIterations = *maxIter
 	cfg.Schedule = *schedule
-	cfg.PromptDir = *promptDir
-	cfg.PrintPrompt = *printPrompt
+	if devMode {
+		cfg.PromptDir = *promptDir
+		cfg.PrintPrompt = *printPrompt
+	} else {
+		cfg.PromptDir = ""
+		cfg.PrintPrompt = false
+	}
 	cfg.OddAgent = *oddAgent
 	cfg.EvenAgent = *evenAgent
 	if rrAgentsStr != "" {
@@ -582,12 +595,14 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  -loop-delay int")
 	fmt.Fprintln(w, "        Delay between iterations in seconds (default 0)")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Dev Options (require LOOPER_PROMPT_MODE=dev):")
-	fmt.Fprintln(w, "  -prompt-dir string")
-	fmt.Fprintln(w, "        Prompt directory override (dev only)")
-	fmt.Fprintln(w, "  -print-prompt")
-	fmt.Fprintln(w, "        Print rendered prompts before running (dev only)")
-	fmt.Fprintln(w)
+	if config.PromptDevModeEnabled() {
+		fmt.Fprintln(w, "Dev Options (require LOOPER_PROMPT_MODE=dev):")
+		fmt.Fprintln(w, "  -prompt-dir string")
+		fmt.Fprintln(w, "        Prompt directory override (dev only)")
+		fmt.Fprintln(w, "  -print-prompt")
+		fmt.Fprintln(w, "        Print rendered prompts before running (dev only)")
+		fmt.Fprintln(w)
+	}
 	fmt.Fprintln(w, "Tail Options (use with 'tail' command):")
 	fmt.Fprintln(w, "  -f, --follow")
 	fmt.Fprintln(w, "        Follow the log (like tail -f)")

@@ -35,7 +35,11 @@ type Loop struct {
 // New creates a new loop instance.
 func New(cfg *config.Config, workDir string) (*Loop, error) {
 	// Create prompt store
-	promptStore := prompts.NewStore(workDir, cfg.PromptDir)
+	promptDir := cfg.PromptDir
+	if !config.PromptDevModeEnabled() {
+		promptDir = ""
+	}
+	promptStore := prompts.NewStore(workDir, promptDir)
 
 	// Resolve todo file path
 	todoPath := cfg.TodoFile
@@ -469,7 +473,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	}
 
 	// Print prompt if dev mode is enabled
-	if l.cfg.PrintPrompt {
+	if l.cfg.PrintPrompt && config.PromptDevModeEnabled() {
 		fmt.Fprintf(os.Stdout, "\n=== Iteration %d Prompt ===\n%s\n=== End Prompt ===\n\n", iter, prompt)
 	}
 
@@ -559,7 +563,7 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 	}
 
 	// Print prompt if dev mode is enabled
-	if l.cfg.PrintPrompt {
+	if l.cfg.PrintPrompt && config.PromptDevModeEnabled() {
 		fmt.Fprintf(os.Stdout, "\n=== Review Prompt ===\n%s\n=== End Prompt ===\n\n", prompt)
 	}
 

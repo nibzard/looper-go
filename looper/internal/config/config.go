@@ -453,3 +453,8 @@ func (c *Config) GetAgentModel(agentType string) string {
 func devModeEnabled() bool {
 	return os.Getenv("LOOPER_PROMPT_MODE") == "dev"
 }
+
+// PromptDevModeEnabled reports whether prompt development options are enabled.
+func PromptDevModeEnabled() bool {
+	return devModeEnabled()
+}
