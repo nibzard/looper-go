@@ -259,12 +259,31 @@ Minimal example:
     {
       "id": "T1",
       "title": "Add README",
+      "description": "Create a comprehensive README documenting the project setup and usage.",
+      "reference": "README.md",
       "priority": 1,
       "status": "todo"
     }
   ]
 }
 ```
+
+### Task Fields
+
+- `id` (required) - Unique task identifier (e.g., "T1", "T002")
+- `title` (required) - Concise, actionable summary
+- `description` (optional) - Detailed explanation of what the task involves
+- `reference` (optional) - Relevant file paths, URLs, or documentation links
+- `priority` (required) - 1-5, where 1 is highest priority
+- `status` (required) - One of: "todo", "doing", "blocked", "done"
+- `details` (optional) - Additional implementation notes or constraints
+- `steps` (optional) - Array of specific sub-steps for complex tasks
+- `blockers` (optional) - Array of blocking reasons when status is "blocked"
+- `tags` (optional) - Array of category labels (e.g., "cli", "agents")
+- `files` (optional) - Array of files this task will modify
+- `depends_on` (optional) - Array of task IDs this task depends on
+- `created_at` (optional) - ISO 8601 timestamp
+- `updated_at` (optional) - ISO 8601 timestamp
 
 ## Logs and Output
 

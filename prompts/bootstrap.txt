@@ -9,8 +9,16 @@ Rules:
 - Create "{{.TodoPath}}" using the schema in "{{.SchemaPath}}".
 - Set source_files to [] since this is prompt-driven bootstrapping.
 - Break down the user's idea into specific, implementable tasks.
-- Assign each task priority (1 is highest).
-- Set all task statuses to "todo".
+- For each task, provide:
+  - title: A concise, actionable summary (required)
+  - description: A detailed explanation of what the task involves (recommended)
+  - reference: Relevant file paths, URLs, or documentation links (recommended)
+  - priority: 1-5 (1 is highest)
+  - status: "todo" for all new tasks
+  - details: Any additional implementation notes or constraints (optional)
+  - steps: An array of specific sub-steps if the task is complex (optional)
+  - tags: Relevant categories like "cli", "agents", "config", etc. (optional)
+  - files: Files this task will modify (optional)
 - Do not modify code or other files.
 - Use jq if helpful.
 - Do not ask for confirmation.
@@ -23,8 +31,16 @@ Rules:
 - Create "{{.TodoPath}}" using the schema in "{{.SchemaPath}}".
 - Populate source_files with the relative paths (from project root) of the source docs you found. If none, set source_files to [].
 - Add as many actionable tasks that are needed to fully implement the project.
-- Assign each task priority (1 is highest).
-- Set all task statuses to "todo".
+- For each task, provide:
+  - title: A concise, actionable summary (required)
+  - description: A detailed explanation of what the task involves (recommended)
+  - reference: Relevant file paths, URLs, or documentation links (recommended)
+  - priority: 1-5 (1 is highest)
+  - status: "todo" for all new tasks
+  - details: Any additional implementation notes or constraints (optional)
+  - steps: An array of specific sub-steps if the task is complex (optional)
+  - tags: Relevant categories like "cli", "agents", "config", etc. (optional)
+  - files: Files this task will modify (optional)
 - Do not modify code or other files.
 - Use jq if helpful.
 - Do not ask for confirmation.

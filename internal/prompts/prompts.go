@@ -48,6 +48,8 @@ const bundledTodoSchema = `{
         "properties": {
           "id": { "type": "string" },
           "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "reference": { "type": "string" },
           "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
           "status": { "type": "string", "enum": ["todo", "doing", "blocked", "done"] },
           "details": { "type": "string" },

@@ -25,18 +25,20 @@ const (
 
 // Task represents a single task in the todo list.
 type Task struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Priority  int        `json:"priority"`
-	Status    Status     `json:"status"`
-	Details   string     `json:"details,omitempty"`
-	Steps     []string   `json:"steps,omitempty"`
-	Blockers  []string   `json:"blockers,omitempty"`
-	Tags      []string   `json:"tags,omitempty"`
-	Files     []string   `json:"files,omitempty"`
-	DependsOn []string   `json:"depends_on,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	ID         string     `json:"id"`
+	Title      string     `json:"title"`
+	Description string    `json:"description,omitempty"`
+	Reference  string     `json:"reference,omitempty"`
+	Priority   int        `json:"priority"`
+	Status     Status     `json:"status"`
+	Details    string     `json:"details,omitempty"`
+	Steps      []string   `json:"steps,omitempty"`
+	Blockers   []string   `json:"blockers,omitempty"`
+	Tags       []string   `json:"tags,omitempty"`
+	Files      []string   `json:"files,omitempty"`
+	DependsOn  []string   `json:"depends_on,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
 }
 
 // IsZero returns true if the task is empty (has no ID).

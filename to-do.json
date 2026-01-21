@@ -433,8 +433,8 @@
       "id": "T030",
       "title": "Make review and other step agents configurable via TOML",
       "priority": 2,
-      "status": "todo",
-      "details": "Review is hard-coded to codex in loop.runReview, and config.ReviewAgent() always returns codex but is unused. Bootstrap currently reuses RepairAgent; there is no review/bootstrap override in config or CLI. Add config fields for review_agent and bootstrap_agent (default codex), wire them through env/flags, and use them in the loop.",
+      "status": "done",
+      "details": "Implementation was already complete in the codebase. Config fields for review_agent and bootstrap_agent exist with GetReviewAgent()/GetBootstrapAgent() methods. Environment variables LOOPER_REVIEW_AGENT and LOOPER_BOOTSTRAP_AGENT are wired. CLI flags --review-agent and --bootstrap-agent are implemented. The loop uses cfg.GetReviewAgent() in runReview() and cfg.GetBootstrapAgent() in bootstrapTodo(). Example config, tests, and docs all reflect the configurable agents. No code changes were needed - only verification that existing implementation is correct.",
       "steps": [
         "Add review_agent/bootstrap_agent to config, env vars, and flags.",
         "Use configured agents in runReview and bootstrap/repair flows.",
@@ -445,15 +445,15 @@
         "agents"
       ],
       "files": [
-        "internal/config/config.go",
-        "internal/loop/loop.go",
-        "cmd/root.go",
-        "internal/config/example.go",
-        "README.md",
         "MIGRATION.md",
-        "internal/config/config_test.go"
+        "README.md",
+        "cmd/root.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/config/example.go",
+        "internal/loop/loop.go"
       ],
-      "updated_at": "2026-01-21T08:17:18Z"
+      "updated_at": "2026-01-21T12:50:27Z"
     },
     {
       "id": "T031",
@@ -526,7 +526,7 @@
       "id": "T034",
       "title": "Add description and reference fields to the todo schema and bootstrap",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "details": "to-do.schema.json and the embedded schema in internal/prompts only include title/details; todo.Task lacks description/reference fields. Add description and reference keys to the schema and Task struct, update bootstrap prompt to populate them with richer descriptions and relevant file or URL references, and ensure validation still passes.",
       "steps": [
         "Update to-do.schema.json and the embedded schema in prompts.",
@@ -543,7 +543,8 @@
         "internal/todo/types.go",
         "prompts/bootstrap.txt",
         "README.md"
-      ]
+      ],
+      "updated_at": "2026-01-21T12:52:11Z"
     },
     {
       "id": "T035",
