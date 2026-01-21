@@ -102,13 +102,13 @@ func TestApplySummary(t *testing.T) {
 			},
 		},
 		{
-			name: "add new task",
+			name: "add new task with done status",
 			tasks: []todo.Task{
 				{ID: "T001", Title: "Existing task", Priority: 1, Status: todo.StatusDone},
 			},
 			summary: &agents.Summary{
 				TaskID:  "T002",
-				Status:  "skipped",
+				Status:  "done",
 				Summary: "New task from review",
 			},
 			wantErr: false,
@@ -117,14 +117,54 @@ func TestApplySummary(t *testing.T) {
 				if task == nil {
 					t.Fatal("Task T002 not found")
 				}
-				if task.Status != todo.StatusTodo {
-					t.Errorf("Task status = %q, want %q", task.Status, todo.StatusTodo)
+				if task.Status != todo.StatusDone {
+					t.Errorf("Task status = %q, want %q", task.Status, todo.StatusDone)
 				}
 				if task.Title != "New task from review" {
 					t.Errorf("Task title = %q, want %q", task.Title, "New task from review")
 				}
 				if task.Priority != 2 {
 					t.Errorf("Task priority = %d, want 2", task.Priority)
+				}
+			},
+		},
+		{
+			name: "skipped summary does not reset existing task",
+			tasks: []todo.Task{
+				{
+					ID:       "T001",
+					Title:    "Test task",
+					Priority: 1,
+					Status:   todo.StatusDone,
+					Details:  "Already done",
+					Files:    []string{"file.go"},
+					Blockers: []string{"waiting on T002"},
+				},
+			},
+			summary: &agents.Summary{
+				TaskID:   "T001",
+				Status:   "skipped",
+				Summary:  "Ignored summary",
+				Files:    []string{"new.go"},
+				Blockers: []string{"new blocker"},
+			},
+			wantErr: false,
+			verifyFn: func(t *testing.T, f *todo.File) {
+				task := f.GetTask("T001")
+				if task == nil {
+					t.Fatal("Task T001 not found")
+				}
+				if task.Status != todo.StatusDone {
+					t.Errorf("Task status = %q, want %q", task.Status, todo.StatusDone)
+				}
+				if task.Details != "Already done" {
+					t.Errorf("Task details = %q, want %q", task.Details, "Already done")
+				}
+				if len(task.Files) != 1 || task.Files[0] != "file.go" {
+					t.Errorf("Task files = %v, want [file.go]", task.Files)
+				}
+				if len(task.Blockers) != 1 || task.Blockers[0] != "waiting on T002" {
+					t.Errorf("Task blockers = %v, want [waiting on T002]", task.Blockers)
 				}
 			},
 		},
@@ -228,7 +268,6 @@ func TestApplySummaryStatusMapping(t *testing.T) {
 	}{
 		{"done", todo.StatusDone},
 		{"blocked", todo.StatusBlocked},
-		{"skipped", todo.StatusTodo},
 	}
 
 	for _, st := range statusTests {

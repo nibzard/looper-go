@@ -274,11 +274,12 @@
       "title": "Implement optional TUI (Bubble Tea) behind --ui tui or looper tui",
       "priority": 5,
       "status": "done",
-      "updated_at": "2026-01-21T01:29:38Z",
+      "updated_at": "2026-01-21T01:30:31Z",
       "files": [
-        "looper/internal/ui/tui.go",
         "looper/go.mod",
-        "looper/go.sum"
+        "looper/go.sum",
+        "looper/internal/ui/tui.go",
+        "to-do.json"
       ],
       "details": "Implemented Bubble Tea TUI for the optional --ui tui mode and looper tui command, with loop status updates and periodic refresh."
     },
@@ -292,6 +293,273 @@
         "looper/MIGRATION.md",
         "looper/README.md",
         "to-do.json"
+      ]
+    },
+    {
+      "id": "T023",
+      "title": "Skip apply-summary when status is skipped",
+      "priority": 2,
+      "status": "done",
+      "details": "ApplySummary should no-op for skipped summaries to avoid resetting task state; add a regression test to match shell behavior.",
+      "files": [
+        "looper/internal/loop/loop.go",
+        "looper/internal/loop/loop_test.go"
+      ],
+      "updated_at": "2026-01-21T07:42:59Z"
+    },
+    {
+      "id": "T024",
+      "title": "Use numeric-aware task ID ordering for selection and ls",
+      "priority": 3,
+      "status": "todo",
+      "details": "Match shell id_sort_key behavior so IDs like T2 sort before T10; update SelectTask and ls ordering tests.",
+      "files": [
+        "looper/internal/todo/types.go",
+        "looper/internal/todo/types_test.go",
+        "looper/cmd/root.go"
+      ]
+    },
+    {
+      "id": "T025",
+      "title": "Merge summary files/blockers when applying summaries",
+      "priority": 3,
+      "status": "todo",
+      "details": "Preserve existing task files/blockers by appending unique entries instead of overwriting; add coverage.",
+      "files": [
+        "looper/internal/loop/loop.go",
+        "looper/internal/loop/loop_test.go"
+      ]
+    },
+    {
+      "id": "T026",
+      "title": "Allow a user prompt argument to drive bootstrap (looper \"...\")",
+      "priority": 2,
+      "status": "todo",
+      "details": "CLI currently treats a non-flag argument as a subcommand or an existing todo path only (cmd/root.go), so a free-form prompt is rejected. Bootstrap uses prompts/bootstrap.txt, which always instructs scanning markdown docs, and prompts.Data has no user-prompt field; loop.bootstrapTodo only passes paths. Add a prompt input (positional or --prompt) that is injected into the bootstrap prompt, and update the prompt to brainstorm the user idea before emitting to-do.json, skipping markdown scanning when a prompt is provided.",
+      "steps": [
+        "Extend CLI parsing to accept a prompt string without conflicting with todo file args.",
+        "Add a user_prompt field to prompt data and render it in bootstrap templates.",
+        "Revise the bootstrap prompt to brainstorm and expand the user idea into tasks.",
+        "Add tests and docs for prompt-driven bootstrapping."
+      ],
+      "tags": [
+        "bootstrap",
+        "cli",
+        "prompts"
+      ],
+      "files": [
+        "looper/cmd/root.go",
+        "looper/internal/loop/loop.go",
+        "looper/internal/prompts/prompts.go",
+        "looper/internal/prompts/prompts_test.go",
+        "looper/prompts/bootstrap.txt",
+        "looper/README.md"
+      ]
+    },
+    {
+      "id": "T027",
+      "title": "Add `looper push` to run a release workflow via the agent",
+      "priority": 3,
+      "status": "todo",
+      "details": "The release runbook skill already exists under looper/skills/release-runbook (scripts/release.sh), but there is no CLI command that uses it. Add a push subcommand that checks for gh and git, creates a repo/remote if gh is present and no remote exists, and runs an agent with a prompt that instructs using the release-runbook skill to cut a release and push commits. Fail gracefully when gh is missing.",
+      "steps": [
+        "Add a push subcommand and a dedicated prompt for the release flow.",
+        "Check gh/git availability and initialize a GitHub repo if possible.",
+        "Run the agent and capture logs; update docs and help text."
+      ],
+      "tags": [
+        "cli",
+        "release",
+        "git"
+      ],
+      "files": [
+        "looper/cmd/root.go",
+        "looper/internal/prompts/prompts.go",
+        "looper/skills/release-runbook/SKILL.md",
+        "looper/skills/release-runbook/scripts/release.sh",
+        "looper/README.md"
+      ]
+    },
+    {
+      "id": "T028",
+      "title": "Make looper run cleanly on Windows",
+      "priority": 2,
+      "status": "todo",
+      "details": "Go code is mostly portable, but several pieces assume Unix: install/uninstall scripts and docs reference bash and ~/.local/bin, agents.ValidateBinary checks unix execute bits, and path expansion only handles ~/ prefixes. Audit and update Windows behavior, including binary validation and path handling, and document Windows install/run steps.",
+      "steps": [
+        "Audit OS-specific assumptions in config, agents, logging, and hooks.",
+        "Adjust path expansion and binary validation for Windows.",
+        "Update README and build/install guidance for Windows."
+      ],
+      "tags": [
+        "windows",
+        "compat"
+      ],
+      "files": [
+        "looper/internal/agents/agents.go",
+        "looper/internal/config/config.go",
+        "looper/internal/logging/logging.go",
+        "looper/README.md",
+        "looper/Makefile",
+        "looper/install.sh",
+        "looper/uninstall.sh"
+      ]
+    },
+    {
+      "id": "T029",
+      "title": "Add shell auto-completion for looper commands",
+      "priority": 4,
+      "status": "todo",
+      "details": "The CLI has no completion output or install instructions. Add a completion subcommand that emits bash/zsh/fish/powershell scripts and document how to install them.",
+      "steps": [
+        "Implement a completion subcommand that outputs shell scripts.",
+        "Document install steps for each shell.",
+        "Add light tests or fixtures for completion output."
+      ],
+      "tags": [
+        "cli",
+        "ux"
+      ],
+      "files": [
+        "looper/cmd/root.go",
+        "looper/README.md"
+      ]
+    },
+    {
+      "id": "T030",
+      "title": "Make review and other step agents configurable via TOML",
+      "priority": 2,
+      "status": "todo",
+      "details": "Review is hard-coded to codex in loop.runReview, and config.ReviewAgent() always returns codex but is unused. Bootstrap currently reuses RepairAgent; there is no review/bootstrap override in config or CLI. Add config fields for review_agent and bootstrap_agent (default codex), wire them through env/flags, and use them in the loop.",
+      "steps": [
+        "Add review_agent/bootstrap_agent to config, env vars, and flags.",
+        "Use configured agents in runReview and bootstrap/repair flows.",
+        "Update docs and tests to reflect configurable step agents."
+      ],
+      "tags": [
+        "config",
+        "agents"
+      ],
+      "files": [
+        "looper/internal/config/config.go",
+        "looper/internal/loop/loop.go",
+        "looper/cmd/root.go",
+        "looper/internal/config/example.go",
+        "looper/README.md",
+        "looper/MIGRATION.md"
+      ]
+    },
+    {
+      "id": "T031",
+      "title": "Refactor agents into a composable/registry model",
+      "priority": 3,
+      "status": "todo",
+      "details": "Agent types are hard-coded (AgentType enum, fixed AgentConfig struct, schedule validation only accepts codex/claude). This blocks adding new agent CLIs like opencode or ampcode. Introduce an agent registry and map-based config so schedules and steps can reference any registered agent.",
+      "steps": [
+        "Define an agent registry and runner interface.",
+        "Replace fixed agent config with a map or list of agents in TOML.",
+        "Update scheduling/validation and add tests for new agents."
+      ],
+      "tags": [
+        "agents",
+        "architecture"
+      ],
+      "files": [
+        "looper/internal/agents/agents.go",
+        "looper/internal/config/config.go",
+        "looper/internal/loop/loop.go",
+        "looper/cmd/root.go",
+        "looper/internal/agents/agents_test.go"
+      ]
+    },
+    {
+      "id": "T032",
+      "title": "Add codex reasoning (and extra args) to agent config",
+      "priority": 3,
+      "status": "todo",
+      "details": "Shell looper supports CODEX_REASONING_EFFORT and passes -c model_reasoning_effort=... to codex; the Go config only supports binary/model. Add a codex reasoning field (and optionally generic args) in TOML/env/flags and pass it to the codex runner without impacting Claude.",
+      "steps": [
+        "Extend agent config with a reasoning/extra-args option for codex.",
+        "Pass the reasoning flag to the codex command invocation.",
+        "Update docs and tests to cover the new config."
+      ],
+      "tags": [
+        "agents",
+        "config"
+      ],
+      "files": [
+        "looper/internal/config/config.go",
+        "looper/internal/agents/agents.go",
+        "looper/cmd/root.go",
+        "looper/internal/config/example.go",
+        "looper/README.md"
+      ]
+    },
+    {
+      "id": "T033",
+      "title": "Support user-scoped config in ~/.looper",
+      "priority": 3,
+      "status": "todo",
+      "details": "findConfigFile only checks the current directory for looper.toml/.looper.toml. Add a user-level config location (for example ~/.looper/looper.toml or an OS-specific config dir) with lower precedence than project config.",
+      "steps": [
+        "Add a user config search path and merge order.",
+        "Document the new location and precedence rules.",
+        "Add tests for config discovery order."
+      ],
+      "tags": [
+        "config"
+      ],
+      "files": [
+        "looper/internal/config/config.go",
+        "looper/internal/config/example.go",
+        "looper/README.md",
+        "looper/MIGRATION.md"
+      ]
+    },
+    {
+      "id": "T034",
+      "title": "Add description and reference fields to the todo schema and bootstrap",
+      "priority": 2,
+      "status": "todo",
+      "details": "to-do.schema.json and the embedded schema in internal/prompts only include title/details; todo.Task lacks description/reference fields. Add description and reference keys to the schema and Task struct, update bootstrap prompt to populate them with richer descriptions and relevant file or URL references, and ensure validation still passes.",
+      "steps": [
+        "Update to-do.schema.json and the embedded schema in prompts.",
+        "Extend todo.Task and validation to include description/reference.",
+        "Revise bootstrap prompt and docs to fill the new fields."
+      ],
+      "tags": [
+        "schema",
+        "bootstrap"
+      ],
+      "files": [
+        "to-do.schema.json",
+        "looper/internal/prompts/prompts.go",
+        "looper/internal/todo/types.go",
+        "looper/prompts/bootstrap.txt",
+        "looper/README.md"
+      ]
+    },
+    {
+      "id": "T035",
+      "title": "Run git init before bootstrap when enabled",
+      "priority": 2,
+      "status": "todo",
+      "details": "cfg.GitInit is already available via config/env/flags, but the Go loop never runs git init; README says auto-init is not supported. Implement git init (like the shell ensure_git_repo) before bootstrap or the first iteration when git_init is true, and keep a clean fallback when git is missing.",
+      "steps": [
+        "Add a git init check when GitInit is true and git is available.",
+        "Handle non-git directories gracefully (warn and continue).",
+        "Update docs and tests for the new default behavior."
+      ],
+      "tags": [
+        "git",
+        "bootstrap"
+      ],
+      "files": [
+        "looper/internal/loop/loop.go",
+        "looper/internal/config/config.go",
+        "looper/cmd/root.go",
+        "looper/README.md",
+        "looper/MIGRATION.md"
       ]
     }
   ]

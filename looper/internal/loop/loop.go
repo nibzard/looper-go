@@ -613,6 +613,10 @@ func (l *Loop) applySummary(summary *agents.Summary) error {
 		return fmt.Errorf("summary validation failed: %w", err)
 	}
 
+	if summary.Status == "skipped" {
+		return nil
+	}
+
 	// Map status
 	var status todo.Status
 	switch summary.Status {
