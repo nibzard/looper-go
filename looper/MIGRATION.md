@@ -1,295 +1,265 @@
-# Go Rewrite Migration Spec
+# Migration Guide: Shell to Go
 
-This document specifies a full rewrite of Looper in Go. It is deliberately
-opinionated: the loop is the product, prompts are the value, and everything
-else (UX, devex, observability) is support.
+This document describes the completed migration from the original shell script implementation (`looper.sh`) to the Go binary (`looper`).
 
-## Principles
+## Status: Complete
 
-- The loop is all you need. Everything else is UX, devex, and observability.
-- Prompts are the primary product surface, but they are internal assets. End
-  users should not see or edit prompts by default.
-- Keep the system simple and robust, not over-engineered.
-- Assume AI agents can self-heal and repair tasks; provide guardrails, not rigid
-  bureaucracy.
-- Breaking changes are acceptable if they improve the product.
+The Go rewrite is **complete and production-ready**. The shell script version (`looper.sh`) has been fully replaced by the Go binary.
 
-## Goals
+## Breaking Changes
 
-- Full rewrite in Go with a clean, testable core.
-- Prompts as first-class assets with simple templating (developer-editable,
-  user-hidden).
-- Deterministic task selection and summary application.
-- Clear, structured logging and tailing.
-- Optional TUI that adds real observability value (not required).
+### CLI Command Structure
 
-## Non-Goals
-
-- Backward compatibility with existing CLI flags/env vars.
-- Preserving the shell script implementation.
-- Building a complex UI or plugin ecosystem.
-- Writing prompts into user repos or exposing them by default.
-
-## Architecture Overview
-
-High-level data flow:
-
-1) Load config + prompts
-2) Load/validate to-do.json
-3) Select task
-4) Render prompt
-5) Run agent
-6) Parse summary
-7) Update tasks + logs
-8) Repeat or review
-
-Core packages (Go modules):
-
-- `cmd/looper`: CLI entrypoint and subcommands
-- `internal/config`: config loading + defaults (flags, env, config file)
-- `internal/prompts`: prompt store + templating renderer
-- `internal/todo`: schema, parsing, selection, and updates
-- `internal/loop`: orchestration state machine
-- `internal/agents`: codex/claude runners
-- `internal/logging`: JSONL log writer + tail support
-- `internal/hooks`: hook invocation
-- `internal/ui`: optional TUI (Bubble Tea)
-
-## CLI Spec (breaking changes allowed)
-
-Primary commands:
-
-- `looper run [path]`: run the loop (default)
-- `looper doctor [path]`: validate deps + task file
-- `looper tail [--follow]`: tail last log
-- `looper ls <status> [path]`: list tasks by status
-- `looper version`
-
-Core flags (illustrative):
-
-- `--todo <path>`: task file (default: `to-do.json`)
-- `--prompt-dir <path>`: prompt directory override (dev-only, hidden)
-- `--max-iterations <n>`
-- `--agent <codex|claude|schedule>`
-- `--schedule <codex|claude|odd-even|round-robin>`
-- `--review-agent <codex|claude>`
-- `--repair-agent <codex|claude>`
-- `--log-dir <path>`
-- `--apply-summary <true|false>`
-- `--ui <none|tui>`
-
-## Prompt System (first-class)
-
-### Storage
-
-Prompts live as files in an internal directory, editable by developers:
-
-```
-prompts/
-  bootstrap.txt
-  repair.txt
-  iteration.txt
-  review.txt
-  summary.schema.json
+**Before (shell):**
+```bash
+./looper.sh                      # Run loop
+./looper.sh --ls todo            # List tasks
+./looper.sh --tail --follow      # Tail logs
+./looper.sh --doctor             # Check dependencies
 ```
 
-Prompts are shipped with the binary and loaded from an internal location
-(for example `$XDG_DATA_HOME/looper/prompts` or embedded). Developers can
-override with a hidden `--prompt-dir` or `LOOPER_PROMPT_DIR`.
-
-### Rendering
-
-Use Go `text/template` with strict missing key behavior. Keep variables minimal:
-
-- `{{.TodoPath}}`
-- `{{.SchemaPath}}`
-- `{{.WorkDir}}`
-- `{{.SelectedTask.ID}}`
-- `{{.SelectedTask.Title}}`
-- `{{.SelectedTask.Status}}`
-- `{{.Iteration}}`
-- `{{.Schedule}}`
-- `{{.Now}}` (UTC timestamp)
-
-### Visibility
-
-Prompts are not exposed by default. Only developers/operators should access
-them via an internal override path. Prompt contents are never written into user
-projects.
-
-#### Internal override workflow (dev-only)
-
-Two safe options for prompt iteration without exposing prompts to end users:
-
-1) **Build tag gate**
-   - Enable `--prompt-dir` and `--print-prompt` only when compiled with a
-     `devprompts` build tag.
-   - Production builds omit those flags entirely.
-
-2) **Env gate**
-   - Enable overrides only when `LOOPER_PROMPT_MODE=dev` is set.
-   - In normal usage, the flags are ignored or hidden from help output.
-
-### Design Rules
-
-- Prompts are plain text files, not compiled into code (unless embedded for
-  distribution).
-- Keep them short and focused.
-- Defaults ship with the binary, but are not materialized into user projects.
-
-## Task File Spec
-
-Continue using `to-do.json` with the existing schema and fields. The Go rewrite
-should:
-
-- Validate with a full JSON Schema library.
-- Provide a minimal fallback validation for schema_version/source_files/tasks.
-- Enforce status values (`todo|doing|blocked|done`).
-- Keep formatting stable (2-space indent) when writing.
-
-Selection algorithm (deterministic):
-
-1) Any task with `doing` (lowest id wins).
-2) Otherwise highest priority `todo` (priority 1 highest), tie-break by id.
-3) Otherwise highest priority `blocked`, tie-break by id.
-
-When a task is selected, set it to `doing` before running the agent.
-
-## Loop Flow Spec
-
-1) Ensure schema exists.
-2) Bootstrap `to-do.json` if missing.
-3) Validate tasks; repair via agent if invalid.
-4) While tasks remain:
-   - Select task
-   - Mark as doing
-   - Render prompt (iteration)
-   - Run agent
-   - Parse summary JSON
-   - If summary task_id mismatches selection:
-     - Warn + skip summary apply (repair flow can handle)
-   - Apply summary to task file
-5) If no tasks remain:
-   - Run review pass
-   - Append project-done if review adds no tasks
-
-## Agents
-
-Codex and Claude are adapters that execute external binaries:
-
-- `codex exec` with `--json` and `--output-last-message` when available
-- `claude` with `--output-format stream-json` and parse last message
-
-The agent layer should:
-
-- Stream logs to JSONL in a structured format
-- Surface errors and exit codes explicitly
-- Honor per-agent timeouts
-
-## Logging and Observability
-
-Log format:
-
-- JSONL with event types (assistant_message, tool, command, error, summary)
-- `last-message.json` always written when summary is expected
-
-Log layout:
-
-```
-~/.looper/<project>-<hash>/
-  <timestamp>-<pid>.jsonl
-  <timestamp>-<pid>-iter-1.last.json
+**After (Go):**
+```bash
+looper                           # Run loop (default)
+looper ls todo                   # List tasks
+looper tail --follow             # Tail logs
+looper doctor                    # Check dependencies
 ```
 
-Observability goals:
+The shell script used single-dash flags for everything. The Go CLI uses subcommands with their own flags.
 
-- CLI shows key progress lines (task selection, summary, errors).
-- `looper tail --follow` displays the most recent activity.
+### Flag Changes
 
-## Optional TUI (Charm)
+| Shell Flag | Go Equivalent | Notes |
+|------------|---------------|-------|
+| `--ls` | `ls [status]` | Now a subcommand, status is positional or via `--status` |
+| `--tail` | `tail` | Now a subcommand, `-f`/`--follow` still works |
+| `--doctor` | `doctor` | Now a subcommand |
+| `--interleave` | `--schedule odd-even` | Renamed for clarity |
+| `--iter-schedule` | `--schedule` | Shorter name |
+| `--odd-agent` | `--odd-agent` | Same |
+| `--even-agent` | `--even-agent` | Same |
+| `--rr-agents` | `--rr-agents` | Same |
+| `--repair-agent` | `--repair-agent` | Same |
 
-Charm stack findings (from upstream docs):
+### Configuration
 
-- **Bubble Tea**: Go TUI framework based on Elm Architecture, supports inline
-  and full-window TUIs, with a framerate-based renderer, mouse support, and
-  focus reporting. Source: https://github.com/charmbracelet/bubbletea
-- **Bubbles**: UI components (list, table, viewport, spinner, progress, help).
-  Source: https://github.com/charmbracelet/bubbles
-- **Lip Gloss**: declarative terminal styling, CSS-like, with color profile
-  handling. Source: https://github.com/charmbracelet/lipgloss
+**New:** Go version supports a `looper.toml` config file (shell had none).
 
-### Does it make sense?
+**Before:** Shell script relied entirely on environment variables.
 
-Yes, but only if it materially improves observability:
+**After:** Go version supports:
+1. Built-in defaults
+2. `looper.toml` in project directory
+3. Environment variables
+4. CLI flags
 
-- Live task list with statuses
-- Real-time log tail
-- Current iteration + agent status
-- Summary/result panel
+### Environment Variables
 
-The TUI must be optional:
+Most environment variables remain the same, with some additions:
 
-- Default remains CLI
-- TUI behind `--ui tui` or `looper tui`
+**New in Go:**
+- `LOOPER_LOG_DIR` - Explicit log directory override
+- `LOOPER_SCHEDULE` - Shorter alias for `LOOPER_ITER_SCHEDULE`
+- `LOOPER_HOOK` - Hook command (shell used `LOOPER_HOOK` too)
 
-Keep the TUI thin: it should subscribe to the same log stream and state as the
-CLI, not introduce separate logic.
+**Renamed/Removed:**
+- `CODEX_YOLO`, `CODEX_FULL_AUTO`, `CODEX_PROFILE`, `CODEX_PROGRESS`, `CODEX_ENFORCE_OUTPUT_SCHEMA` - These were internal Codex flags that are now handled by the agent layer.
 
-## Configuration
+### Dev Mode Changes
 
-Prefer a single config file (simple, editable) in TOML:
+**Before:** `--prompt-dir` was a regular flag.
 
+**After:** Dev-only flags require `LOOPER_PROMPT_MODE=dev` to be set. This prevents accidental exposure of prompt internals.
+
+```bash
+# Required to use these flags:
+export LOOPER_PROMPT_MODE=dev
+looper run --prompt-dir ./my-prompts --print-prompt
 ```
-looper.toml
+
+## New Features
+
+### Config File Support
+
+Create `looper.toml` in your project:
+
+```toml
+schedule = "odd-even"
+max_iterations = 100
+
+[agents.codex]
+binary = "codex"
+model = "gpt-5.2-codex"
 ```
 
-The config should cover:
+### Better Doctor Command
 
-- Paths (todo, prompt dir, log dir)
-- Agents (binary, model, flags)
-- Loop settings (max iterations, schedule)
-- Output settings (progress, json log)
+The Go `doctor` command is more comprehensive:
 
-Env vars can override config for quick use.
+- Checks all dependencies
+- Validates configuration
+- Verifies prompt files
+- Tests task file and schema
 
-## Small Feature Ideas (simple, optional)
+### Improved Ls Command
 
-- `--print-prompt` to dump the rendered prompt before running (dev-only).
-- `looper doctor` for dependency and config validation.
-- `looper prompts edit <name>` for dev builds (hidden).
+```bash
+looper ls                    # Group by status
+looper ls todo               # Filter by status
+looper ls --status doing     # Same, explicit flag
+looper ls -v                 # Verbose output with details
+```
 
-## Migration Plan (Phased)
+### Install/Uninstall Scripts
 
-1) **Foundation**
-   - Config loader + prompt renderer
-   - Task parsing + selection
-2) **Core Loop**
-   - Agent execution, summary parsing, task updates
-   - JSONL logging
-3) **Bootstrapping + Repair**
-   - Schema generation, bootstrap, repair
-4) **UX/DevEx**
-   - `doctor`, `tail`, `ls` (+ internal prompt tooling for dev builds)
-5) **Optional TUI**
-   - Bubble Tea UI reading the same logs/state
-6) **Stabilization**
-   - Integration tests and smoke tests
+The Go version has native install/uninstall via Makefile and Homebrew:
 
-## Testing Plan
+```bash
+make install     # Installs to ~/.local/bin/looper
+make uninstall   # Removes the binary
+brew install nibzard/tap/looper
+```
 
-- Unit tests for task selection and summary application.
-- Golden tests for prompt rendering.
-- Integration test with stub agent binary to simulate runs.
-- Smoke test that bootstraps a temp project and runs one iteration.
+## Behavior Changes
 
-## Risks and Mitigations
+### Deterministic Round-Robin
 
-- **Prompt drift**: keep prompts in files and version them.
-- **Agent mismatch**: enforce summary/task ID checks.
-- **Complexity creep**: keep TUI optional and thin.
-- **Schema rigidity**: support self-healing repair flows.
+The Go version normalizes agent names and schedules more strictly:
 
-## Open Questions
+- Schedules are normalized: `odd_even` → `odd-even`, `round_robin` → `round-robin`
+- Agent names are case-insensitive: `Claude` → `claude`
+- Empty agent lists in round-robin now default to `claude,codex` consistently
 
-- Should prompts be embedded in the binary or loaded from a packaged data dir?
-- Should dev-only prompt editing be a build tag or a hidden flag?
+### Review Agent
+
+**Before:** Shell used whatever agent was configured for iterations.
+
+**After:** Go version **always uses Codex for the review pass**, regardless of iteration schedule. This is intentional per the migration spec.
+
+### Log Output
+
+The log format is similar (JSONL), but the Go version may have slight differences in event naming. The overall structure remains compatible.
+
+## Migration Steps
+
+### 1. Install the Go Binary
+
+```bash
+# From source
+cd /path/to/looper-go/looper
+make install
+
+# Via Homebrew
+brew install nibzard/tap/looper
+```
+
+### 2. Update Scripts/Workflows
+
+Replace `looper.sh` calls with `looper`:
+
+**Before:**
+```bash
+./looper.sh --ls todo
+./looper.sh --tail --follow
+```
+
+**After:**
+```bash
+looper ls todo
+looper tail --follow
+```
+
+### 3. Update Environment Variables
+
+If you used custom env vars, most still work. Additions like `looper.toml` are optional.
+
+### 4. Optional: Create Config File
+
+For projects that need non-default settings:
+
+```bash
+cat > looper.toml << 'EOF'
+schedule = "odd-even"
+max_iterations = 50
+repair_agent = "codex"
+
+[agents.codex]
+binary = "codex"
+
+[agents.claude]
+binary = "claude"
+EOF
+```
+
+### 5. Verify with Doctor
+
+```bash
+looper doctor
+```
+
+This will check all dependencies and configuration.
+
+### 6. Run as Normal
+
+```bash
+looper
+```
+
+## Uninstalling the Shell Version
+
+Once you've verified the Go version works:
+
+```bash
+# Remove the old shell script
+rm -f looper.sh
+rm -f ~/.codex/skills/looper
+
+# Keep your to-do.json and to-do.schema.json - they're compatible
+```
+
+## Troubleshooting
+
+### "Command not found: looper"
+
+Ensure `~/.local/bin` is on your PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add this to your `~/.bashrc` or `~/.zshrc`.
+
+### Dev Flags Not Working
+
+Dev-only flags (`--prompt-dir`, `--print-prompt`) require:
+
+```bash
+export LOOPER_PROMPT_MODE=dev
+```
+
+### Config Not Loading
+
+The Go version looks for `looper.toml` in the current working directory (not the todo file directory). Ensure you run `looper` from the project root.
+
+## Rollback
+
+If you need to revert to the shell version:
+
+1. Restore `looper.sh` from git history or backup
+2. Run `make uninstall` to remove the Go binary
+3. Use `./looper.sh` as before
+
+**Note:** The `to-do.json` format is compatible between versions.
+
+## Summary of Changes
+
+| Aspect | Shell | Go |
+|--------|-------|-----|
+| Implementation | Bash script | Compiled Go binary |
+| Commands | Flags (`--ls`, `--tail`) | Subcommands (`ls`, `tail`) |
+| Config | Env vars only | Defaults + TOML + env + flags |
+| Dev mode | Always available | Requires `LOOPER_PROMPT_MODE=dev` |
+| Review agent | Follows schedule | Always Codex |
+| Install | Manual `install.sh` | Makefile + Homebrew |
+| Platform | Unix-like only | Cross-platform |

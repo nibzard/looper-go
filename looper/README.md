@@ -1,115 +1,194 @@
 # Looper
 
-A deterministic, autonomous loop runner for the Codex CLI with optional Claude Code CLI (`claude`)
-interleaving. It processes exactly
+A deterministic, autonomous loop runner for AI agents (Codex, Claude). It processes exactly
 one task per iteration from a JSON backlog, with fresh context each run, and
 keeps a JSONL audit log for traceability.
 
 ## Quick Start
+
 ```bash
-./install.sh
-looper.sh
+make install
+looper
 ```
 
 If `to-do.json` is missing, Looper bootstraps it from project docs, validates it
 against `to-do.schema.json`, and repairs it if needed.
 
 ## What It Does
+
 - Bootstraps `to-do.json` and `to-do.schema.json` if missing.
-- Validates `to-do.json` (jsonschema if available, jq fallback).
-- Repairs invalid task files via Codex or `claude`.
+- Validates `to-do.json` (using JSON Schema when available).
+- Repairs invalid task files via configured agent (Codex or Claude).
 - Runs one task per iteration (doing > todo > blocked).
-- When tasks are exhausted, runs a review pass; it must append a final
+- When tasks are exhausted, runs a review pass; appends a final
   `project-done` marker task if no new work is found.
-- Supports interleaving `claude` for iterations while keeping Codex for review.
+- Supports multiple iteration schedules (Codex, Claude, odd-even, round-robin).
 - Enforces JSON output from the model and logs JSONL per run.
 - Optionally applies model summaries back into `to-do.json`.
 
 ## Install
+
+### From source
+
 ```bash
-./install.sh
+make install
 ```
 
-Common options:
+The binary is installed to `~/.local/bin/looper` by default.
+
+### Uninstall
+
 ```bash
-./install.sh --codex-home ~/.codex
-./install.sh --prefix /opt/looper
-./install.sh --skip-skills
+make uninstall
 ```
 
-Tip: If `~/.local/bin` is not on PATH, add it to your shell profile.
+### Homebrew
 
-## Homebrew
 ```bash
-brew install <tap>/looper
-looper-install --skip-bin
+brew install nibzard/tap/looper
 ```
-
-`looper-install` installs skills into `~/.codex/skills` by default.
 
 ## Usage
+
 ```bash
-looper.sh [to-do.json]
-looper.sh --ls todo [to-do.json]
-looper.sh --tail --follow
-looper.sh --doctor [to-do.json]
-looper.sh --interleave
-looper.sh --iter-schedule odd-even
-looper.sh --iter-schedule round-robin --rr-agents claude,codex
+# Run the loop (default command)
+looper
+
+# Run with specific todo file
+looper run path/to/tasks.json
+
+# Run with specific schedule
+looper run --schedule odd-even
+
+# List tasks by status
+looper ls
+looper ls todo
+looper ls --status doing path/to/tasks.json
+
+# Tail the latest log
+looper tail
+looper tail --follow
+
+# Check dependencies and configuration
+looper doctor
+
+# Show version
+looper version
 ```
 
-## Interleaving
-`--interleave` runs iterations with `claude` and keeps the
-final review pass on Codex. Iteration schedules are configurable:
+## Iteration Schedules
 
-- `--iter-schedule codex` (default)
-- `--iter-schedule claude`
-- `--iter-schedule odd-even` (odd uses Codex, even uses `claude`)
-- `--iter-schedule round-robin` (uses `--rr-agents`, default `claude,codex`)
+Looper supports multiple iteration schedules for balancing agent usage:
 
-`claude` runs with `--dangerously-skip-permissions` and `--output-format json`.
+- `--schedule codex` (default) - All iterations use Codex
+- `--schedule claude` - All iterations use Claude
+- `--schedule odd-even` - Odd iterations use Codex, even use Claude
+- `--schedule round-robin` - Rotate through a list of agents
 
-Optional overrides:
-```
---odd-agent <codex|claude>
---even-agent <codex|claude>
---rr-agents <comma-separated list>
---repair-agent <codex|claude>
-```
+### Schedule Options
 
-`--interleave` also defaults repair to `claude`; use `--repair-agent codex` to keep Codex.
-
-### Examples
-
-Use Claude for all iterations, Codex for review:
+**Odd-even schedule:**
 ```bash
-looper.sh --interleave
+looper run --schedule odd-even
+looper run --schedule odd-even --odd-agent claude --even-agent codex
 ```
 
-Alternate between Codex (odd) and Claude (even):
+**Round-robin schedule:**
 ```bash
-looper.sh --interleave --iter-schedule odd-even
-```
+# Default: claude,codex pattern
+looper run --schedule round-robin
 
-Flip the pattern (Claude on odd, Codex on even):
-```bash
-looper.sh --interleave --iter-schedule odd-even --odd-agent claude --even-agent codex
-```
-
-Round-robin through multiple agents:
-```bash
-looper.sh --interleave --iter-schedule round-robin --rr-agents claude,codex,claude,codex
-```
-
-Custom pattern (2x Claude, then Codex, repeating):
-```bash
-looper.sh --iter-schedule round-robin --rr-agents claude,claude,codex
-# Pattern: claude → claude → codex → claude → claude → codex → ...
+# Custom pattern (2x Claude, then Codex, repeating)
+looper run --schedule round-robin --rr-agents claude,claude,codex
 ```
 
 **Note:** The final review pass always uses Codex, regardless of iteration schedule.
 
+### Repair Agent
+
+The agent used for repair operations can be configured independently:
+
+```bash
+looper run --repair-agent claude
+```
+
+## Configuration
+
+Looper uses a configuration hierarchy (lower values override higher):
+
+1. Built-in defaults
+2. Config file (`looper.toml` in current directory)
+3. Environment variables
+4. CLI flags
+
+### Config File
+
+Create `looper.toml` in your project directory:
+
+```toml
+# Paths
+todo_file = "to-do.json"
+schema_file = "to-do.schema.json"
+log_dir = "~/.looper"
+
+# Loop settings
+max_iterations = 50
+schedule = "codex"  # codex|claude|odd-even|round-robin
+repair_agent = "codex"
+
+# Odd-even schedule options
+odd_agent = "codex"   # agent for odd iterations
+even_agent = "claude" # agent for even iterations
+
+# Round-robin schedule options
+rr_agents = ["claude", "codex"]  # agent rotation list
+
+# Agents
+[agents.codex]
+binary = "codex"
+model = ""
+
+[agents.claude]
+binary = "claude"
+model = ""
+
+# Output
+apply_summary = true
+
+# Git
+git_init = true
+
+# Hooks
+hook_command = "/path/to/hook.sh"
+
+# Delay between iterations
+loop_delay_seconds = 0
+```
+
+### Environment Variables
+
+- `LOOPER_TODO` - Task file path (default: `to-do.json`)
+- `LOOPER_SCHEMA` - Schema file path
+- `LOOPER_BASE_DIR` / `LOOPER_LOG_DIR` - Log directory
+- `LOOPER_MAX_ITERATIONS` - Maximum iterations
+- `LOOPER_ITER_SCHEDULE` / `LOOPER_SCHEDULE` - Iteration schedule
+- `LOOPER_REPAIR_AGENT` - Agent for repair operations
+- `LOOPER_ITER_ODD_AGENT` - Agent for odd iterations
+- `LOOPER_ITER_EVEN_AGENT` - Agent for even iterations
+- `LOOPER_ITER_RR_AGENTS` - Comma-separated agent list for round-robin
+- `LOOPER_APPLY_SUMMARY` - Apply summaries to task file (1/0)
+- `LOOPER_GIT_INIT` - Initialize git repo if missing (1/0)
+- `LOOPER_HOOK` - Hook command to run after each iteration
+- `LOOPER_LOOP_DELAY` - Delay between iterations (seconds)
+- `CODEX_BIN` / `CLAUDE_BIN` - Agent binary paths
+- `CODEX_MODEL` / `CLAUDE_MODEL` - Model selection
+
+### CLI Flags
+
+Run `looper help` or `looper run --help` for a complete list of flags.
+
 ## Task File (to-do.json)
+
 `to-do.json` is the source of truth for the loop and must match
 `to-do.schema.json`. The loop chooses a single task each iteration:
 
@@ -118,6 +197,7 @@ looper.sh --iter-schedule round-robin --rr-agents claude,claude,codex
 3) Otherwise, highest priority `blocked`
 
 Minimal example:
+
 ```json
 {
   "schema_version": 1,
@@ -134,70 +214,71 @@ Minimal example:
 ```
 
 ## Logs and Output
+
 Logs are stored per project under:
+
 ```
 ~/.looper/<project>-<hash>/
 ```
 
 Each run produces:
-- `<timestamp>-<pid>.jsonl` full JSONL trace
-- `<timestamp>-<pid>-<label>.last.json` the last assistant message
 
-`looper.sh --tail --follow` watches the latest run in real time.
+- `<timestamp>-<pid>.jsonl` - Full JSONL trace
+- `<timestamp>-<pid>-<label>.last.json` - The last assistant message
+
+`looper tail --follow` watches the latest run in real time.
 
 ## Hooks
-Set `LOOPER_HOOK` to run a script after each iteration:
-```
-LOOPER_HOOK=/path/to/hook.sh
-```
 
-The hook receives:
-```
-<task_id> <status> <last_message_json> <label>
-```
+Set the `hook_command` in config or use `--hook` / `LOOPER_HOOK` to run a script after each iteration.
 
-## Configuration
-Environment variables (defaults in parentheses):
+The hook receives these arguments:
 
-- `MAX_ITERATIONS` (50)
-- `CODEX_MODEL` (gpt-5.2-codex)
-- `CODEX_REASONING_EFFORT` (xhigh)
-- `CODEX_YOLO` (1)
-- `CODEX_FULL_AUTO` (0)
-- `CODEX_PROFILE` (empty)
-- `CODEX_JSON_LOG` (1)
-- `CODEX_PROGRESS` (1)
-- `CODEX_ENFORCE_OUTPUT_SCHEMA` (0)
-- `CLAUDE_BIN` (claude)
-- `CLAUDE_MODEL` (empty)
-- `LOOPER_ITER_SCHEDULE` (codex)
-- `LOOPER_ITER_ODD_AGENT` (codex)
-- `LOOPER_ITER_EVEN_AGENT` (claude)
-- `LOOPER_ITER_RR_AGENTS` (claude,codex)
-- `LOOPER_REPAIR_AGENT` (codex)
-- `LOOPER_INTERLEAVE` (0)
-- `LOOPER_BASE_DIR` (~/.looper)
-- `LOOPER_APPLY_SUMMARY` (1)
-- `LOOPER_GIT_INIT` (1)
-- `LOOPER_HOOK` (empty)
-- `LOOP_DELAY_SECONDS` (0)
+```
+<task_id> <status> <last_message_json_path> <label>
+```
 
 ## Git Behavior
-If the project is not a git repo and `LOOPER_GIT_INIT=1`, Looper runs `git init`.
-If git is unavailable or init fails, Codex runs with `--skip-git-repo-check`.
 
-## Included Skills
-This repo ships a small, focused skills bundle:
-- `git-conventional-commit`
-- `todo-json-manager`
+If the project is not a git repo and `git_init` is true, Looper runs `git init`.
+If git is unavailable or init fails, the agent runs with `--skip-git-repo-check`.
 
-They are installed into `~/.codex/skills` by default.
+## Dev Mode (Prompt Development)
 
-## Dev Notes
+For prompt development and debugging, set `LOOPER_PROMPT_MODE=dev` to enable:
+
+- `--prompt-dir` - Override the prompt directory
+- `--print-prompt` - Print rendered prompts before running
+
+Example:
+
 ```bash
-make install
-make uninstall
-make smoke
+LOOPER_PROMPT_MODE=dev looper run --print-prompt --prompt-dir ./my-prompts
 ```
 
-Everything is in `bin/looper.sh`; read its docstring for the full behavior spec.
+**Note:** Dev mode is intentionally hidden from normal usage and not shown in help output unless enabled.
+
+## Building
+
+```bash
+make build    # Build for current platform
+make test     # Run tests
+make smoke    # Run smoke test
+```
+
+## Architecture
+
+Looper is written in Go with a clean, testable core:
+
+- `cmd/looper` - CLI entrypoint
+- `internal/config` - Configuration loading
+- `internal/prompts` - Prompt store and rendering
+- `internal/todo` - Task file parsing and validation
+- `internal/loop` - Orchestration state machine
+- `internal/agents` - Codex/Claude runners
+- `internal/logging` - JSONL logging and tailing
+- `internal/hooks` - Hook invocation
+
+## Migration from Shell Version
+
+See [MIGRATION.md](MIGRATION.md) for details on migrating from the previous shell script implementation.
