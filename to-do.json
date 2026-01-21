@@ -433,7 +433,7 @@
       "id": "T030",
       "title": "Make review and other step agents configurable via TOML",
       "priority": 2,
-      "status": "done",
+      "status": "todo",
       "details": "Review is hard-coded to codex in loop.runReview, and config.ReviewAgent() always returns codex but is unused. Bootstrap currently reuses RepairAgent; there is no review/bootstrap override in config or CLI. Add config fields for review_agent and bootstrap_agent (default codex), wire them through env/flags, and use them in the loop.",
       "steps": [
         "Add review_agent/bootstrap_agent to config, env vars, and flags.",
@@ -453,7 +453,7 @@
         "looper/MIGRATION.md",
         "looper/internal/config/config_test.go"
       ],
-      "updated_at": "2026-01-21T08:13:41Z"
+      "updated_at": "2026-01-21T08:17:18Z"
     },
     {
       "id": "T031",
