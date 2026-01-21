@@ -274,14 +274,13 @@
       "title": "Implement optional TUI (Bubble Tea) behind --ui tui or looper tui",
       "priority": 5,
       "status": "done",
-      "updated_at": 1768958088.12801,
+      "updated_at": "2026-01-21T01:29:38Z",
       "files": [
-        "looper/cmd/root.go",
         "looper/internal/ui/tui.go",
-        "looper/internal/loop/loop.go",
-        "looper/go.mod"
+        "looper/go.mod",
+        "looper/go.sum"
       ],
-      "details": "TUI implementation complete with looper tui command and --ui tui flag. Includes basic terminal UI viewer with task overview, current task display, recent activity, and config summary. RunWithStatus method in loop package enables background loop execution with status updates."
+      "details": "Implemented Bubble Tea TUI for the optional --ui tui mode and looper tui command, with loop status updates and periodic refresh."
     },
     {
       "id": "T022",

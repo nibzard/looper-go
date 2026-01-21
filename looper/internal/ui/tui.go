@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/nibzard/looper/internal/config"
 	"github.com/nibzard/looper/internal/loop"
 	"github.com/nibzard/looper/internal/todo"
@@ -40,6 +42,10 @@ func RunTUI(ctx context.Context, cfg *config.Config, todoPath string, opts ...TU
 		opt(c)
 	}
 
+	if !IsTTY(os.Stdout) {
+		return fmt.Errorf("tui requires a TTY")
+	}
+
 	if c.runLoop {
 		return runTUIWithLoop(ctx, cfg, todoPath)
 	}
@@ -48,163 +54,302 @@ func RunTUI(ctx context.Context, cfg *config.Config, todoPath string, opts ...TU
 
 // runTUIViewer runs a simple TUI viewer (basic terminal UI).
 func runTUIViewer(ctx context.Context, cfg *config.Config, todoPath string) error {
-	// Clear screen
-	fmt.Print("\x1b[2J\x1b[H")
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	// Initial render
-	if err := renderTUI(ctx, cfg, todoPath); err != nil {
-		return err
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			// Clear screen and re-render
-			fmt.Print("\x1b[2J\x1b[H")
-			if err := renderTUI(ctx, cfg, todoPath); err != nil {
-				return err
-			}
-		}
-	}
+	model := newTUIModel(cfg, todoPath, nil, false)
+	return runProgram(ctx, model)
 }
 
-// renderTUI renders the TUI to stdout.
-func renderTUI(ctx context.Context, cfg *config.Config, todoPath string) error {
-	// Resolve todo path
-	if !filepath.IsAbs(todoPath) {
-		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
-	}
+// runTUIWithLoop runs the TUI with the loop executing in background.
+func runTUIWithLoop(ctx context.Context, cfg *config.Config, todoPath string) error {
+	statusCh := make(chan loop.Status, 16)
+	go func() {
+		l, err := loop.New(cfg, cfg.ProjectRoot)
+		if err != nil {
+			statusCh <- loop.Status{Error: err}
+			close(statusCh)
+			return
+		}
+		if err := l.RunWithStatus(ctx, statusCh); err != nil {
+			// RunWithStatus already reports errors on statusCh.
+			return
+		}
+	}()
 
-	// Load todo file
-	todoFile, err := todo.Load(todoPath)
+	model := newTUIModel(cfg, todoPath, statusCh, true)
+	return runProgram(ctx, model)
+}
+
+func runProgram(ctx context.Context, model *tuiModel) error {
+	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx))
+	finalModel, err := program.Run()
 	if err != nil {
-		return fmt.Errorf("loading todo file: %w", err)
+		return err
 	}
-
-	// Render header
-	renderHeader()
-
-	// Render tasks overview
-	renderTasksOverview(todoFile)
-
-	// Render current/next task
-	renderCurrentTask(todoFile)
-
-	// Render recent activity
-	renderRecentActivity(todoFile)
-
-	// Render config summary
-	renderConfigSummary(cfg)
-
-	// Render footer
-	renderFooter()
-
+	if m, ok := finalModel.(*tuiModel); ok {
+		if m.loopErr != nil {
+			return m.loopErr
+		}
+	}
 	return nil
 }
 
-// renderHeader renders the TUI header.
-func renderHeader() {
-	title := " Looper TUI "
-	border := strings.Repeat("=", len(title)+20)
-	fmt.Printf("\x1b[1;37;44m%s\x1b[0m\n", border+title+border)
-	fmt.Println()
+type tuiModel struct {
+	cfg          *config.Config
+	todoPath     string
+	runLoop      bool
+	statusCh     <-chan loop.Status
+	loadErr      error
+	data         *tuiData
+	lastStatus   loop.Status
+	loopDone     bool
+	loopErr      error
+	tickInterval time.Duration
 }
 
-// renderTasksOverview renders the tasks overview section.
-func renderTasksOverview(todoFile *todo.File) {
-	fmt.Printf("\x1b[1;36m Task Overview \x1b[0m\n\n")
-
-	counts := map[string]int{
-		"todo":    0,
-		"doing":   0,
-		"blocked": 0,
-		"done":    0,
-	}
-
-	for _, t := range todoFile.Tasks {
-		counts[string(t.Status)]++
-	}
-
-	fmt.Printf("  \x1b[1;33m%d\x1b[0m Todo    \x1b[2m|\x1b[0m ", counts["todo"])
-	fmt.Printf("\x1b[1;33m%d\x1b[0m Doing   \x1b[2m|\x1b[0m ", counts["doing"])
-	fmt.Printf("\x1b[1;33m%d\x1b[0m Blocked \x1b[2m|\x1b[0m ", counts["blocked"])
-	fmt.Printf("\x1b[1;33m%d\x1b[0m Done\n\n", counts["done"])
+type tuiData struct {
+	counts       map[todo.Status]int
+	currentLabel string
+	currentTask  *todo.Task
+	allDone      bool
+	recent       []todo.Task
 }
 
-// renderCurrentTask renders the current or next task.
-func renderCurrentTask(todoFile *todo.File) {
-	currentTask := todoFile.FindTaskByStatus(todo.StatusDoing)
-	if currentTask != nil {
-		fmt.Printf("\x1b[1;36m Current Task \x1b[0m\n\n")
-		renderTask(currentTask, true)
-	} else {
-		nextTask := todoFile.SelectTask()
-		if nextTask != nil {
-			fmt.Printf("\x1b[1;36m Next Task \x1b[0m\n\n")
-			renderTask(nextTask, true)
-		} else {
-			fmt.Printf("\x1b[1;36m All Tasks Done! \x1b[0m\n\n")
-			fmt.Println("  No pending tasks remaining.")
+type tickMsg time.Time
+
+type statusMsg struct {
+	status loop.Status
+}
+
+type loopDoneMsg struct{}
+
+func newTUIModel(cfg *config.Config, todoPath string, statusCh <-chan loop.Status, runLoop bool) *tuiModel {
+	path := todoPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(cfg.ProjectRoot, path)
+	}
+	return &tuiModel{
+		cfg:          cfg,
+		todoPath:     path,
+		runLoop:      runLoop,
+		statusCh:     statusCh,
+		tickInterval: time.Second,
+	}
+}
+
+func (m *tuiModel) Init() tea.Cmd {
+	m.refresh()
+	cmds := []tea.Cmd{tickCmd(m.tickInterval)}
+	if m.runLoop && m.statusCh != nil {
+		cmds = append(cmds, waitForStatus(m.statusCh))
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
 		}
+	case tickMsg:
+		m.refresh()
+		return m, tickCmd(m.tickInterval)
+	case statusMsg:
+		m.lastStatus = msg.status
+		if msg.status.Error != nil {
+			m.loopErr = msg.status.Error
+			return m, tea.Quit
+		}
+		if msg.status.Status == "done" {
+			m.loopDone = true
+		}
+		if m.runLoop && m.statusCh != nil {
+			return m, waitForStatus(m.statusCh)
+		}
+	case loopDoneMsg:
+		m.loopDone = true
 	}
-	fmt.Println()
+
+	return m, nil
 }
 
-// renderRecentActivity renders recently completed tasks.
-func renderRecentActivity(todoFile *todo.File) {
-	fmt.Printf("\x1b[1;36m Recently Completed \x1b[0m\n\n")
+func (m *tuiModel) View() string {
+	var b strings.Builder
+	writeTitle(&b)
+	if m.runLoop {
+		writeStatusLine(&b, m.lastStatus, m.loopDone)
+	}
+	if m.loadErr != nil {
+		b.WriteString("Error loading todo file:\n")
+		b.WriteString("  " + m.loadErr.Error() + "\n\n")
+		writeFooter(&b, m.tickInterval)
+		return b.String()
+	}
+	if m.data == nil {
+		b.WriteString("Loading...\n\n")
+		writeFooter(&b, m.tickInterval)
+		return b.String()
+	}
 
-	// Sort tasks by updated_at descending
-	sortedTasks := make([]todo.Task, len(todoFile.Tasks))
-	copy(sortedTasks, todoFile.Tasks)
-	sort.Slice(sortedTasks, func(i, j int) bool {
-		if sortedTasks[i].UpdatedAt == nil {
+	writeOverview(&b, m.data)
+	writeCurrentTask(&b, m.data)
+	writeRecent(&b, m.data)
+	writeConfig(&b, m.cfg, m.todoPath)
+	writeFooter(&b, m.tickInterval)
+	return b.String()
+}
+
+func tickCmd(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+func waitForStatus(ch <-chan loop.Status) tea.Cmd {
+	return func() tea.Msg {
+		status, ok := <-ch
+		if !ok {
+			return loopDoneMsg{}
+		}
+		return statusMsg{status: status}
+	}
+}
+
+func (m *tuiModel) refresh() {
+	todoFile, err := todo.Load(m.todoPath)
+	if err != nil {
+		m.loadErr = err
+		m.data = nil
+		return
+	}
+	m.loadErr = nil
+	m.data = buildTUIData(todoFile)
+}
+
+func buildTUIData(todoFile *todo.File) *tuiData {
+	data := &tuiData{
+		counts: map[todo.Status]int{
+			todo.StatusTodo:    0,
+			todo.StatusDoing:   0,
+			todo.StatusBlocked: 0,
+			todo.StatusDone:    0,
+		},
+	}
+
+	for _, task := range todoFile.Tasks {
+		data.counts[task.Status]++
+	}
+
+	if current := todoFile.FindTaskByStatus(todo.StatusDoing); current != nil {
+		data.currentLabel = "Current Task"
+		data.currentTask = current
+	} else if next := todoFile.SelectTask(); next != nil {
+		data.currentLabel = "Next Task"
+		data.currentTask = next
+	} else {
+		data.currentLabel = "All Tasks Done"
+		data.allDone = true
+	}
+
+	sorted := make([]todo.Task, len(todoFile.Tasks))
+	copy(sorted, todoFile.Tasks)
+	sort.Slice(sorted, func(i, j int) bool {
+		left := sorted[i].UpdatedAt
+		right := sorted[j].UpdatedAt
+		if left == nil && right == nil {
 			return false
 		}
-		if sortedTasks[j].UpdatedAt == nil {
+		if left == nil {
+			return false
+		}
+		if right == nil {
 			return true
 		}
-		return sortedTasks[i].UpdatedAt.After(*sortedTasks[j].UpdatedAt)
+		return left.After(*right)
 	})
 
-	doneCount := 0
-	for _, t := range sortedTasks {
-		if t.Status == todo.StatusDone {
-			renderTask(&t, false)
-			doneCount++
-			if doneCount >= 5 {
-				break
-			}
+	for _, task := range sorted {
+		if task.Status != todo.StatusDone {
+			continue
+		}
+		data.recent = append(data.recent, task)
+		if len(data.recent) >= 5 {
+			break
 		}
 	}
 
-	if doneCount == 0 {
-		fmt.Println("  No completed tasks yet.")
+	return data
+}
+
+func writeTitle(b *strings.Builder) {
+	title := "Looper TUI"
+	b.WriteString(title + "\n")
+	b.WriteString(strings.Repeat("=", len(title)) + "\n\n")
+}
+
+func writeStatusLine(b *strings.Builder, status loop.Status, done bool) {
+	if status.Message != "" {
+		if status.Iteration > 0 {
+			b.WriteString(fmt.Sprintf("[Iter %d] %s\n\n", status.Iteration, status.Message))
+		} else {
+			b.WriteString(status.Message + "\n\n")
+		}
+		return
 	}
-	fmt.Println()
+	if done {
+		b.WriteString("Loop finished.\n\n")
+	}
 }
 
-// renderConfigSummary renders the configuration summary.
-func renderConfigSummary(cfg *config.Config) {
-	fmt.Printf("\x1b[1;36m Configuration \x1b[0m\n\n")
-	fmt.Printf("  Schedule:  \x1b[1m%s\x1b[0m\n", cfg.Schedule)
-	fmt.Printf("  Max Iters: \x1b[1m%d\x1b[0m\n", cfg.MaxIterations)
-	fmt.Printf("  Todo File: %s\n", cfg.TodoFile)
-	fmt.Println()
+func writeOverview(b *strings.Builder, data *tuiData) {
+	b.WriteString("Task Overview\n\n")
+	b.WriteString(fmt.Sprintf("  Todo: %d  Doing: %d  Blocked: %d  Done: %d\n\n",
+		data.counts[todo.StatusTodo],
+		data.counts[todo.StatusDoing],
+		data.counts[todo.StatusBlocked],
+		data.counts[todo.StatusDone],
+	))
 }
 
-// renderFooter renders the TUI footer with help.
-func renderFooter() {
-	fmt.Printf("\x1b[2mPress Ctrl+C to exit | Refreshing every 1 second\x1b[0m\n")
+func writeCurrentTask(b *strings.Builder, data *tuiData) {
+	b.WriteString(data.currentLabel + "\n\n")
+	if data.allDone {
+		b.WriteString("  No pending tasks remaining.\n\n")
+		return
+	}
+	if data.currentTask != nil {
+		b.WriteString(formatTask(data.currentTask, true))
+		b.WriteString("\n\n")
+		return
+	}
+	b.WriteString("  No task selected.\n\n")
 }
 
-// renderTask renders a single task.
-func renderTask(t *todo.Task, verbose bool) {
+func writeRecent(b *strings.Builder, data *tuiData) {
+	b.WriteString("Recently Completed\n\n")
+	if len(data.recent) == 0 {
+		b.WriteString("  No completed tasks yet.\n\n")
+		return
+	}
+	for _, task := range data.recent {
+		b.WriteString(formatTask(&task, false))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+}
+
+func writeConfig(b *strings.Builder, cfg *config.Config, todoPath string) {
+	b.WriteString("Configuration\n\n")
+	b.WriteString(fmt.Sprintf("  Schedule:  %s\n", cfg.Schedule))
+	b.WriteString(fmt.Sprintf("  Max Iters: %d\n", cfg.MaxIterations))
+	b.WriteString(fmt.Sprintf("  Todo File: %s\n\n", todoPath))
+}
+
+func writeFooter(b *strings.Builder, interval time.Duration) {
+	b.WriteString(fmt.Sprintf("Press q to quit | Refreshing every %s\n", interval))
+}
+
+func formatTask(t *todo.Task, verbose bool) string {
 	statusIcon := " "
 	switch t.Status {
 	case todo.StatusTodo:
@@ -214,59 +359,18 @@ func renderTask(t *todo.Task, verbose bool) {
 	case todo.StatusBlocked:
 		statusIcon = "!"
 	case todo.StatusDone:
-		statusIcon = "✓"
+		statusIcon = "x"
 	}
 
-	fmt.Printf("  %s \x1b[1m[%s]\x1b[0m (P%d) %s\n", statusIcon, t.ID, t.Priority, t.Title)
-
-	if verbose && t.Details != "" {
-		details := t.Details
-		if len(details) > 60 {
-			details = details[:57] + "..."
-		}
-		fmt.Printf("      \x1b[2m%s\x1b[0m\n", details)
+	line := fmt.Sprintf("  %s [%s] (P%d) %s", statusIcon, t.ID, t.Priority, t.Title)
+	if !verbose || t.Details == "" {
+		return line
 	}
-}
-
-// runTUIWithLoop runs the TUI with the loop executing in background.
-func runTUIWithLoop(ctx context.Context, cfg *config.Config, todoPath string) error {
-	// Create a channel for loop updates
-	statusCh := make(chan loop.Status, 10)
-
-	// Start the loop in a goroutine
-	go func() {
-		l, err := loop.New(cfg, cfg.ProjectRoot)
-		if err != nil {
-			statusCh <- loop.Status{Error: err}
-			return
-		}
-
-		if err := l.RunWithStatus(ctx, statusCh); err != nil {
-			statusCh <- loop.Status{Error: err}
-		}
-		close(statusCh)
-	}()
-
-	// Process status updates
-	for status := range statusCh {
-		if status.Error != nil {
-			fmt.Printf("\x1b[1;31mError: %v\x1b[0m\n", status.Error)
-			return status.Error
-		}
-		// Render TUI with status
-		fmt.Print("\x1b[2J\x1b[H")
-		renderStatus(status)
-		renderTUI(ctx, cfg, todoPath)
+	details := t.Details
+	if len(details) > 60 {
+		details = details[:57] + "..."
 	}
-
-	return nil
-}
-
-// renderStatus renders the current loop status.
-func renderStatus(status loop.Status) {
-	if status.Message != "" {
-		fmt.Printf("\x1b[1;36m[Iter %d]\x1b[0m %s\n\n", status.Iteration, status.Message)
-	}
+	return line + "\n      " + details
 }
 
 // IsTTY returns true if stdout is a terminal.
