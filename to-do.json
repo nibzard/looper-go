@@ -280,7 +280,7 @@
       "title": "Update README and migration docs for the Go CLI, config, and behavior changes",
       "priority": 4,
       "status": "done",
-      "updated_at": 1768956906.596779,
+      "updated_at": "2026-01-21T01:06:51Z",
       "files": [
         "looper/README.md",
         "looper/MIGRATION.md"

@@ -42,26 +42,35 @@ The shell script used single-dash flags for everything. The Go CLI uses subcomma
 | `--rr-agents` | `--rr-agents` | Same |
 | `--repair-agent` | `--repair-agent` | Same |
 
+**Additional Go flags:**
+- `--todo`, `--schema`, `--log-dir`
+- `--max-iterations`, `--apply-summary`, `--git-init`, `--hook`, `--loop-delay`
+- `--codex-bin`, `--claude-bin`, `--codex-model`, `--claude-model`
+
 ### Configuration
 
-**New:** Go version supports a `looper.toml` config file (shell had none).
+**New:** Go version supports `looper.toml` or `.looper.toml` in the current directory (shell had none).
 
 **Before:** Shell script relied entirely on environment variables.
 
 **After:** Go version supports:
 1. Built-in defaults
-2. `looper.toml` in project directory
+2. `looper.toml` or `.looper.toml` in project directory
 3. Environment variables
 4. CLI flags
 
 ### Environment Variables
 
-Most environment variables remain the same, with some additions:
+Most environment variables remain the same. The Go CLI also accepts:
 
-**New in Go:**
-- `LOOPER_LOG_DIR` - Explicit log directory override
-- `LOOPER_SCHEDULE` - Shorter alias for `LOOPER_ITER_SCHEDULE`
-- `LOOPER_HOOK` - Hook command (shell used `LOOPER_HOOK` too)
+- `LOOPER_LOG_DIR` - Explicit log directory override (alias of `LOOPER_BASE_DIR`)
+- `LOOPER_SCHEDULE` - Alias for `LOOPER_ITER_SCHEDULE`
+- `LOOPER_APPLY_SUMMARY` - Apply summaries to task file (1/0)
+- `LOOPER_GIT_INIT` - Accepted but currently unused by the Go CLI (1/0)
+- `LOOPER_LOOP_DELAY` - Delay between iterations (seconds)
+- `LOOPER_PROMPT_DIR` - Prompt directory override (dev only; requires `LOOPER_PROMPT_MODE=dev`)
+- `LOOPER_PRINT_PROMPT` - Print rendered prompts (1/0, dev only)
+- `LOOPER_HOOK` - Hook command to run after each iteration
 
 **Renamed/Removed:**
 - `CODEX_YOLO`, `CODEX_FULL_AUTO`, `CODEX_PROFILE`, `CODEX_PROGRESS`, `CODEX_ENFORCE_OUTPUT_SCHEMA` - These were internal Codex flags that are now handled by the agent layer.
@@ -78,11 +87,13 @@ export LOOPER_PROMPT_MODE=dev
 looper run --prompt-dir ./my-prompts --print-prompt
 ```
 
+Dev-only env overrides: `LOOPER_PROMPT_DIR` and `LOOPER_PRINT_PROMPT=1`.
+
 ## New Features
 
 ### Config File Support
 
-Create `looper.toml` in your project:
+Create `looper.toml` (or `.looper.toml`) in your project:
 
 ```toml
 schedule = "odd-even"
@@ -140,6 +151,11 @@ The Go version normalizes agent names and schedules more strictly:
 ### Log Output
 
 The log format is similar (JSONL), but the Go version may have slight differences in event naming. The overall structure remains compatible.
+When git is available, Looper resolves the project root via `git rev-parse --show-toplevel` for log grouping.
+
+### Git Initialization
+
+The Go CLI does not automatically run `git init`. Initialize repositories manually if you need one.
 
 ## Migration Steps
 
@@ -240,7 +256,7 @@ export LOOPER_PROMPT_MODE=dev
 
 ### Config Not Loading
 
-The Go version looks for `looper.toml` in the current working directory (not the todo file directory). Ensure you run `looper` from the project root.
+The Go version looks for `looper.toml` or `.looper.toml` in the current working directory (not the todo file directory). Ensure you run `looper` from the project root.
 
 ## Rollback
 

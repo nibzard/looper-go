@@ -114,16 +114,16 @@ looper run --repair-agent claude
 
 ## Configuration
 
-Looper uses a configuration hierarchy (lower values override higher):
+Looper uses a configuration hierarchy (later entries override earlier):
 
 1. Built-in defaults
-2. Config file (`looper.toml` in current directory)
+2. Config file (`looper.toml` or `.looper.toml` in the current directory)
 3. Environment variables
 4. CLI flags
 
 ### Config File
 
-Create `looper.toml` in your project directory:
+Create `looper.toml` (or `.looper.toml`) in your project directory:
 
 ```toml
 # Paths
@@ -155,7 +155,7 @@ model = ""
 # Output
 apply_summary = true
 
-# Git
+# Git (currently no-op in Go CLI)
 git_init = true
 
 # Hooks
@@ -164,6 +164,8 @@ hook_command = "/path/to/hook.sh"
 # Delay between iterations
 loop_delay_seconds = 0
 ```
+
+Looper reads the config file from the current working directory (not the todo file directory).
 
 ### Environment Variables
 
@@ -177,15 +179,25 @@ loop_delay_seconds = 0
 - `LOOPER_ITER_EVEN_AGENT` - Agent for even iterations
 - `LOOPER_ITER_RR_AGENTS` - Comma-separated agent list for round-robin
 - `LOOPER_APPLY_SUMMARY` - Apply summaries to task file (1/0)
-- `LOOPER_GIT_INIT` - Initialize git repo if missing (1/0)
+- `LOOPER_GIT_INIT` - Accepted but currently unused by the Go CLI (1/0)
 - `LOOPER_HOOK` - Hook command to run after each iteration
 - `LOOPER_LOOP_DELAY` - Delay between iterations (seconds)
+- `LOOPER_PROMPT_DIR` - Prompt directory override (dev only, requires `LOOPER_PROMPT_MODE=dev`)
+- `LOOPER_PRINT_PROMPT` - Print rendered prompts (1/0, dev only)
 - `CODEX_BIN` / `CLAUDE_BIN` - Agent binary paths
 - `CODEX_MODEL` / `CLAUDE_MODEL` - Model selection
 
 ### CLI Flags
 
-Run `looper help` or `looper run --help` for a complete list of flags.
+Global flags (place before the subcommand):
+- `--todo`, `--schema`, `--log-dir`
+- `--codex-bin`, `--claude-bin`, `--codex-model`, `--claude-model`
+
+Run flags (use with `run`):
+- `--max-iterations`, `--schedule`, `--odd-agent`, `--even-agent`, `--rr-agents`
+- `--repair-agent`, `--apply-summary`, `--git-init`, `--hook`, `--loop-delay`
+
+Run `looper help` for the full list. Dev-only flags appear when `LOOPER_PROMPT_MODE=dev` is set.
 
 ## Task File (to-do.json)
 
@@ -240,8 +252,8 @@ The hook receives these arguments:
 
 ## Git Behavior
 
-If the project is not a git repo and `git_init` is true, Looper runs `git init`.
-If git is unavailable or init fails, the agent runs with `--skip-git-repo-check`.
+Looper does not auto-initialize git repositories. Run `git init` yourself if you need one.
+When git is available, Looper uses it to resolve the project root for log grouping.
 
 ## Dev Mode (Prompt Development)
 
@@ -257,6 +269,7 @@ LOOPER_PROMPT_MODE=dev looper run --print-prompt --prompt-dir ./my-prompts
 ```
 
 **Note:** Dev mode is intentionally hidden from normal usage and not shown in help output unless enabled.
+You can also set `LOOPER_PROMPT_DIR` and `LOOPER_PRINT_PROMPT=1` instead of flags.
 
 ## Building
 
