@@ -474,13 +474,14 @@
         "architecture"
       ],
       "files": [
-        "internal/agents/agents.go",
-        "internal/config/config.go",
-        "internal/loop/loop.go",
         "cmd/root.go",
+        "internal/config/config.go",
+        "internal/config/example.go",
+        "README.md",
+        "internal/agents/agents.go",
         "internal/agents/agents_test.go"
       ],
-      "updated_at": "2026-01-22T13:00:34Z"
+      "updated_at": "2026-01-22T13:07:12Z"
     },
     {
       "id": "T032",

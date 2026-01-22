@@ -413,19 +413,19 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 
 	// Loop settings
 	fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
-	fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (codex|claude|odd-even|round-robin)")
-	fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations (codex|claude)")
-	fs.StringVar(&cfg.ReviewAgent, "review-agent", cfg.ReviewAgent, "Agent for review pass (codex|claude)")
-	fs.StringVar(&cfg.BootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations (codex|claude)")
-	fs.StringVar(&cfg.OddAgent, "odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule (codex|claude)")
-	fs.StringVar(&cfg.EvenAgent, "even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule (codex|claude)")
+	fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (agent name|odd-even|round-robin)")
+	fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations")
+	fs.StringVar(&cfg.ReviewAgent, "review-agent", cfg.ReviewAgent, "Agent for review pass")
+	fs.StringVar(&cfg.BootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations")
+	fs.StringVar(&cfg.OddAgent, "odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule")
+	fs.StringVar(&cfg.EvenAgent, "even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule")
 
 	// Round-robin agents - need a custom var flag since StringVar doesn't handle slices
 	var rrAgentsStr string
 	if cfg.RRAgents != nil {
 		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
 	}
-	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule (e.g., claude,codex)")
+	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule")
 
 	// Output
 	fs.BoolVar(&cfg.ApplySummary, "apply-summary", cfg.ApplySummary, "Apply summaries to task file")

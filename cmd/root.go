@@ -278,10 +278,10 @@ func doctorCommand(cfg *config.Config, args []string) error {
 		configOK = false
 	}
 	if repairAgent == "" {
-		fmt.Println("  ❌ Repair agent: empty (expected codex|claude)")
+		fmt.Println("  ❌ Repair agent: empty (expected any registered agent)")
 		configOK = false
 	} else if !isValidAgent(repairAgent) {
-		fmt.Printf("  ❌ Repair agent: %s (expected codex|claude)\n", repairAgent)
+		fmt.Printf("  ❌ Repair agent: %s (not a registered agent type)\n", repairAgent)
 		configOK = false
 	} else {
 		fmt.Printf("  ✅ Repair agent: %s\n", repairAgent)
@@ -289,7 +289,7 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	if reviewAgent == "" {
 		fmt.Println("  ✅ Review agent: (default: codex)")
 	} else if !isValidAgent(reviewAgent) {
-		fmt.Printf("  ❌ Review agent: %s (expected codex|claude)\n", reviewAgent)
+		fmt.Printf("  ❌ Review agent: %s (not a registered agent type)\n", reviewAgent)
 		configOK = false
 	} else {
 		fmt.Printf("  ✅ Review agent: %s\n", reviewAgent)
@@ -297,7 +297,7 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	if bootstrapAgent == "" {
 		fmt.Println("  ✅ Bootstrap agent: (default: codex)")
 	} else if !isValidAgent(bootstrapAgent) {
-		fmt.Printf("  ❌ Bootstrap agent: %s (expected codex|claude)\n", bootstrapAgent)
+		fmt.Printf("  ❌ Bootstrap agent: %s (not a registered agent type)\n", bootstrapAgent)
 		configOK = false
 	} else {
 		fmt.Printf("  ✅ Bootstrap agent: %s\n", bootstrapAgent)
@@ -313,7 +313,7 @@ func doctorCommand(cfg *config.Config, args []string) error {
 				fmt.Printf("  ✅ Odd agent: %s\n", oddAgent)
 			}
 		} else {
-			fmt.Printf("  ❌ Odd agent: %s (expected codex|claude)\n", cfg.OddAgent)
+			fmt.Printf("  ❌ Odd agent: %s (not a registered agent type)\n", cfg.OddAgent)
 			configOK = false
 		}
 
@@ -325,7 +325,7 @@ func doctorCommand(cfg *config.Config, args []string) error {
 				fmt.Printf("  ✅ Even agent: %s\n", evenAgent)
 			}
 		} else {
-			fmt.Printf("  ❌ Even agent: %s (expected codex|claude)\n", cfg.EvenAgent)
+			fmt.Printf("  ❌ Even agent: %s (not a registered agent type)\n", cfg.EvenAgent)
 			configOK = false
 		}
 	case "round-robin":
@@ -657,19 +657,19 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  -max-iterations int")
 	fmt.Fprintln(w, "        Maximum iterations (default 50)")
 	fmt.Fprintln(w, "  -schedule string")
-	fmt.Fprintln(w, "        Iteration schedule (codex|claude|odd-even|round-robin)")
+	fmt.Fprintln(w, "        Iteration schedule (agent name|odd-even|round-robin)")
 	fmt.Fprintln(w, "  -odd-agent string")
-	fmt.Fprintln(w, "        Agent for odd iterations in odd-even schedule (codex|claude)")
+	fmt.Fprintln(w, "        Agent for odd iterations in odd-even schedule")
 	fmt.Fprintln(w, "  -even-agent string")
-	fmt.Fprintln(w, "        Agent for even iterations in odd-even schedule (codex|claude)")
+	fmt.Fprintln(w, "        Agent for even iterations in odd-even schedule")
 	fmt.Fprintln(w, "  -rr-agents string")
-	fmt.Fprintln(w, "        Comma-separated agent list for round-robin (e.g., claude,codex)")
+	fmt.Fprintln(w, "        Comma-separated agent list for round-robin")
 	fmt.Fprintln(w, "  -repair-agent string")
-	fmt.Fprintln(w, "        Agent for repair operations (codex|claude)")
+	fmt.Fprintln(w, "        Agent for repair operations")
 	fmt.Fprintln(w, "  -review-agent string")
-	fmt.Fprintln(w, "        Agent for review pass (codex|claude)")
+	fmt.Fprintln(w, "        Agent for review pass")
 	fmt.Fprintln(w, "  -bootstrap-agent string")
-	fmt.Fprintln(w, "        Agent for bootstrap operations (codex|claude)")
+	fmt.Fprintln(w, "        Agent for bootstrap operations")
 	fmt.Fprintln(w, "  -apply-summary")
 	fmt.Fprintln(w, "        Apply summaries to task file (default true)")
 	fmt.Fprintln(w, "  -git-init")
@@ -700,7 +700,7 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Push Options (use with 'push' command):")
 	fmt.Fprintln(w, "  -agent string")
-	fmt.Fprintln(w, "        Agent to use for release workflow (codex|claude)")
+	fmt.Fprintln(w, "        Agent to use for release workflow")
 	fmt.Fprintln(w, "  -y")
 	fmt.Fprintln(w, "        Skip confirmation prompts")
 }

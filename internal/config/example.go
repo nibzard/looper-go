@@ -18,7 +18,7 @@ log_dir = "~/.looper"
 # Maximum loop iterations
 max_iterations = 50
 
-# Iteration schedule: codex, claude, odd-even, round-robin, or any registered agent type
+# Iteration schedule: any registered agent name, odd-even, or round-robin
 schedule = "codex"
 
 # Agent for repair operations (any registered agent type)
@@ -51,8 +51,8 @@ model = ""
 binary = "claude"
 model = ""
 
-# Custom agents can be added under the agents.agents map
-# For example, to use a custom agent named "opencode":
+# Custom agents can be configured under the agents.agents map
+# The agent type must be registered via agents.RegisterAgent() in code
 # [agents.agents.opencode]
 # binary = "opencode"
 # model = "custom-model"

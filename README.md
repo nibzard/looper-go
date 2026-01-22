@@ -117,7 +117,8 @@ Looper supports multiple iteration schedules for balancing agent usage:
 
 - `--schedule codex` (default) - All iterations use Codex
 - `--schedule claude` - All iterations use Claude
-- `--schedule odd-even` - Odd iterations use Codex, even use Claude
+- `--schedule <agent>` - All iterations use any registered agent type
+- `--schedule odd-even` - Odd iterations use one agent, even use another
 - `--schedule round-robin` - Rotate through a list of agents
 
 ### Schedule Options
@@ -174,17 +175,17 @@ log_dir = "~/.looper"
 
 # Loop settings
 max_iterations = 50
-schedule = "codex"  # codex|claude|odd-even|round-robin
-repair_agent = "codex"  # agent for repair operations
-# review_agent = "codex"  # agent for review pass (default: codex)
-# bootstrap_agent = "codex"  # agent for bootstrap (default: codex)
+schedule = "codex"  # agent name|odd-even|round-robin
+repair_agent = "codex"  # any registered agent type
+# review_agent = "codex"  # any registered agent type (default: codex)
+# bootstrap_agent = "codex"  # any registered agent type (default: codex)
 
 # Odd-even schedule options
-odd_agent = "codex"   # agent for odd iterations
-even_agent = "claude" # agent for even iterations
+odd_agent = "codex"   # any registered agent type
+even_agent = "claude" # any registered agent type
 
 # Round-robin schedule options
-rr_agents = ["claude", "codex"]  # agent rotation list
+rr_agents = ["claude", "codex"]  # any registered agent types
 
 # Agents
 [agents.codex]
@@ -194,6 +195,13 @@ model = ""
 [agents.claude]
 binary = "claude"
 model = ""
+
+# Custom agents can be registered and configured
+# To add a custom agent, register it via init() in your code
+# and configure it under the agents map:
+# [agents.agents.opencode]
+# binary = "opencode"
+# model = "custom-model"
 
 # Output
 apply_summary = true
@@ -216,7 +224,7 @@ Looper reads the config file from the current working directory (not the todo fi
 - `LOOPER_SCHEMA` - Schema file path
 - `LOOPER_BASE_DIR` / `LOOPER_LOG_DIR` - Log directory (supports `~`, `$HOME`, or `%USERPROFILE%` on Windows)
 - `LOOPER_MAX_ITERATIONS` - Maximum iterations
-- `LOOPER_ITER_SCHEDULE` / `LOOPER_SCHEDULE` - Iteration schedule
+- `LOOPER_ITER_SCHEDULE` / `LOOPER_SCHEDULE` - Iteration schedule (agent name or odd-even/round-robin)
 - `LOOPER_REPAIR_AGENT` - Agent for repair operations
 - `LOOPER_REVIEW_AGENT` - Agent for review pass (default: codex)
 - `LOOPER_BOOTSTRAP_AGENT` - Agent for bootstrap (default: codex)
@@ -402,9 +410,29 @@ Looper is written in Go with a clean, testable core:
 - `internal/prompts` - Prompt store and rendering
 - `internal/todo` - Task file parsing and validation
 - `internal/loop` - Orchestration state machine
-- `internal/agents` - Codex/Claude runners
+- `internal/agents` - Agent registry and runners
 - `internal/logging` - JSONL logging and tailing
 - `internal/hooks` - Hook invocation
+
+### Agent Registry
+
+Looper uses a registry-based agent system that allows custom agent types to be registered and used throughout the system. Built-in agents (`codex`, `claude`) are registered at initialization, but additional agent types can be registered programmatically.
+
+To register a custom agent type, use the `agents.RegisterAgent()` function:
+
+```go
+import "github.com/nibzard/looper-go/internal/agents"
+
+// Define an agent type
+const AgentTypeOpenCode agents.AgentType = "opencode"
+
+// Register the agent factory
+agents.RegisterAgent(AgentTypeOpenCode, func(cfg agents.Config) (agents.Agent, error) {
+    return &myOpenCodeAgent{cfg: cfg}, nil
+})
+```
+
+Once registered, the agent type can be used in schedules, step agents (repair/review/bootstrap), and configuration files. The `doctor` command will automatically validate and show registered agent types.
 
 ## Migration from Shell Version
 
