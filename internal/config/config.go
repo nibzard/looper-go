@@ -166,14 +166,55 @@ func decodeAgentConfig(raw map[string]interface{}) (Agent, error) {
 		}
 		agent.Reasoning = reasoning
 	}
+	if v, ok := raw["args"]; ok {
+		args, err := parseArgsValue(v)
+		if err != nil {
+			return agent, err
+		}
+		agent.Args = args
+	}
 	return agent, nil
+}
+
+func parseArgsValue(v interface{}) ([]string, error) {
+	switch val := v.(type) {
+	case []string:
+		return filterEmptyArgs(val), nil
+	case []interface{}:
+		args := make([]string, 0, len(val))
+		for _, item := range val {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("args must be a string array")
+			}
+			if trimmed := strings.TrimSpace(s); trimmed != "" {
+				args = append(args, trimmed)
+			}
+		}
+		return args, nil
+	case string:
+		return splitAndTrim(val, ","), nil
+	default:
+		return nil, fmt.Errorf("args must be a string or string array")
+	}
+}
+
+func filterEmptyArgs(args []string) []string {
+	filtered := make([]string, 0, len(args))
+	for _, arg := range args {
+		if trimmed := strings.TrimSpace(arg); trimmed != "" {
+			filtered = append(filtered, trimmed)
+		}
+	}
+	return filtered
 }
 
 // Agent holds configuration for a single agent type.
 type Agent struct {
-	Binary    string `toml:"binary"`
-	Model     string `toml:"model"`
-	Reasoning string `toml:"reasoning"` // Reasoning effort for codex (e.g., "low", "medium", "high")
+	Binary    string   `toml:"binary"`
+	Model     string   `toml:"model"`
+	Reasoning string   `toml:"reasoning"` // Reasoning effort for codex (e.g., "low", "medium", "high")
+	Args      []string `toml:"args"`      // Extra arguments passed to the agent binary
 	// Additional flags can be added here as needed
 }
 
@@ -403,6 +444,21 @@ func loadFromEnv(cfg *Config) {
 		agent.Reasoning = v
 		cfg.Agents.SetAgent("codex", agent)
 	}
+	if v := os.Getenv("CODEX_REASONING_EFFORT"); v != "" {
+		agent := cfg.Agents.GetAgent("codex")
+		agent.Reasoning = v
+		cfg.Agents.SetAgent("codex", agent)
+	}
+	if v := os.Getenv("CODEX_ARGS"); v != "" {
+		agent := cfg.Agents.GetAgent("codex")
+		agent.Args = splitAndTrim(v, ",")
+		cfg.Agents.SetAgent("codex", agent)
+	}
+	if v := os.Getenv("CLAUDE_ARGS"); v != "" {
+		agent := cfg.Agents.GetAgent("claude")
+		agent.Args = splitAndTrim(v, ",")
+		cfg.Agents.SetAgent("claude", agent)
+	}
 }
 
 // boolFromString parses a boolean from a string.
@@ -507,11 +563,15 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	codexModel := cfg.GetAgentModel("codex")
 	claudeModel := cfg.GetAgentModel("claude")
 	codexReasoning := cfg.GetAgentReasoning("codex")
+	codexArgsStr := strings.Join(cfg.GetAgentArgs("codex"), ",")
+	claudeArgsStr := strings.Join(cfg.GetAgentArgs("claude"), ",")
 	fs.StringVar(&codexBinary, "codex-bin", codexBinary, "Codex binary")
 	fs.StringVar(&claudeBinary, "claude-bin", claudeBinary, "Claude binary")
 	fs.StringVar(&codexModel, "codex-model", codexModel, "Codex model")
 	fs.StringVar(&claudeModel, "claude-model", claudeModel, "Claude model")
 	fs.StringVar(&codexReasoning, "codex-reasoning", codexReasoning, "Codex reasoning effort (e.g., low, medium, high)")
+	fs.StringVar(&codexArgsStr, "codex-args", codexArgsStr, "Comma-separated extra args for codex (e.g., --foo,bar)")
+	fs.StringVar(&claudeArgsStr, "claude-args", claudeArgsStr, "Comma-separated extra args for claude (e.g., --foo,bar)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -519,8 +579,10 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	if rrAgentsStr != "" {
 		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
 	}
-	cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning})
-	cfg.Agents.SetAgent("claude", Agent{Binary: claudeBinary, Model: claudeModel})
+	codexArgs := splitAndTrim(codexArgsStr, ",")
+	claudeArgs := splitAndTrim(claudeArgsStr, ",")
+	cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning, Args: codexArgs})
+	cfg.Agents.SetAgent("claude", Agent{Binary: claudeBinary, Model: claudeModel, Args: claudeArgs})
 	return nil
 }
 
@@ -649,6 +711,21 @@ func (c *Config) GetAgentReasoning(agentType string) string {
 		return ""
 	}
 	return c.Agents.GetAgent(agentType).Reasoning
+}
+
+// GetAgentArgs returns extra args for the given agent type.
+func (c *Config) GetAgentArgs(agentType string) []string {
+	agentType = normalizeAgent(agentType)
+	if agentType == "" {
+		return nil
+	}
+	args := c.Agents.GetAgent(agentType).Args
+	if len(args) == 0 {
+		return nil
+	}
+	copied := make([]string, len(args))
+	copy(copied, args)
+	return copied
 }
 
 // devModeEnabled returns true if dev mode is enabled via LOOPER_PROMPT_MODE=dev.

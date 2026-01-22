@@ -47,10 +47,12 @@ loop_delay_seconds = 0
 binary = "codex"
 model = ""
 # reasoning = "medium"  # Optional: low, medium, or high reasoning effort
+# args = ["--flag", "value"]  # Optional extra args to pass to codex
 
 [agents.claude]
 binary = "claude"
 model = ""
+# args = ["--flag", "value"]  # Optional extra args to pass to claude
 
 # Custom agents can be configured under the agents map
 # The agent type must be registered via agents.RegisterAgent() in code

@@ -21,16 +21,16 @@ import (
 
 // Loop manages the iteration flow and state transitions.
 type Loop struct {
-	cfg              *config.Config
-	promptStore      *prompts.Store
-	renderer         *prompts.Renderer
-	todoFile         *todo.File
-	todoPath         string
-	schemaPath       string
+	cfg               *config.Config
+	promptStore       *prompts.Store
+	renderer          *prompts.Renderer
+	todoFile          *todo.File
+	todoPath          string
+	schemaPath        string
 	summarySchemaPath string
-	runLogger        *logging.RunLogger
-	logWriter        agents.LogWriter
-	workDir          string
+	runLogger         *logging.RunLogger
+	logWriter         agents.LogWriter
+	workDir           string
 }
 
 // New creates a new loop instance.
@@ -79,16 +79,16 @@ func New(cfg *config.Config, workDir string) (*Loop, error) {
 	logWriter := agents.NewIOStreamLogWriter(runLogger.Writer())
 
 	return &Loop{
-		cfg:              cfg,
-		promptStore:      promptStore,
-		renderer:         prompts.NewRenderer(promptStore),
-		todoFile:         todoFile,
-		todoPath:         todoPath,
-		schemaPath:       schemaPath,
+		cfg:               cfg,
+		promptStore:       promptStore,
+		renderer:          prompts.NewRenderer(promptStore),
+		todoFile:          todoFile,
+		todoPath:          todoPath,
+		schemaPath:        schemaPath,
 		summarySchemaPath: summarySchemaPath,
-		runLogger:        runLogger,
-		logWriter:        logWriter,
-		workDir:          workDir,
+		runLogger:         runLogger,
+		logWriter:         logWriter,
+		workDir:           workDir,
 	}, nil
 }
 
@@ -326,6 +326,7 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 		Binary:    cfg.GetAgentBinary(string(bootstrapAgentType)),
 		Model:     cfg.GetAgentModel(string(bootstrapAgentType)),
 		Reasoning: cfg.GetAgentReasoning(string(bootstrapAgentType)),
+		Args:      cfg.GetAgentArgs(string(bootstrapAgentType)),
 		WorkDir:   workDir,
 	}
 	agent, err := agents.NewAgent(bootstrapAgentType, agentCfg)
@@ -393,6 +394,7 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 		Binary:    cfg.GetAgentBinary(string(repairAgentType)),
 		Model:     cfg.GetAgentModel(string(repairAgentType)),
 		Reasoning: cfg.GetAgentReasoning(string(repairAgentType)),
+		Args:      cfg.GetAgentArgs(string(repairAgentType)),
 		WorkDir:   workDir,
 	}
 	agent, err := agents.NewAgent(repairAgentType, agentCfg)
@@ -531,6 +533,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 		Binary:          l.cfg.GetAgentBinary(agentType),
 		Model:           l.cfg.GetAgentModel(agentType),
 		Reasoning:       l.cfg.GetAgentReasoning(agentType),
+		Args:            l.cfg.GetAgentArgs(agentType),
 		WorkDir:         l.workDir,
 		LastMessagePath: l.lastMessagePath(label),
 	}
@@ -624,6 +627,7 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 		Binary:          l.cfg.GetAgentBinary(reviewAgentType),
 		Model:           l.cfg.GetAgentModel(reviewAgentType),
 		Reasoning:       l.cfg.GetAgentReasoning(reviewAgentType),
+		Args:            l.cfg.GetAgentArgs(reviewAgentType),
 		WorkDir:         l.workDir,
 		LastMessagePath: l.lastMessagePath(label),
 	}

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 )
@@ -128,6 +129,30 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadFromEnvAgents(t *testing.T) {
+	t.Setenv("CODEX_REASONING", "low")
+	t.Setenv("CODEX_REASONING_EFFORT", "high")
+	t.Setenv("CODEX_ARGS", "arg1,arg2")
+	t.Setenv("CLAUDE_ARGS", "arg3,arg4")
+
+	cfg := &Config{}
+	setDefaults(cfg)
+	loadFromEnv(cfg)
+
+	codexAgent := cfg.Agents.GetAgent("codex")
+	if codexAgent.Reasoning != "high" {
+		t.Errorf("codex.Reasoning: got %q, want high", codexAgent.Reasoning)
+	}
+	if want := []string{"arg1", "arg2"}; !reflect.DeepEqual(codexAgent.Args, want) {
+		t.Errorf("codex.Args: got %v, want %v", codexAgent.Args, want)
+	}
+
+	claudeAgent := cfg.Agents.GetAgent("claude")
+	if want := []string{"arg3", "arg4"}; !reflect.DeepEqual(claudeAgent.Args, want) {
+		t.Errorf("claude.Args: got %v, want %v", claudeAgent.Args, want)
+	}
+}
+
 func TestLoadConfigFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "looper.toml")
@@ -216,6 +241,9 @@ func TestParseFlags(t *testing.T) {
 		"--max-iterations", "75",
 		"--schedule", "odd-even",
 		"--rr-agents", "claude,codex",
+		"--codex-reasoning", "high",
+		"--codex-args", "arg1,arg2",
+		"--claude-args", "arg3,arg4",
 	}
 
 	if err := parseFlags(cfg, fs, args); err != nil {
@@ -233,6 +261,17 @@ func TestParseFlags(t *testing.T) {
 	}
 	if len(cfg.RRAgents) != 2 || cfg.RRAgents[0] != "claude" || cfg.RRAgents[1] != "codex" {
 		t.Errorf("RRAgents: got %v, want [claude codex]", cfg.RRAgents)
+	}
+	codexAgent := cfg.Agents.GetAgent("codex")
+	if codexAgent.Reasoning != "high" {
+		t.Errorf("codex.Reasoning: got %q, want high", codexAgent.Reasoning)
+	}
+	if want := []string{"arg1", "arg2"}; !reflect.DeepEqual(codexAgent.Args, want) {
+		t.Errorf("codex.Args: got %v, want %v", codexAgent.Args, want)
+	}
+	claudeAgent := cfg.Agents.GetAgent("claude")
+	if want := []string{"arg3", "arg4"}; !reflect.DeepEqual(claudeAgent.Args, want) {
+		t.Errorf("claude.Args: got %v, want %v", claudeAgent.Args, want)
 	}
 }
 
@@ -397,14 +436,18 @@ todo_file = "custom.json"
 [agents.codex]
 binary = "my-codex"
 model = "gpt-5"
+reasoning = "medium"
+args = ["arg1", "arg2"]
 
 [agents.claude]
 binary = "my-claude"
 model = "claude-4"
+args = ["arg3", "arg4"]
 
 [agents.opencode]
 binary = "opencode"
 model = "opencode-model"
+args = ["arg5"]
 `)
 	if err := os.WriteFile(configFile, content, 0644); err != nil {
 		t.Fatal(err)
@@ -424,6 +467,12 @@ model = "opencode-model"
 	if codexAgent.Model != "gpt-5" {
 		t.Errorf("codex.Model: got %q, want gpt-5", codexAgent.Model)
 	}
+	if codexAgent.Reasoning != "medium" {
+		t.Errorf("codex.Reasoning: got %q, want medium", codexAgent.Reasoning)
+	}
+	if want := []string{"arg1", "arg2"}; !reflect.DeepEqual(codexAgent.Args, want) {
+		t.Errorf("codex.Args: got %v, want %v", codexAgent.Args, want)
+	}
 
 	claudeAgent := cfg.Agents.GetAgent("claude")
 	if claudeAgent.Binary != "my-claude" {
@@ -431,6 +480,9 @@ model = "opencode-model"
 	}
 	if claudeAgent.Model != "claude-4" {
 		t.Errorf("claude.Model: got %q, want claude-4", claudeAgent.Model)
+	}
+	if want := []string{"arg3", "arg4"}; !reflect.DeepEqual(claudeAgent.Args, want) {
+		t.Errorf("claude.Args: got %v, want %v", claudeAgent.Args, want)
 	}
 
 	// Check custom agent
@@ -440,6 +492,9 @@ model = "opencode-model"
 	}
 	if opencodeAgent.Model != "opencode-model" {
 		t.Errorf("opencode.Model: got %q, want opencode-model", opencodeAgent.Model)
+	}
+	if want := []string{"arg5"}; !reflect.DeepEqual(opencodeAgent.Args, want) {
+		t.Errorf("opencode.Args: got %v, want %v", opencodeAgent.Args, want)
 	}
 
 	// Test GetAgent methods
