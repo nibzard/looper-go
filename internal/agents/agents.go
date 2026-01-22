@@ -1088,14 +1088,11 @@ func parseSummaryFromText(text string) (*Summary, bool) {
 	if summaryJSON == "" {
 		return nil, false
 	}
-	var summary Summary
-	if err := json.Unmarshal([]byte(summaryJSON), &summary); err != nil {
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(summaryJSON), &raw); err != nil {
 		return nil, false
 	}
-	if !summaryHasContent(summary) {
-		return nil, false
-	}
-	return &summary, true
+	return parseSummaryFromRaw(raw)
 }
 
 func writeLastMessageFile(path, message string, summary *Summary) error {
@@ -1165,6 +1162,8 @@ func parseSummaryFromRaw(raw map[string]any) (*Summary, bool) {
 		return nil, false
 	}
 
+	normalizeSummaryTaskID(raw)
+
 	data, err := json.Marshal(raw)
 	if err != nil {
 		return nil, false
@@ -1177,6 +1176,15 @@ func parseSummaryFromRaw(raw map[string]any) (*Summary, bool) {
 		return nil, false
 	}
 	return &summary, true
+}
+
+func normalizeSummaryTaskID(raw map[string]any) {
+	if raw == nil {
+		return
+	}
+	if _, ok := raw["task_id"]; ok && raw["task_id"] == nil {
+		raw["task_id"] = ""
+	}
 }
 
 func summaryHasContent(summary Summary) bool {

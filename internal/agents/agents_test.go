@@ -1093,6 +1093,20 @@ func TestParseSummaryWithNullTaskID(t *testing.T) {
 	}
 }
 
+func TestParseSummaryFromTextWithNullTaskID(t *testing.T) {
+	text := `{"task_id":null,"status":"skipped","summary":"No task executed"}`
+	summary, ok := parseSummaryFromText(text)
+	if !ok {
+		t.Fatal("parseSummaryFromText() ok = false, want true")
+	}
+	if summary.TaskID != "" {
+		t.Errorf("TaskID = %q, want empty", summary.TaskID)
+	}
+	if summary.Status != "skipped" {
+		t.Errorf("Status = %q, want %q", summary.Status, "skipped")
+	}
+}
+
 // TestSummaryHasContentWithNullTaskID tests summaryHasContent edge cases.
 func TestSummaryHasContentWithNullTaskID(t *testing.T) {
 	tests := []struct {
