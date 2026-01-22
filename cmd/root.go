@@ -90,6 +90,8 @@ func Run(ctx context.Context, args []string) error {
 		return validateCommand(cfg, remainingArgs)
 	case "fmt":
 		return fmtCommand(cfg, remainingArgs)
+	case "config":
+		return configCommand(cfg, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -635,6 +637,7 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  init          Scaffold project files (to-do.json, to-do.schema.json, looper.toml)")
 	fmt.Fprintln(w, "  validate      Validate task file against schema")
 	fmt.Fprintln(w, "  fmt           Format task file with stable ordering and 2-space indent")
+	fmt.Fprintln(w, "  config        Show effective configuration")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
 	fmt.Fprintln(w)
@@ -1674,4 +1677,235 @@ func printDiff(path string, original, formatted []byte) {
 	if !changes {
 		fmt.Printf("%s: no changes\n", path)
 	}
+}
+
+// configCommand shows the effective configuration with source information.
+func configCommand(cfg *config.Config, args []string) error {
+	// Parse config-specific flags
+	fs := flag.NewFlagSet("looper config", flag.ContinueOnError)
+	jsonOutput := fs.Bool("json", false, "Output in JSON format")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+
+	// Reload config with source tracking
+	// We need to create a new flag set to parse original args
+	configFS := flag.NewFlagSet("looper", flag.ContinueOnError)
+	configWithSources, err := config.LoadWithSources(configFS, []string{})
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	if *jsonOutput {
+		return printConfigJSON(configWithSources)
+	}
+
+	return printConfigTable(configWithSources)
+}
+
+// printConfigTable prints configuration in a human-readable table format.
+func printConfigTable(cws *config.ConfigWithSources) error {
+	cfg := cws.Config
+
+	fmt.Println("Effective Configuration")
+	fmt.Println("======================")
+	fmt.Println()
+
+	// Config file info
+	configFile := cws.GetConfigFile()
+	if configFile != "" {
+		fmt.Printf("Config file: %s\n", configFile)
+	} else {
+		fmt.Println("Config file: (none)")
+	}
+	fmt.Println()
+
+	// Paths section
+	fmt.Println("Paths:")
+	printConfigItem("Todo file", cfg.TodoFile, cws.Sources["todo_file"])
+	printConfigItem("Schema file", cfg.SchemaFile, cws.Sources["schema_file"])
+	printConfigItem("Log directory", cfg.LogDir, cws.Sources["log_dir"])
+	fmt.Println()
+
+	// Loop settings section
+	fmt.Println("Loop Settings:")
+	printConfigItem("Max iterations", fmt.Sprintf("%d", cfg.MaxIterations), cws.Sources["max_iterations"])
+	printConfigItem("Schedule", cfg.Schedule, cws.Sources["schedule"])
+	printConfigItem("Repair agent", cfg.RepairAgent, cws.Sources["repair_agent"])
+
+	reviewAgent := cfg.ReviewAgent
+	if reviewAgent == "" {
+		reviewAgent = "codex (default)"
+	}
+	printConfigItem("Review agent", reviewAgent, cws.Sources["review_agent"])
+
+	bootstrapAgent := cfg.BootstrapAgent
+	if bootstrapAgent == "" {
+		bootstrapAgent = "codex (default)"
+	}
+	printConfigItem("Bootstrap agent", bootstrapAgent, cws.Sources["bootstrap_agent"])
+	fmt.Println()
+
+	// Schedule options
+	if cfg.Schedule == "odd-even" || cfg.Schedule == "round-robin" {
+		fmt.Println("Schedule Options:")
+		if cfg.Schedule == "odd-even" {
+			oddAgent := cfg.OddAgent
+			if oddAgent == "" {
+				oddAgent = "codex (default)"
+			}
+			printConfigItem("Odd agent", oddAgent, cws.Sources["odd_agent"])
+
+			evenAgent := cfg.EvenAgent
+			if evenAgent == "" {
+				evenAgent = "claude (default)"
+			}
+			printConfigItem("Even agent", evenAgent, cws.Sources["even_agent"])
+		} else if cfg.Schedule == "round-robin" {
+			rrAgents := "claude,codex (default)"
+			if cfg.RRAgents != nil && len(cfg.RRAgents) > 0 {
+				rrAgents = strings.Join(cfg.RRAgents, ",")
+			}
+			printConfigItem("Round-robin agents", rrAgents, cws.Sources["rr_agents"])
+		}
+		fmt.Println()
+	}
+
+	// Agents section
+	fmt.Println("Agents:")
+	printAgentConfig("Codex", cfg.Agents.GetAgent("codex"), cws, "codex_binary", "codex_model", "codex_reasoning", "codex_args")
+	printAgentConfig("Claude", cfg.Agents.GetAgent("claude"), cws, "claude_binary", "claude_model", "", "claude_args")
+	fmt.Println()
+
+	// Output section
+	fmt.Println("Output:")
+	printConfigItem("Apply summary", fmt.Sprintf("%t", cfg.ApplySummary), cws.Sources["apply_summary"])
+	fmt.Println()
+
+	// Git section
+	fmt.Println("Git:")
+	printConfigItem("Git init", fmt.Sprintf("%t", cfg.GitInit), cws.Sources["git_init"])
+	fmt.Println()
+
+	// Hooks section
+	if cfg.HookCommand != "" {
+		fmt.Println("Hooks:")
+		printConfigItem("Hook command", cfg.HookCommand, cws.Sources["hook_command"])
+		fmt.Println()
+	}
+
+	// Delay section
+	if cfg.LoopDelaySeconds > 0 {
+		fmt.Println("Timing:")
+		printConfigItem("Loop delay", fmt.Sprintf("%d seconds", cfg.LoopDelaySeconds), cws.Sources["loop_delay_seconds"])
+		fmt.Println()
+	}
+
+	return nil
+}
+
+// printConfigItem prints a single configuration item with its source.
+func printConfigItem(label, value string, source config.ConfigSource) {
+	fmt.Printf("  %-20s %s", label+":", value)
+	if source != config.SourceDefault {
+		fmt.Printf(" [%s]", source)
+	}
+	fmt.Println()
+}
+
+// printAgentConfig prints agent configuration.
+func printAgentConfig(name string, agent config.Agent, cws *config.ConfigWithSources, binaryField, modelField, reasoningField, argsField string) {
+	binary := agent.Binary
+	if binary == "" {
+		binary = config.DefaultAgentBinaries()[strings.ToLower(name)]
+	}
+	fmt.Printf("  %s:\n", name)
+	printConfigItem("  Binary", binary, cws.Sources[binaryField])
+	if agent.Model != "" {
+		printConfigItem("  Model", agent.Model, cws.Sources[modelField])
+	}
+	if reasoningField != "" && agent.Reasoning != "" {
+		printConfigItem("  Reasoning", agent.Reasoning, cws.Sources[reasoningField])
+	}
+	if len(agent.Args) > 0 {
+		printConfigItem("  Args", strings.Join(agent.Args, ", "), cws.Sources[argsField])
+	}
+}
+
+// printConfigJSON prints configuration in JSON format.
+func printConfigJSON(cws *config.ConfigWithSources) error {
+	cfg := cws.Config
+
+	// Build JSON output
+	output := map[string]interface{}{
+		"config_file": cws.GetConfigFile(),
+		"paths": map[string]interface{}{
+			"todo_file":   map[string]interface{}{"value": cfg.TodoFile, "source": cws.Sources["todo_file"]},
+			"schema_file": map[string]interface{}{"value": cfg.SchemaFile, "source": cws.Sources["schema_file"]},
+			"log_dir":     map[string]interface{}{"value": cfg.LogDir, "source": cws.Sources["log_dir"]},
+		},
+		"loop_settings": map[string]interface{}{
+			"max_iterations":  map[string]interface{}{"value": cfg.MaxIterations, "source": cws.Sources["max_iterations"]},
+			"schedule":        map[string]interface{}{"value": cfg.Schedule, "source": cws.Sources["schedule"]},
+			"repair_agent":    map[string]interface{}{"value": cfg.RepairAgent, "source": cws.Sources["repair_agent"]},
+			"review_agent":    map[string]interface{}{"value": cfg.ReviewAgent, "source": cws.Sources["review_agent"]},
+			"bootstrap_agent": map[string]interface{}{"value": cfg.BootstrapAgent, "source": cws.Sources["bootstrap_agent"]},
+		},
+		"agents": map[string]interface{}{
+			"codex": map[string]interface{}{
+				"binary":    map[string]interface{}{"value": cfg.Agents.GetAgent("codex").Binary, "source": cws.Sources["codex_binary"]},
+				"model":     map[string]interface{}{"value": cfg.Agents.GetAgent("codex").Model, "source": cws.Sources["codex_model"]},
+				"reasoning": map[string]interface{}{"value": cfg.Agents.GetAgent("codex").Reasoning, "source": cws.Sources["codex_reasoning"]},
+				"args":      map[string]interface{}{"value": cfg.Agents.GetAgent("codex").Args, "source": cws.Sources["codex_args"]},
+			},
+			"claude": map[string]interface{}{
+				"binary": map[string]interface{}{"value": cfg.Agents.GetAgent("claude").Binary, "source": cws.Sources["claude_binary"]},
+				"model":  map[string]interface{}{"value": cfg.Agents.GetAgent("claude").Model, "source": cws.Sources["claude_model"]},
+				"args":   map[string]interface{}{"value": cfg.Agents.GetAgent("claude").Args, "source": cws.Sources["claude_args"]},
+			},
+		},
+		"output": map[string]interface{}{
+			"apply_summary": map[string]interface{}{"value": cfg.ApplySummary, "source": cws.Sources["apply_summary"]},
+		},
+		"git": map[string]interface{}{
+			"git_init": map[string]interface{}{"value": cfg.GitInit, "source": cws.Sources["git_init"]},
+		},
+	}
+
+	if cfg.HookCommand != "" {
+		output["hooks"] = map[string]interface{}{
+			"hook_command": map[string]interface{}{"value": cfg.HookCommand, "source": cws.Sources["hook_command"]},
+		}
+	}
+
+	if cfg.LoopDelaySeconds > 0 {
+		output["timing"] = map[string]interface{}{
+			"loop_delay_seconds": map[string]interface{}{"value": cfg.LoopDelaySeconds, "source": cws.Sources["loop_delay_seconds"]},
+		}
+	}
+
+	// Handle schedule options
+	if cfg.Schedule == "odd-even" {
+		output["schedule_options"] = map[string]interface{}{
+			"odd_agent":  map[string]interface{}{"value": cfg.OddAgent, "source": cws.Sources["odd_agent"]},
+			"even_agent": map[string]interface{}{"value": cfg.EvenAgent, "source": cws.Sources["even_agent"]},
+		}
+	} else if cfg.Schedule == "round-robin" {
+		rrAgents := []string{}
+		if cfg.RRAgents != nil {
+			rrAgents = cfg.RRAgents
+		}
+		output["schedule_options"] = map[string]interface{}{
+			"rr_agents": map[string]interface{}{"value": rrAgents, "source": cws.Sources["rr_agents"]},
+		}
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(output)
 }

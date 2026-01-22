@@ -123,6 +123,10 @@ looper fmt
 looper fmt -w      # Write formatted file back to disk
 looper fmt -check  # Check if file is formatted
 looper fmt -d      # Display diffs of formatting changes
+
+# Show effective configuration
+looper config
+looper config --json  # Output in JSON format
 ```
 
 ## Iteration Schedules

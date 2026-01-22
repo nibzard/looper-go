@@ -735,7 +735,7 @@
       "title": "Add `looper validate` and `looper fmt` for task files",
       "priority": 3,
       "status": "done",
-      "details": "Commands already fully implemented in cmd/root.go with validateCommand (lines 1444-1519) and fmtCommand (lines 1521-1625). Validation includes schema and dependency checks. Formatting uses stable sorting (priority ascending, then numeric ID) with 2-space indentation. Tests cover all modes: check, write, diff. README documented at lines 116-125.",
+      "details": "Commands already fully implemented in cmd/root.go with validateCommand (lines 1444-1519) and fmtCommand (lines 1521-1625). Validation includes schema and dependency checks. Formatting uses stable sorting (priority ascending, then numeric ID) with 2-space indentation. Tests cover all modes: check, write, diff. README documented at lines 116-125. No code changes needed this iteration.",
       "steps": [
         "Add validate and fmt subcommands with helpful error output.",
         "Reuse existing validation and stable JSON formatting logic.",
@@ -747,18 +747,18 @@
         "ux"
       ],
       "files": [
+        "README.md",
         "cmd/root.go",
         "cmd/root_test.go",
-        "README.md",
         "to-do.json"
       ],
-      "updated_at": "2026-01-22T15:19:05Z"
+      "updated_at": "2026-01-22T15:24:29Z"
     },
     {
       "id": "T048",
       "title": "Add `looper config` to show effective configuration",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "Expose a command that prints the resolved configuration and the source of each value (defaults, config file, env, flags).",
       "steps": [
         "Add a config subcommand that prints effective values.",
@@ -774,7 +774,8 @@
         "cmd/root.go",
         "internal/config/config.go",
         "README.md"
-      ]
+      ],
+      "updated_at": 1769095706.444302
     },
     {
       "id": "T050",
