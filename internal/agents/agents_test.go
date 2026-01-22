@@ -746,3 +746,134 @@ func TestSummaryValidationError(t *testing.T) {
 		t.Errorf("Error() without path = %q, want %q", err2.Error(), expected2)
 	}
 }
+
+// TestAgentRegistry tests the agent registry functionality.
+func TestAgentRegistry(t *testing.T) {
+	// Save the original registry to restore it after the test
+	originalRegistry := make(map[AgentType]AgentFactory)
+	for k, v := range Registry {
+		originalRegistry[k] = v
+	}
+	defer func() {
+		// Clear and restore the registry
+		for k := range Registry {
+			delete(Registry, k)
+		}
+		for k, v := range originalRegistry {
+			Registry[k] = v
+		}
+	}()
+
+	// Test that built-in agents are registered
+	t.Run("builtin agents registered", func(t *testing.T) {
+		if !IsAgentTypeRegistered("codex") {
+			t.Error("codex agent should be registered")
+		}
+		if !IsAgentTypeRegistered("claude") {
+			t.Error("claude agent should be registered")
+		}
+	})
+
+	// Test registering a custom agent
+	t.Run("register custom agent", func(t *testing.T) {
+		customType := AgentType("custom")
+		if IsAgentTypeRegistered(string(customType)) {
+			t.Error("custom agent should not be registered yet")
+		}
+
+		// Register a custom agent factory
+		factoryCalled := false
+		RegisterAgent(customType, func(cfg Config) (Agent, error) {
+			factoryCalled = true
+			return nil, nil
+		})
+
+		if !IsAgentTypeRegistered(string(customType)) {
+			t.Error("custom agent should be registered after RegisterAgent call")
+		}
+
+		// Create an agent using the registry
+		cfg := Config{}
+		agent, err := NewAgent(customType, cfg)
+		if err != nil {
+			t.Errorf("NewAgent() error = %v", err)
+		}
+		if agent != nil {
+			t.Error("factory should return nil agent")
+		}
+		if !factoryCalled {
+			t.Error("factory was not called")
+		}
+	})
+
+	// Test that RegisteredAgentTypes includes all registered types
+	t.Run("registered agent types", func(t *testing.T) {
+		types := RegisteredAgentTypes()
+
+		// Should at least include codex and claude
+		hasCodex := false
+		hasClaude := false
+		hasCustom := false
+		for _, t := range types {
+			if t == "codex" {
+				hasCodex = true
+			}
+			if t == "claude" {
+				hasClaude = true
+			}
+			if t == "custom" {
+				hasCustom = true
+			}
+		}
+		if !hasCodex {
+			t.Error("RegisteredAgentTypes() should include codex")
+		}
+		if !hasClaude {
+			t.Error("RegisteredAgentTypes() should include claude")
+		}
+		if !hasCustom {
+			t.Error("RegisteredAgentTypes() should include custom")
+		}
+	})
+
+	// Test NewAgent with unregistered type
+	t.Run("NewAgent with unregistered type", func(t *testing.T) {
+		_, err := NewAgent("unregistered", Config{})
+		if err == nil {
+			t.Error("NewAgent() with unregistered type should return error")
+		}
+		// Error message should mention the registered types
+		if !strings.Contains(err.Error(), "unknown agent type") {
+			t.Errorf("Error message should mention unknown agent type, got: %v", err)
+		}
+	})
+}
+
+// TestFindAgentBinaryWithCustomType tests FindAgentBinary with custom agent types.
+func TestFindAgentBinaryWithCustomType(t *testing.T) {
+	// Test with built-in types
+	t.Run("built-in types use default binary names", func(t *testing.T) {
+		if _, err := FindAgentBinary(AgentTypeCodex); err != nil {
+			// Codex might not be installed, that's ok
+			t.Logf("Codex binary not found (expected if not installed): %v", err)
+		}
+
+		if _, err := FindAgentBinary(AgentTypeClaude); err != nil {
+			// Claude might not be installed, that's ok
+			t.Logf("Claude binary not found (expected if not installed): %v", err)
+		}
+	})
+
+	// Test with custom agent type (should use the type name as binary name)
+	t.Run("custom type uses type name as binary", func(t *testing.T) {
+		customType := AgentType("nonexistent-custom-agent")
+		_, err := FindAgentBinary(customType)
+		if err == nil {
+			t.Error("FindAgentBinary() with nonexistent custom binary should return error")
+		}
+		// Error should mention the custom binary name
+		if !strings.Contains(err.Error(), string(customType)) {
+			t.Errorf("Error should mention the custom binary name, got: %v", err)
+		}
+	})
+}

@@ -29,6 +29,43 @@ const (
 	AgentTypeClaude AgentType = "claude"
 )
 
+// AgentFactory creates an Agent from a Config.
+type AgentFactory func(cfg Config) (Agent, error)
+
+// Registry holds registered agent types and their factories.
+var Registry = map[AgentType]AgentFactory{}
+
+// RegisterAgent registers an agent type with its factory.
+// This allows external code to register new agent types (e.g., opencode, ampcode).
+func RegisterAgent(agentType AgentType, factory AgentFactory) {
+	Registry[agentType] = factory
+}
+
+// init registers the built-in agent types.
+func init() {
+	RegisterAgent(AgentTypeCodex, func(cfg Config) (Agent, error) {
+		return NewCodexAgent(cfg), nil
+	})
+	RegisterAgent(AgentTypeClaude, func(cfg Config) (Agent, error) {
+		return NewClaudeAgent(cfg), nil
+	})
+}
+
+// IsAgentTypeRegistered returns true if the agent type is registered.
+func IsAgentTypeRegistered(agentType string) bool {
+	_, ok := Registry[AgentType(agentType)]
+	return ok
+}
+
+// RegisteredAgentTypes returns a list of all registered agent types.
+func RegisteredAgentTypes() []string {
+	types := make([]string, 0, len(Registry))
+	for t := range Registry {
+		types = append(types, string(t))
+	}
+	return types
+}
+
 const maxScanTokenSize = 1024 * 1024
 
 // Summary is the expected output from an agent run.
@@ -1322,21 +1359,21 @@ func sendSummary(ctx context.Context, summaries chan *Summary, summary *Summary)
 }
 
 // NewAgent creates an agent of the specified type.
+// It uses the agent registry to find the appropriate factory.
 func NewAgent(agentType AgentType, cfg Config) (Agent, error) {
-	switch agentType {
-	case AgentTypeCodex:
-		return NewCodexAgent(cfg), nil
-	case AgentTypeClaude:
-		return NewClaudeAgent(cfg), nil
-	default:
-		return nil, fmt.Errorf("unknown agent type: %s", agentType)
+	factory, ok := Registry[agentType]
+	if !ok {
+		return nil, fmt.Errorf("unknown agent type: %s (registered types: %v)", agentType, RegisteredAgentTypes())
 	}
+	return factory(cfg)
 }
 
 // DefaultTimeout is the default timeout for agents.
 const DefaultTimeout = 30 * time.Minute
 
 // FindAgentBinary finds the agent binary in PATH.
+// For built-in agents (codex, claude), it uses the default binary names.
+// For custom agents, it uses the agent type name as the binary name.
 func FindAgentBinary(agentType AgentType) (string, error) {
 	var name string
 	switch agentType {
@@ -1345,7 +1382,8 @@ func FindAgentBinary(agentType AgentType) (string, error) {
 	case AgentTypeClaude:
 		name = "claude"
 	default:
-		return "", fmt.Errorf("unknown agent type: %s", agentType)
+		// For custom agent types, use the agent type name as the binary name
+		name = string(agentType)
 	}
 
 	path, err := exec.LookPath(name)

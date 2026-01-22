@@ -18,16 +18,16 @@ log_dir = "~/.looper"
 # Maximum loop iterations
 max_iterations = 50
 
-# Iteration schedule: codex, claude, odd-even, round-robin
+# Iteration schedule: codex, claude, odd-even, round-robin, or any registered agent type
 schedule = "codex"
 
-# Agent for repair operations (codex or claude)
+# Agent for repair operations (any registered agent type)
 repair_agent = "codex"
 
-# Agent for review pass (codex or claude, default: codex)
+# Agent for review pass (any registered agent type, default: codex)
 # review_agent = "codex"
 
-# Agent for bootstrap operations (codex or claude, default: codex)
+# Agent for bootstrap operations (any registered agent type, default: codex)
 # bootstrap_agent = "codex"
 
 # Apply summaries back to task file
@@ -42,12 +42,19 @@ git_init = true
 # Delay between iterations (seconds)
 loop_delay_seconds = 0
 
-# [agents.codex]
-# binary = "codex"
-# model = ""
+# Built-in agent configuration
+[agents.codex]
+binary = "codex"
+model = ""
 
-# [agents.claude]
-# binary = "claude"
-# model = ""
+[agents.claude]
+binary = "claude"
+model = ""
+
+# Custom agents can be added under the agents.agents map
+# For example, to use a custom agent named "opencode":
+# [agents.agents.opencode]
+# binary = "opencode"
+# model = "custom-model"
 `
 }

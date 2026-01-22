@@ -74,9 +74,51 @@ type Config struct {
 }
 
 // AgentConfig holds agent-specific configuration.
+// For backward compatibility, it supports both the old fixed format (codex/claude fields)
+// and the new map-based format (custom agents).
 type AgentConfig struct {
-	Codex  Agent `toml:"codex"`
-	Claude Agent `toml:"claude"`
+	// Built-in agents (backward compatible)
+	Codex  Agent          `toml:"codex"`
+	Claude Agent          `toml:"claude"`
+	Agents map[string]Agent `toml:"agents,omitempty"` // Custom agents by name
+}
+
+// GetAgent returns the configuration for a given agent type.
+// It first checks the custom agents map, then falls back to built-in agents.
+func (ac *AgentConfig) GetAgent(agentType string) Agent {
+	// Check custom agents first
+	if ac.Agents != nil {
+		if agent, ok := ac.Agents[agentType]; ok {
+			return agent
+		}
+	}
+	// Fall back to built-in agents
+	switch normalizeAgent(agentType) {
+	case "codex":
+		return ac.Codex
+	case "claude":
+		return ac.Claude
+	default:
+		// Return empty agent for unknown types
+		return Agent{}
+	}
+}
+
+// SetAgent sets the configuration for a given agent type.
+// For built-in agents (codex, claude), it sets the respective field.
+// For custom agents, it adds/updates the agents map.
+func (ac *AgentConfig) SetAgent(agentType string, config Agent) {
+	switch normalizeAgent(agentType) {
+	case "codex":
+		ac.Codex = config
+	case "claude":
+		ac.Claude = config
+	default:
+		if ac.Agents == nil {
+			ac.Agents = make(map[string]Agent)
+		}
+		ac.Agents[agentType] = config
+	}
 }
 
 // Agent holds configuration for a single agent type.
@@ -504,27 +546,15 @@ func expandWindowsEnv(p string) string {
 }
 
 // GetAgentBinary returns the binary path for the given agent type.
+// It checks both custom agents and built-in agents.
 func (c *Config) GetAgentBinary(agentType string) string {
-	switch agentType {
-	case "codex":
-		return c.Agents.Codex.Binary
-	case "claude":
-		return c.Agents.Claude.Binary
-	default:
-		return ""
-	}
+	return c.Agents.GetAgent(agentType).Binary
 }
 
 // GetAgentModel returns the model for the given agent type.
+// It checks both custom agents and built-in agents.
 func (c *Config) GetAgentModel(agentType string) string {
-	switch agentType {
-	case "codex":
-		return c.Agents.Codex.Model
-	case "claude":
-		return c.Agents.Claude.Model
-	default:
-		return ""
-	}
+	return c.Agents.GetAgent(agentType).Model
 }
 
 // devModeEnabled returns true if dev mode is enabled via LOOPER_PROMPT_MODE=dev.

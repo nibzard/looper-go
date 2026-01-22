@@ -840,7 +840,7 @@ func normalizeAgentOrDefault(agent, defaultAgent string) (string, bool, bool) {
 }
 
 func isValidAgent(agent string) bool {
-	return agent == "codex" || agent == "claude"
+	return agents.IsAgentTypeRegistered(agent)
 }
 
 func invalidAgentList(agents []string) []string {
