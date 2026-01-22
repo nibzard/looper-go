@@ -654,7 +654,7 @@
       "title": "Profile performance and add benchmarks",
       "priority": 3,
       "status": "done",
-      "details": "Added 7 prompt benchmarks, 13 todo benchmarks, and 8 loop benchmarks. Profiled CPU usage for hot paths. Key findings: prompt rendering ~100µs (template parsing 30% of CPU), task selection zero-allocation but strconv.Atoi accounts for 32% of CPU, applySummary ~1ms dominated by file I/O. No critical issues found - code is well-optimized.",
+      "details": "Added 7 prompt benchmarks, 13 todo benchmarks, and 8 loop benchmarks. Profiled CPU usage for hot paths. Key findings: prompt rendering ~100µs (template parsing 30% of CPU), task selection zero-allocation but strconv.Atoi accounts for 32% of CPU, applySummary ~1ms dominated by file I/O. No critical issues found - code is well-optimized. Benchmarks already present; no code changes needed this iteration. Ran `go test -bench=. ./cmd/... ./internal/...` (note: `go test -bench ./...` fails at repo root with no Go files).",
       "steps": [
         "Add targeted benchmarks for hot paths and run `go test -bench ./...`.",
         "Capture hotspots with pprof and summarize top offenders."
@@ -669,7 +669,7 @@
         "internal/loop/loop_bench_test.go",
         "internal/agents/agents_test.go"
       ],
-      "updated_at": "2026-01-22T14:17:13Z"
+      "updated_at": "2026-01-22T14:26:09Z"
     },
     {
       "id": "T041",
