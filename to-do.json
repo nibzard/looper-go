@@ -821,19 +821,20 @@
       ],
       "files": [
         "internal/agents/agents.go",
-        "internal/agents/agents_test.go"
+        "internal/agents/agents_test.go",
+        "to-do.json"
       ],
       "depends_on": [
         "T039"
       ],
-      "updated_at": "2026-01-22T16:35:26Z"
+      "updated_at": "2026-01-22T16:35:55Z"
     },
     {
       "id": "T052",
       "title": "Refactor config loading for simplicity and elegance",
       "priority": 3,
-      "status": "todo",
-      "details": "Reduce complexity in configuration parsing/merging and make precedence clearer without changing external behavior.",
+      "status": "done",
+      "details": "Reduced complexity in configuration parsing/merging. Extracted setSource helper for loadConfigFileWithSources, created mergeAgentSources to eliminate duplicate agent config handling, unified loadFromEnv and loadFromEnvWithSources via shared loadFromEnvHelper, unified parseFlags and parseFlagsWithSources via shared parseFlagsHelper. Removed ~200 lines of duplicated code while preserving all behavior and test coverage.",
       "steps": [
         "Map current config merge logic and identify unnecessary branching.",
         "Extract small helpers and document precedence rules in code.",
@@ -850,7 +851,8 @@
       ],
       "depends_on": [
         "T039"
-      ]
+      ],
+      "updated_at": "2026-01-22T16:39:31Z"
     },
     {
       "id": "T053",

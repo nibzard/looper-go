@@ -419,146 +419,156 @@ func loadConfigFileWithSources(cfg *Config, path string, sources map[string]Conf
 		return err
 	}
 
-	// Update sources for any non-default values found in the file
+	// Track non-default values
 	if tempCfg.TodoFile != "" && tempCfg.TodoFile != DefaultTodoFile {
-		sources["todo_file"] = source
-		cfg.TodoFile = tempCfg.TodoFile
+		setSource(cfg, &cfg.TodoFile, tempCfg.TodoFile, sources, "todo_file", source)
 	}
 	if tempCfg.SchemaFile != "" && tempCfg.SchemaFile != "to-do.schema.json" {
-		sources["schema_file"] = source
-		cfg.SchemaFile = tempCfg.SchemaFile
+		setSource(cfg, &cfg.SchemaFile, tempCfg.SchemaFile, sources, "schema_file", source)
 	}
 	if tempCfg.LogDir != "" && tempCfg.LogDir != DefaultLogDir {
-		sources["log_dir"] = source
-		cfg.LogDir = tempCfg.LogDir
+		setSource(cfg, &cfg.LogDir, tempCfg.LogDir, sources, "log_dir", source)
 	}
 	if tempCfg.MaxIterations != 0 && tempCfg.MaxIterations != DefaultMaxIterations {
-		sources["max_iterations"] = source
-		cfg.MaxIterations = tempCfg.MaxIterations
+		setSource(cfg, &cfg.MaxIterations, tempCfg.MaxIterations, sources, "max_iterations", source)
 	}
 	if tempCfg.Schedule != "" && tempCfg.Schedule != "codex" {
-		sources["schedule"] = source
-		cfg.Schedule = tempCfg.Schedule
+		setSource(cfg, &cfg.Schedule, tempCfg.Schedule, sources, "schedule", source)
 	}
 	if tempCfg.RepairAgent != "" && tempCfg.RepairAgent != "codex" {
-		sources["repair_agent"] = source
-		cfg.RepairAgent = tempCfg.RepairAgent
+		setSource(cfg, &cfg.RepairAgent, tempCfg.RepairAgent, sources, "repair_agent", source)
 	}
 	if tempCfg.ReviewAgent != "" {
-		sources["review_agent"] = source
-		cfg.ReviewAgent = tempCfg.ReviewAgent
+		setSource(cfg, &cfg.ReviewAgent, tempCfg.ReviewAgent, sources, "review_agent", source)
 	}
 	if tempCfg.BootstrapAgent != "" {
-		sources["bootstrap_agent"] = source
-		cfg.BootstrapAgent = tempCfg.BootstrapAgent
+		setSource(cfg, &cfg.BootstrapAgent, tempCfg.BootstrapAgent, sources, "bootstrap_agent", source)
 	}
 	if tempCfg.OddAgent != "" {
-		sources["odd_agent"] = source
-		cfg.OddAgent = tempCfg.OddAgent
+		setSource(cfg, &cfg.OddAgent, tempCfg.OddAgent, sources, "odd_agent", source)
 	}
 	if tempCfg.EvenAgent != "" {
-		sources["even_agent"] = source
-		cfg.EvenAgent = tempCfg.EvenAgent
+		setSource(cfg, &cfg.EvenAgent, tempCfg.EvenAgent, sources, "even_agent", source)
 	}
 	if tempCfg.RRAgents != nil {
-		sources["rr_agents"] = source
-		cfg.RRAgents = tempCfg.RRAgents
+		setSource(cfg, &cfg.RRAgents, tempCfg.RRAgents, sources, "rr_agents", source)
 	}
 	if tempCfg.ApplySummary != DefaultApplySummary {
-		sources["apply_summary"] = source
-		cfg.ApplySummary = tempCfg.ApplySummary
+		setSource(cfg, &cfg.ApplySummary, tempCfg.ApplySummary, sources, "apply_summary", source)
 	}
 	if tempCfg.GitInit != true {
-		sources["git_init"] = source
-		cfg.GitInit = tempCfg.GitInit
+		setSource(cfg, &cfg.GitInit, tempCfg.GitInit, sources, "git_init", source)
 	}
 	if tempCfg.HookCommand != "" {
-		sources["hook_command"] = source
-		cfg.HookCommand = tempCfg.HookCommand
+		setSource(cfg, &cfg.HookCommand, tempCfg.HookCommand, sources, "hook_command", source)
 	}
 	if tempCfg.LoopDelaySeconds != 0 {
-		sources["loop_delay_seconds"] = source
-		cfg.LoopDelaySeconds = tempCfg.LoopDelaySeconds
+		setSource(cfg, &cfg.LoopDelaySeconds, tempCfg.LoopDelaySeconds, sources, "loop_delay_seconds", source)
 	}
 
 	// Handle agent configs
-	for agentName, agent := range tempCfg.Agents {
-		switch normalizeAgent(agentName) {
-		case "codex":
-			if agent.Binary != "" {
-				if agent.Binary != DefaultAgentBinaries()["codex"] {
-					sources["codex_binary"] = source
-				}
-				cfg.Agents.SetAgent("codex", agent)
-			} else {
-				if cfg.Agents.GetAgent("codex").Binary == "" {
-					cfg.Agents.SetAgent("codex", Agent{Binary: DefaultAgentBinaries()["codex"]})
-				}
-			}
-			if agent.Model != "" {
-				sources["codex_model"] = source
-				codexAgent := cfg.Agents.GetAgent("codex")
-				codexAgent.Model = agent.Model
-				cfg.Agents.SetAgent("codex", codexAgent)
-			}
-			if agent.Reasoning != "" {
-				sources["codex_reasoning"] = source
-				codexAgent := cfg.Agents.GetAgent("codex")
-				codexAgent.Reasoning = agent.Reasoning
-				cfg.Agents.SetAgent("codex", codexAgent)
-			}
-			if len(agent.Args) > 0 {
-				sources["codex_args"] = source
-				codexAgent := cfg.Agents.GetAgent("codex")
-				codexAgent.Args = agent.Args
-				cfg.Agents.SetAgent("codex", codexAgent)
-			}
-		case "claude":
-			if agent.Binary != "" {
-				if agent.Binary != DefaultAgentBinaries()["claude"] {
-					sources["claude_binary"] = source
-				}
-				cfg.Agents.SetAgent("claude", agent)
-			} else {
-				if cfg.Agents.GetAgent("claude").Binary == "" {
-					cfg.Agents.SetAgent("claude", Agent{Binary: DefaultAgentBinaries()["claude"]})
-				}
-			}
-			if agent.Model != "" {
-				sources["claude_model"] = source
-				claudeAgent := cfg.Agents.GetAgent("claude")
-				claudeAgent.Model = agent.Model
-				cfg.Agents.SetAgent("claude", claudeAgent)
-			}
-			if len(agent.Args) > 0 {
-				sources["claude_args"] = source
-				claudeAgent := cfg.Agents.GetAgent("claude")
-				claudeAgent.Args = agent.Args
-				cfg.Agents.SetAgent("claude", claudeAgent)
-			}
-		}
-	}
+	mergeAgentSources(cfg, tempCfg, sources, source, "codex", DefaultAgentBinaries()["codex"])
+	mergeAgentSources(cfg, tempCfg, sources, source, "claude", DefaultAgentBinaries()["claude"])
 
 	return nil
 }
 
+// setSource is a helper for loadConfigFileWithSources.
+func setSource[T any](cfg *Config, field *T, value T, sources map[string]ConfigSource, name string, source ConfigSource) {
+	*field = value
+	sources[name] = source
+}
+
+// mergeAgentSources merges a single agent's config from a file into cfg with source tracking.
+func mergeAgentSources(cfg *Config, tempCfg *Config, sources map[string]ConfigSource, source ConfigSource, name, defaultBinary string) {
+	agent := tempCfg.Agents.GetAgent(name)
+	if agent.Binary != "" {
+		if agent.Binary != defaultBinary {
+			sources[name+"_binary"] = source
+		}
+		cfg.Agents.SetAgent(name, agent)
+	} else if cfg.Agents.GetAgent(name).Binary == "" {
+		cfg.Agents.SetAgent(name, Agent{Binary: defaultBinary})
+	}
+	if agent.Model != "" {
+		sources[name+"_model"] = source
+		a := cfg.Agents.GetAgent(name)
+		a.Model = agent.Model
+		cfg.Agents.SetAgent(name, a)
+	}
+	if agent.Reasoning != "" {
+		sources[name+"_reasoning"] = source
+		a := cfg.Agents.GetAgent(name)
+		a.Reasoning = agent.Reasoning
+		cfg.Agents.SetAgent(name, a)
+	}
+	if len(agent.Args) > 0 {
+		sources[name+"_args"] = source
+		a := cfg.Agents.GetAgent(name)
+		a.Args = agent.Args
+		cfg.Agents.SetAgent(name, a)
+	}
+}
+
 // loadFromEnvWithSources loads environment variables and updates source tracking.
 func loadFromEnvWithSources(cfg *Config, sources map[string]ConfigSource) {
+	loadFromEnvHelper(cfg, sources, SourceEnv)
+}
+
+// loadFromEnv overrides config from environment variables.
+func loadFromEnv(cfg *Config) {
+	loadFromEnvHelper(cfg, nil, "")
+}
+
+// loadFromEnvHelper is the shared implementation for env loading.
+// If sources is non-nil, it tracks the source of each value.
+func loadFromEnvHelper(cfg *Config, sources map[string]ConfigSource, source ConfigSource) {
+	setEnv := func(field, value string) {
+		if sources != nil {
+			sources[field] = source
+		}
+	}
+	setEnvInt := func(field string, value int) {
+		if sources != nil {
+			sources[field] = source
+		}
+	}
+	setEnvBool := func(field string, value bool) {
+		if sources != nil {
+			sources[field] = source
+		}
+	}
+	setAgentEnv := func(agentType, field, value string) {
+		if sources != nil {
+			sources[field] = source
+		}
+	}
+	setAgentArgs := func(agentType, field string, value []string) {
+		if sources != nil {
+			sources[field] = source
+		}
+	}
+	setAgentReasoning := func(agentType, field string, value string) {
+		if sources != nil {
+			sources[field] = source
+		}
+	}
+
 	if v := os.Getenv("LOOPER_TODO"); v != "" {
 		cfg.TodoFile = v
-		sources["todo_file"] = SourceEnv
+		setEnv("todo_file", v)
 	}
 	if v := os.Getenv("LOOPER_SCHEMA"); v != "" {
 		cfg.SchemaFile = v
-		sources["schema_file"] = SourceEnv
+		setEnv("schema_file", v)
 	}
 	if v := os.Getenv("LOOPER_BASE_DIR"); v != "" {
 		cfg.LogDir = v
-		sources["log_dir"] = SourceEnv
+		setEnv("log_dir", v)
 	}
 	if v := os.Getenv("LOOPER_LOG_DIR"); v != "" {
 		cfg.LogDir = v
-		sources["log_dir"] = SourceEnv
+		setEnv("log_dir", v)
 	}
 	if devModeEnabled() {
 		if v := os.Getenv("LOOPER_PROMPT_DIR"); v != "" {
@@ -575,340 +585,112 @@ func loadFromEnvWithSources(cfg *Config, sources map[string]ConfigSource) {
 		var i int
 		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
 			cfg.MaxIterations = i
-			sources["max_iterations"] = SourceEnv
+			setEnvInt("max_iterations", i)
 		}
 	}
 	if v := os.Getenv("LOOPER_ITER_SCHEDULE"); v != "" {
 		cfg.Schedule = v
-		sources["schedule"] = SourceEnv
+		setEnv("schedule", v)
 	} else if v := os.Getenv("LOOPER_SCHEDULE"); v != "" {
 		cfg.Schedule = v
-		sources["schedule"] = SourceEnv
+		setEnv("schedule", v)
 	}
 	if v := os.Getenv("LOOPER_REPAIR_AGENT"); v != "" {
 		cfg.RepairAgent = v
-		sources["repair_agent"] = SourceEnv
+		setEnv("repair_agent", v)
 	}
 	if v := os.Getenv("LOOPER_REVIEW_AGENT"); v != "" {
 		cfg.ReviewAgent = v
-		sources["review_agent"] = SourceEnv
+		setEnv("review_agent", v)
 	}
 	if v := os.Getenv("LOOPER_BOOTSTRAP_AGENT"); v != "" {
 		cfg.BootstrapAgent = v
-		sources["bootstrap_agent"] = SourceEnv
+		setEnv("bootstrap_agent", v)
 	}
 	if v := os.Getenv("LOOPER_ITER_ODD_AGENT"); v != "" {
 		cfg.OddAgent = v
-		sources["odd_agent"] = SourceEnv
+		setEnv("odd_agent", v)
 	}
 	if v := os.Getenv("LOOPER_ITER_EVEN_AGENT"); v != "" {
 		cfg.EvenAgent = v
-		sources["even_agent"] = SourceEnv
+		setEnv("even_agent", v)
 	}
 	if v := os.Getenv("LOOPER_ITER_RR_AGENTS"); v != "" {
 		cfg.RRAgents = splitAndTrim(v, ",")
-		sources["rr_agents"] = SourceEnv
+		setEnv("rr_agents", v)
 	}
 	if v := os.Getenv("LOOPER_APPLY_SUMMARY"); v != "" {
 		cfg.ApplySummary = boolFromString(v)
-		sources["apply_summary"] = SourceEnv
+		setEnvBool("apply_summary", cfg.ApplySummary)
 	}
 	if v := os.Getenv("LOOPER_GIT_INIT"); v != "" {
 		cfg.GitInit = boolFromString(v)
-		sources["git_init"] = SourceEnv
+		setEnvBool("git_init", cfg.GitInit)
 	}
 	if v := os.Getenv("LOOPER_HOOK"); v != "" {
 		cfg.HookCommand = v
-		sources["hook_command"] = SourceEnv
+		setEnv("hook_command", v)
 	}
 	if v := os.Getenv("LOOPER_LOOP_DELAY"); v != "" {
 		var i int
 		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
 			cfg.LoopDelaySeconds = i
-			sources["loop_delay_seconds"] = SourceEnv
+			setEnvInt("loop_delay_seconds", i)
 		}
 	}
 	if v := os.Getenv("CODEX_BIN"); v != "" {
 		agent := cfg.Agents.GetAgent("codex")
 		agent.Binary = v
 		cfg.Agents.SetAgent("codex", agent)
-		sources["codex_binary"] = SourceEnv
+		setAgentEnv("codex", "codex_binary", v)
 	}
 	if v := os.Getenv("CLAUDE_BIN"); v != "" {
 		agent := cfg.Agents.GetAgent("claude")
 		agent.Binary = v
 		cfg.Agents.SetAgent("claude", agent)
-		sources["claude_binary"] = SourceEnv
+		setAgentEnv("claude", "claude_binary", v)
 	}
 	if v := os.Getenv("CODEX_MODEL"); v != "" {
 		agent := cfg.Agents.GetAgent("codex")
 		agent.Model = v
 		cfg.Agents.SetAgent("codex", agent)
-		sources["codex_model"] = SourceEnv
+		setAgentEnv("codex", "codex_model", v)
 	}
 	if v := os.Getenv("CLAUDE_MODEL"); v != "" {
 		agent := cfg.Agents.GetAgent("claude")
 		agent.Model = v
 		cfg.Agents.SetAgent("claude", agent)
-		sources["claude_model"] = SourceEnv
+		setAgentEnv("claude", "claude_model", v)
 	}
 	if v := os.Getenv("CODEX_REASONING"); v != "" {
 		agent := cfg.Agents.GetAgent("codex")
 		agent.Reasoning = v
 		cfg.Agents.SetAgent("codex", agent)
-		sources["codex_reasoning"] = SourceEnv
+		setAgentReasoning("codex", "codex_reasoning", v)
 	}
 	if v := os.Getenv("CODEX_REASONING_EFFORT"); v != "" {
 		agent := cfg.Agents.GetAgent("codex")
 		agent.Reasoning = v
 		cfg.Agents.SetAgent("codex", agent)
-		sources["codex_reasoning"] = SourceEnv
+		setAgentReasoning("codex", "codex_reasoning", v)
 	}
 	if v := os.Getenv("CODEX_ARGS"); v != "" {
 		agent := cfg.Agents.GetAgent("codex")
 		agent.Args = splitAndTrim(v, ",")
 		cfg.Agents.SetAgent("codex", agent)
-		sources["codex_args"] = SourceEnv
+		setAgentArgs("codex", "codex_args", agent.Args)
 	}
 	if v := os.Getenv("CLAUDE_ARGS"); v != "" {
 		agent := cfg.Agents.GetAgent("claude")
 		agent.Args = splitAndTrim(v, ",")
 		cfg.Agents.SetAgent("claude", agent)
-		sources["claude_args"] = SourceEnv
+		setAgentArgs("claude", "claude_args", agent.Args)
 	}
 }
 
 // parseFlagsWithSources parses CLI flags and updates source tracking.
 func parseFlagsWithSources(cfg *Config, fs *flag.FlagSet, args []string, sources map[string]ConfigSource) error {
-	if fs == nil {
-		fs = flag.NewFlagSet("looper", flag.ContinueOnError)
-	}
-
-	// Track which flags are explicitly set
-	flagSet := make(map[string]bool)
-
-	// Path flags
-	var todoFile, schemaFile, logDir string
-	fs.StringVar(&todoFile, "todo", cfg.TodoFile, "")
-	fs.StringVar(&schemaFile, "schema", cfg.SchemaFile, "")
-	fs.StringVar(&logDir, "log-dir", cfg.LogDir, "")
-
-	// Dev-only flags (only work when LOOPER_PROMPT_MODE=dev)
-	var promptDir string
-	var printPrompt bool
-	if devModeEnabled() {
-		fs.StringVar(&promptDir, "prompt-dir", cfg.PromptDir, "")
-		fs.BoolVar(&printPrompt, "print-prompt", cfg.PrintPrompt, "")
-	}
-
-	// Loop settings
-	var maxIter int
-	var schedule, repairAgent, reviewAgent, bootstrapAgent, oddAgent, evenAgent string
-	fs.IntVar(&maxIter, "max-iterations", cfg.MaxIterations, "")
-	fs.StringVar(&schedule, "schedule", cfg.Schedule, "")
-	fs.StringVar(&repairAgent, "repair-agent", cfg.RepairAgent, "")
-	fs.StringVar(&reviewAgent, "review-agent", cfg.ReviewAgent, "")
-	fs.StringVar(&bootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "")
-	fs.StringVar(&oddAgent, "odd-agent", cfg.OddAgent, "")
-	fs.StringVar(&evenAgent, "even-agent", cfg.EvenAgent, "")
-
-	// Round-robin agents
-	var rrAgentsStr string
-	if cfg.RRAgents != nil {
-		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
-	}
-	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "")
-
-	// Output
-	var applySummary bool
-	fs.BoolVar(&applySummary, "apply-summary", cfg.ApplySummary, "")
-
-	// Git
-	var gitInit bool
-	fs.BoolVar(&gitInit, "git-init", cfg.GitInit, "")
-
-	// Hooks
-	var hook string
-	fs.StringVar(&hook, "hook", cfg.HookCommand, "")
-
-	// Delay
-	var loopDelay int
-	fs.IntVar(&loopDelay, "loop-delay", cfg.LoopDelaySeconds, "")
-
-	// Agents
-	codexBinary := cfg.GetAgentBinary("codex")
-	claudeBinary := cfg.GetAgentBinary("claude")
-	codexModel := cfg.GetAgentModel("codex")
-	claudeModel := cfg.GetAgentModel("claude")
-	codexReasoning := cfg.GetAgentReasoning("codex")
-	codexArgsStr := strings.Join(cfg.GetAgentArgs("codex"), ",")
-	claudeArgsStr := strings.Join(cfg.GetAgentArgs("claude"), ",")
-	fs.StringVar(&codexBinary, "codex-bin", codexBinary, "")
-	fs.StringVar(&claudeBinary, "claude-bin", claudeBinary, "")
-	fs.StringVar(&codexModel, "codex-model", codexModel, "")
-	fs.StringVar(&claudeModel, "claude-model", claudeModel, "")
-	fs.StringVar(&codexReasoning, "codex-reasoning", codexReasoning, "")
-	fs.StringVar(&codexArgsStr, "codex-args", codexArgsStr, "")
-	fs.StringVar(&claudeArgsStr, "claude-args", claudeArgsStr, "")
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "todo":
-			flagSet["todo_file"] = true
-		case "schema":
-			flagSet["schema_file"] = true
-		case "log-dir":
-			flagSet["log_dir"] = true
-		case "prompt-dir":
-			cfg.PromptDir = promptDir
-		case "print-prompt":
-			cfg.PrintPrompt = printPrompt
-		case "max-iterations":
-			flagSet["max_iterations"] = true
-		case "schedule":
-			flagSet["schedule"] = true
-		case "repair-agent":
-			flagSet["repair_agent"] = true
-		case "review-agent":
-			flagSet["review_agent"] = true
-		case "bootstrap-agent":
-			flagSet["bootstrap_agent"] = true
-		case "odd-agent":
-			flagSet["odd_agent"] = true
-		case "even-agent":
-			flagSet["even_agent"] = true
-		case "rr-agents":
-			flagSet["rr_agents"] = true
-		case "apply-summary":
-			flagSet["apply_summary"] = true
-		case "git-init":
-			flagSet["git_init"] = true
-		case "hook":
-			flagSet["hook_command"] = true
-		case "loop-delay":
-			flagSet["loop_delay_seconds"] = true
-		case "codex-bin":
-			flagSet["codex_binary"] = true
-		case "claude-bin":
-			flagSet["claude_binary"] = true
-		case "codex-model":
-			flagSet["codex_model"] = true
-		case "claude-model":
-			flagSet["claude_model"] = true
-		case "codex-reasoning":
-			flagSet["codex_reasoning"] = true
-		case "codex-args":
-			flagSet["codex_args"] = true
-		case "claude-args":
-			flagSet["claude_args"] = true
-		}
-	})
-
-	// Update config from parsed values
-	if flagSet["todo_file"] {
-		cfg.TodoFile = todoFile
-		sources["todo_file"] = SourceFlag
-	}
-	if flagSet["schema_file"] {
-		cfg.SchemaFile = schemaFile
-		sources["schema_file"] = SourceFlag
-	}
-	if flagSet["log_dir"] {
-		cfg.LogDir = logDir
-		sources["log_dir"] = SourceFlag
-	}
-	if flagSet["max_iterations"] {
-		cfg.MaxIterations = maxIter
-		sources["max_iterations"] = SourceFlag
-	}
-	if flagSet["schedule"] {
-		cfg.Schedule = schedule
-		sources["schedule"] = SourceFlag
-	}
-	if flagSet["repair_agent"] {
-		cfg.RepairAgent = repairAgent
-		sources["repair_agent"] = SourceFlag
-	}
-	if flagSet["review_agent"] {
-		cfg.ReviewAgent = reviewAgent
-		sources["review_agent"] = SourceFlag
-	}
-	if flagSet["bootstrap_agent"] {
-		cfg.BootstrapAgent = bootstrapAgent
-		sources["bootstrap_agent"] = SourceFlag
-	}
-	if flagSet["odd_agent"] {
-		cfg.OddAgent = oddAgent
-		sources["odd_agent"] = SourceFlag
-	}
-	if flagSet["even_agent"] {
-		cfg.EvenAgent = evenAgent
-		sources["even_agent"] = SourceFlag
-	}
-	if flagSet["rr_agents"] {
-		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
-		sources["rr_agents"] = SourceFlag
-	}
-	if flagSet["apply_summary"] {
-		cfg.ApplySummary = applySummary
-		sources["apply_summary"] = SourceFlag
-	}
-	if flagSet["git_init"] {
-		cfg.GitInit = gitInit
-		sources["git_init"] = SourceFlag
-	}
-	if flagSet["hook_command"] {
-		cfg.HookCommand = hook
-		sources["hook_command"] = SourceFlag
-	}
-	if flagSet["loop_delay_seconds"] {
-		cfg.LoopDelaySeconds = loopDelay
-		sources["loop_delay_seconds"] = SourceFlag
-	}
-
-	// Handle agent flags - only update values when explicitly set
-	if flagSet["codex_binary"] || flagSet["codex_model"] || flagSet["codex_reasoning"] || flagSet["codex_args"] {
-		codexAgent := cfg.Agents.GetAgent("codex")
-		if flagSet["codex_binary"] {
-			codexAgent.Binary = codexBinary
-			sources["codex_binary"] = SourceFlag
-		}
-		if flagSet["codex_model"] {
-			codexAgent.Model = codexModel
-			sources["codex_model"] = SourceFlag
-		}
-		if flagSet["codex_reasoning"] {
-			codexAgent.Reasoning = codexReasoning
-			sources["codex_reasoning"] = SourceFlag
-		}
-		if flagSet["codex_args"] {
-			codexAgent.Args = splitAndTrim(codexArgsStr, ",")
-			sources["codex_args"] = SourceFlag
-		}
-		cfg.Agents.SetAgent("codex", codexAgent)
-	}
-	if flagSet["claude_binary"] || flagSet["claude_model"] || flagSet["claude_args"] {
-		claudeAgent := cfg.Agents.GetAgent("claude")
-		if flagSet["claude_binary"] {
-			claudeAgent.Binary = claudeBinary
-			sources["claude_binary"] = SourceFlag
-		}
-		if flagSet["claude_model"] {
-			claudeAgent.Model = claudeModel
-			sources["claude_model"] = SourceFlag
-		}
-		if flagSet["claude_args"] {
-			claudeAgent.Args = splitAndTrim(claudeArgsStr, ",")
-			sources["claude_args"] = SourceFlag
-		}
-		cfg.Agents.SetAgent("claude", claudeAgent)
-	}
-
-	return nil
+	return parseFlagsHelper(cfg, fs, args, sources, SourceFlag)
 }
 
 // GetConfigFile returns the active config file path (project or user).
@@ -1041,117 +823,6 @@ func loadConfigFile(cfg *Config, path string) error {
 	return err
 }
 
-// loadFromEnv overrides config from environment variables.
-func loadFromEnv(cfg *Config) {
-	if v := os.Getenv("LOOPER_TODO"); v != "" {
-		cfg.TodoFile = v
-	}
-	if v := os.Getenv("LOOPER_SCHEMA"); v != "" {
-		cfg.SchemaFile = v
-	}
-	if v := os.Getenv("LOOPER_BASE_DIR"); v != "" {
-		cfg.LogDir = v
-	}
-	if v := os.Getenv("LOOPER_LOG_DIR"); v != "" {
-		cfg.LogDir = v
-	}
-	if devModeEnabled() {
-		if v := os.Getenv("LOOPER_PROMPT_DIR"); v != "" {
-			cfg.PromptDir = v
-		}
-		if v := os.Getenv("LOOPER_PRINT_PROMPT"); v != "" {
-			cfg.PrintPrompt = boolFromString(v)
-		}
-	}
-	if v := os.Getenv("LOOPER_PROMPT"); v != "" {
-		cfg.UserPrompt = v
-	}
-	if v := os.Getenv("LOOPER_MAX_ITERATIONS"); v != "" {
-		var i int
-		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
-			cfg.MaxIterations = i
-		}
-	}
-	if v := os.Getenv("LOOPER_ITER_SCHEDULE"); v != "" {
-		cfg.Schedule = v
-	} else if v := os.Getenv("LOOPER_SCHEDULE"); v != "" {
-		cfg.Schedule = v
-	}
-	if v := os.Getenv("LOOPER_REPAIR_AGENT"); v != "" {
-		cfg.RepairAgent = v
-	}
-	if v := os.Getenv("LOOPER_REVIEW_AGENT"); v != "" {
-		cfg.ReviewAgent = v
-	}
-	if v := os.Getenv("LOOPER_BOOTSTRAP_AGENT"); v != "" {
-		cfg.BootstrapAgent = v
-	}
-	if v := os.Getenv("LOOPER_ITER_ODD_AGENT"); v != "" {
-		cfg.OddAgent = v
-	}
-	if v := os.Getenv("LOOPER_ITER_EVEN_AGENT"); v != "" {
-		cfg.EvenAgent = v
-	}
-	if v := os.Getenv("LOOPER_ITER_RR_AGENTS"); v != "" {
-		cfg.RRAgents = splitAndTrim(v, ",")
-	}
-	if v := os.Getenv("LOOPER_APPLY_SUMMARY"); v != "" {
-		cfg.ApplySummary = boolFromString(v)
-	}
-	if v := os.Getenv("LOOPER_GIT_INIT"); v != "" {
-		cfg.GitInit = boolFromString(v)
-	}
-	if v := os.Getenv("LOOPER_HOOK"); v != "" {
-		cfg.HookCommand = v
-	}
-	if v := os.Getenv("LOOPER_LOOP_DELAY"); v != "" {
-		var i int
-		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
-			cfg.LoopDelaySeconds = i
-		}
-	}
-	if v := os.Getenv("CODEX_BIN"); v != "" {
-		agent := cfg.Agents.GetAgent("codex")
-		agent.Binary = v
-		cfg.Agents.SetAgent("codex", agent)
-	}
-	if v := os.Getenv("CLAUDE_BIN"); v != "" {
-		agent := cfg.Agents.GetAgent("claude")
-		agent.Binary = v
-		cfg.Agents.SetAgent("claude", agent)
-	}
-	if v := os.Getenv("CODEX_MODEL"); v != "" {
-		agent := cfg.Agents.GetAgent("codex")
-		agent.Model = v
-		cfg.Agents.SetAgent("codex", agent)
-	}
-	if v := os.Getenv("CLAUDE_MODEL"); v != "" {
-		agent := cfg.Agents.GetAgent("claude")
-		agent.Model = v
-		cfg.Agents.SetAgent("claude", agent)
-	}
-	if v := os.Getenv("CODEX_REASONING"); v != "" {
-		agent := cfg.Agents.GetAgent("codex")
-		agent.Reasoning = v
-		cfg.Agents.SetAgent("codex", agent)
-	}
-	if v := os.Getenv("CODEX_REASONING_EFFORT"); v != "" {
-		agent := cfg.Agents.GetAgent("codex")
-		agent.Reasoning = v
-		cfg.Agents.SetAgent("codex", agent)
-	}
-	if v := os.Getenv("CODEX_ARGS"); v != "" {
-		agent := cfg.Agents.GetAgent("codex")
-		agent.Args = splitAndTrim(v, ",")
-		cfg.Agents.SetAgent("codex", agent)
-	}
-	if v := os.Getenv("CLAUDE_ARGS"); v != "" {
-		agent := cfg.Agents.GetAgent("claude")
-		agent.Args = splitAndTrim(v, ",")
-		cfg.Agents.SetAgent("claude", agent)
-	}
-}
-
 // boolFromString parses a boolean from a string.
 func boolFromString(s string) bool {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -1205,48 +876,139 @@ func normalizeAgentList(agents []string) []string {
 
 // parseFlags defines and parses CLI flags.
 func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
+	return parseFlagsHelper(cfg, fs, args, nil, "")
+}
+
+// parseFlagsHelper is the shared implementation for flag parsing.
+// If sources is non-nil, it tracks the source of each value.
+func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[string]ConfigSource, source ConfigSource) error {
 	if fs == nil {
 		fs = flag.NewFlagSet("looper", flag.ContinueOnError)
 	}
 
-	// Path flags
-	fs.StringVar(&cfg.TodoFile, "todo", cfg.TodoFile, "Path to task file")
-	fs.StringVar(&cfg.SchemaFile, "schema", cfg.SchemaFile, "Path to schema file")
-	fs.StringVar(&cfg.LogDir, "log-dir", cfg.LogDir, "Log directory")
+	// Track which flags are explicitly set (only used when sources != nil)
+	flagSet := make(map[string]bool)
 
-	// Dev-only flags (only work when LOOPER_PROMPT_MODE=dev)
+	// Flag binding struct for source tracking
+	type flagBinding struct {
+		name   string
+		target interface{}
+		usage  string
+	}
+	var bindings []flagBinding
+
+	// Path flags
+	var todoFile, schemaFile, logDir string
+	if sources == nil {
+		// Direct binding for non-source-tracking case
+		fs.StringVar(&cfg.TodoFile, "todo", cfg.TodoFile, "Path to task file")
+		fs.StringVar(&cfg.SchemaFile, "schema", cfg.SchemaFile, "Path to schema file")
+		fs.StringVar(&cfg.LogDir, "log-dir", cfg.LogDir, "Log directory")
+	} else {
+		fs.StringVar(&todoFile, "todo", cfg.TodoFile, "")
+		fs.StringVar(&schemaFile, "schema", cfg.SchemaFile, "")
+		fs.StringVar(&logDir, "log-dir", cfg.LogDir, "")
+		bindings = append(bindings,
+			flagBinding{name: "todo", target: &todoFile},
+			flagBinding{name: "schema", target: &schemaFile},
+			flagBinding{name: "log-dir", target: &logDir},
+		)
+	}
+
+	// Dev-only flags
+	var promptDir string
+	var printPrompt bool
 	if devModeEnabled() {
-		fs.StringVar(&cfg.PromptDir, "prompt-dir", cfg.PromptDir, "Prompt directory override (dev only)")
-		fs.BoolVar(&cfg.PrintPrompt, "print-prompt", cfg.PrintPrompt, "Print rendered prompts before running (dev only)")
+		if sources == nil {
+			fs.StringVar(&cfg.PromptDir, "prompt-dir", cfg.PromptDir, "Prompt directory override (dev only)")
+			fs.BoolVar(&cfg.PrintPrompt, "print-prompt", cfg.PrintPrompt, "Print rendered prompts before running (dev only)")
+		} else {
+			fs.StringVar(&promptDir, "prompt-dir", cfg.PromptDir, "")
+			fs.BoolVar(&printPrompt, "print-prompt", cfg.PrintPrompt, "")
+			bindings = append(bindings,
+				flagBinding{name: "prompt-dir", target: &promptDir},
+				flagBinding{name: "print-prompt", target: &printPrompt},
+			)
+		}
 	}
 
 	// Loop settings
-	fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
-	fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (agent name|odd-even|round-robin)")
-	fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations")
-	fs.StringVar(&cfg.ReviewAgent, "review-agent", cfg.ReviewAgent, "Agent for review pass")
-	fs.StringVar(&cfg.BootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations")
-	fs.StringVar(&cfg.OddAgent, "odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule")
-	fs.StringVar(&cfg.EvenAgent, "even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule")
+	var maxIter int
+	var schedule, repairAgent, reviewAgent, bootstrapAgent, oddAgent, evenAgent string
+	if sources == nil {
+		fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
+		fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (agent name|odd-even|round-robin)")
+		fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations")
+		fs.StringVar(&cfg.ReviewAgent, "review-agent", cfg.ReviewAgent, "Agent for review pass")
+		fs.StringVar(&cfg.BootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations")
+		fs.StringVar(&cfg.OddAgent, "odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule")
+		fs.StringVar(&cfg.EvenAgent, "even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule")
+	} else {
+		fs.IntVar(&maxIter, "max-iterations", cfg.MaxIterations, "")
+		fs.StringVar(&schedule, "schedule", cfg.Schedule, "")
+		fs.StringVar(&repairAgent, "repair-agent", cfg.RepairAgent, "")
+		fs.StringVar(&reviewAgent, "review-agent", cfg.ReviewAgent, "")
+		fs.StringVar(&bootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "")
+		fs.StringVar(&oddAgent, "odd-agent", cfg.OddAgent, "")
+		fs.StringVar(&evenAgent, "even-agent", cfg.EvenAgent, "")
+		bindings = append(bindings,
+			flagBinding{name: "max-iterations", target: &maxIter},
+			flagBinding{name: "schedule", target: &schedule},
+			flagBinding{name: "repair-agent", target: &repairAgent},
+			flagBinding{name: "review-agent", target: &reviewAgent},
+			flagBinding{name: "bootstrap-agent", target: &bootstrapAgent},
+			flagBinding{name: "odd-agent", target: &oddAgent},
+			flagBinding{name: "even-agent", target: &evenAgent},
+		)
+	}
 
-	// Round-robin agents - need a custom var flag since StringVar doesn't handle slices
+	// Round-robin agents
 	var rrAgentsStr string
 	if cfg.RRAgents != nil {
 		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
 	}
-	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule")
+	rrUsage := "Comma-separated agent list for round-robin schedule"
+	if sources != nil {
+		rrUsage = ""
+	}
+	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, rrUsage)
+	bindings = append(bindings, flagBinding{name: "rr-agents", target: &rrAgentsStr})
 
 	// Output
-	fs.BoolVar(&cfg.ApplySummary, "apply-summary", cfg.ApplySummary, "Apply summaries to task file")
+	var applySummary bool
+	if sources == nil {
+		fs.BoolVar(&cfg.ApplySummary, "apply-summary", cfg.ApplySummary, "Apply summaries to task file")
+	} else {
+		fs.BoolVar(&applySummary, "apply-summary", cfg.ApplySummary, "")
+		bindings = append(bindings, flagBinding{name: "apply-summary", target: &applySummary})
+	}
 
 	// Git
-	fs.BoolVar(&cfg.GitInit, "git-init", cfg.GitInit, "Initialize git repo if missing")
+	var gitInit bool
+	if sources == nil {
+		fs.BoolVar(&cfg.GitInit, "git-init", cfg.GitInit, "Initialize git repo if missing")
+	} else {
+		fs.BoolVar(&gitInit, "git-init", cfg.GitInit, "")
+		bindings = append(bindings, flagBinding{name: "git-init", target: &gitInit})
+	}
 
 	// Hooks
-	fs.StringVar(&cfg.HookCommand, "hook", cfg.HookCommand, "Hook command to run after each iteration")
+	var hook string
+	if sources == nil {
+		fs.StringVar(&cfg.HookCommand, "hook", cfg.HookCommand, "Hook command to run after each iteration")
+	} else {
+		fs.StringVar(&hook, "hook", cfg.HookCommand, "")
+		bindings = append(bindings, flagBinding{name: "hook", target: &hook})
+	}
 
 	// Delay
-	fs.IntVar(&cfg.LoopDelaySeconds, "loop-delay", cfg.LoopDelaySeconds, "Delay between iterations (seconds)")
+	var loopDelay int
+	if sources == nil {
+		fs.IntVar(&cfg.LoopDelaySeconds, "loop-delay", cfg.LoopDelaySeconds, "Delay between iterations (seconds)")
+	} else {
+		fs.IntVar(&loopDelay, "loop-delay", cfg.LoopDelaySeconds, "")
+		bindings = append(bindings, flagBinding{name: "loop-delay", target: &loopDelay})
+	}
 
 	// Agents
 	codexBinary := cfg.GetAgentBinary("codex")
@@ -1256,24 +1018,169 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	codexReasoning := cfg.GetAgentReasoning("codex")
 	codexArgsStr := strings.Join(cfg.GetAgentArgs("codex"), ",")
 	claudeArgsStr := strings.Join(cfg.GetAgentArgs("claude"), ",")
-	fs.StringVar(&codexBinary, "codex-bin", codexBinary, "Codex binary")
-	fs.StringVar(&claudeBinary, "claude-bin", claudeBinary, "Claude binary")
-	fs.StringVar(&codexModel, "codex-model", codexModel, "Codex model")
-	fs.StringVar(&claudeModel, "claude-model", claudeModel, "Claude model")
-	fs.StringVar(&codexReasoning, "codex-reasoning", codexReasoning, "Codex reasoning effort (e.g., low, medium, high)")
-	fs.StringVar(&codexArgsStr, "codex-args", codexArgsStr, "Comma-separated extra args for codex (e.g., --foo,bar)")
-	fs.StringVar(&claudeArgsStr, "claude-args", claudeArgsStr, "Comma-separated extra args for claude (e.g., --foo,bar)")
+
+	usage := func(s string) string {
+		if sources == nil {
+			return s
+		}
+		return ""
+	}
+
+	fs.StringVar(&codexBinary, "codex-bin", codexBinary, usage("Codex binary"))
+	fs.StringVar(&claudeBinary, "claude-bin", claudeBinary, usage("Claude binary"))
+	fs.StringVar(&codexModel, "codex-model", codexModel, usage("Codex model"))
+	fs.StringVar(&claudeModel, "claude-model", claudeModel, usage("Claude model"))
+	fs.StringVar(&codexReasoning, "codex-reasoning", codexReasoning, usage("Codex reasoning effort (e.g., low, medium, high)"))
+	fs.StringVar(&codexArgsStr, "codex-args", codexArgsStr, usage("Comma-separated extra args for codex (e.g., --foo,bar)"))
+	fs.StringVar(&claudeArgsStr, "claude-args", claudeArgsStr, usage("Comma-separated extra args for claude (e.g., --foo,bar)"))
+
+	bindings = append(bindings,
+		flagBinding{name: "codex-bin", target: &codexBinary},
+		flagBinding{name: "claude-bin", target: &claudeBinary},
+		flagBinding{name: "codex-model", target: &codexModel},
+		flagBinding{name: "claude-model", target: &claudeModel},
+		flagBinding{name: "codex-reasoning", target: &codexReasoning},
+		flagBinding{name: "codex-args", target: &codexArgsStr},
+		flagBinding{name: "claude-args", target: &claudeArgsStr},
+	)
 
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if rrAgentsStr != "" {
-		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
+
+	// Map flag names to source field names
+	flagToSource := map[string]string{
+		"todo":           "todo_file",
+		"schema":         "schema_file",
+		"log-dir":        "log_dir",
+		"max-iterations": "max_iterations",
+		"schedule":       "schedule",
+		"repair-agent":   "repair_agent",
+		"review-agent":   "review_agent",
+		"bootstrap-agent": "bootstrap_agent",
+		"odd-agent":      "odd_agent",
+		"even-agent":     "even_agent",
+		"rr-agents":      "rr_agents",
+		"apply-summary":  "apply_summary",
+		"git-init":       "git_init",
+		"hook":           "hook_command",
+		"loop-delay":     "loop_delay_seconds",
+		"codex-bin":      "codex_binary",
+		"claude-bin":     "claude_binary",
+		"codex-model":    "codex_model",
+		"claude-model":   "claude_model",
+		"codex-reasoning": "codex_reasoning",
+		"codex-args":     "codex_args",
+		"claude-args":    "claude_args",
 	}
-	codexArgs := splitAndTrim(codexArgsStr, ",")
-	claudeArgs := splitAndTrim(claudeArgsStr, ",")
-	cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning, Args: codexArgs})
-	cfg.Agents.SetAgent("claude", Agent{Binary: claudeBinary, Model: claudeModel, Args: claudeArgs})
+
+	// Track which flags were set and apply to config
+	fs.Visit(func(f *flag.Flag) {
+		flagSet[f.Name] = true
+		if sources == nil {
+			return
+		}
+		if fieldName, ok := flagToSource[f.Name]; ok {
+			sources[fieldName] = source
+		}
+	})
+
+	// Apply flag values to config
+	if sources == nil {
+		// Direct binding already applied
+		if rrAgentsStr != "" {
+			cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
+		}
+		codexArgs := splitAndTrim(codexArgsStr, ",")
+		claudeArgs := splitAndTrim(claudeArgsStr, ",")
+		cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning, Args: codexArgs})
+		cfg.Agents.SetAgent("claude", Agent{Binary: claudeBinary, Model: claudeModel, Args: claudeArgs})
+	} else {
+		// Apply based on which flags were set
+		if flagSet["todo"] {
+			cfg.TodoFile = todoFile
+		}
+		if flagSet["schema"] {
+			cfg.SchemaFile = schemaFile
+		}
+		if flagSet["log-dir"] {
+			cfg.LogDir = logDir
+		}
+		if flagSet["prompt-dir"] {
+			cfg.PromptDir = promptDir
+		}
+		if flagSet["print-prompt"] {
+			cfg.PrintPrompt = printPrompt
+		}
+		if flagSet["max-iterations"] {
+			cfg.MaxIterations = maxIter
+		}
+		if flagSet["schedule"] {
+			cfg.Schedule = schedule
+		}
+		if flagSet["repair-agent"] {
+			cfg.RepairAgent = repairAgent
+		}
+		if flagSet["review-agent"] {
+			cfg.ReviewAgent = reviewAgent
+		}
+		if flagSet["bootstrap-agent"] {
+			cfg.BootstrapAgent = bootstrapAgent
+		}
+		if flagSet["odd-agent"] {
+			cfg.OddAgent = oddAgent
+		}
+		if flagSet["even-agent"] {
+			cfg.EvenAgent = evenAgent
+		}
+		if flagSet["rr-agents"] {
+			cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
+		}
+		if flagSet["apply-summary"] {
+			cfg.ApplySummary = applySummary
+		}
+		if flagSet["git-init"] {
+			cfg.GitInit = gitInit
+		}
+		if flagSet["hook"] {
+			cfg.HookCommand = hook
+		}
+		if flagSet["loop-delay"] {
+			cfg.LoopDelaySeconds = loopDelay
+		}
+
+		// Agent flags - only update values when explicitly set
+		if flagSet["codex-bin"] || flagSet["codex-model"] || flagSet["codex-reasoning"] || flagSet["codex-args"] {
+			codexAgent := cfg.Agents.GetAgent("codex")
+			if flagSet["codex-bin"] {
+				codexAgent.Binary = codexBinary
+			}
+			if flagSet["codex-model"] {
+				codexAgent.Model = codexModel
+			}
+			if flagSet["codex-reasoning"] {
+				codexAgent.Reasoning = codexReasoning
+			}
+			if flagSet["codex-args"] {
+				codexAgent.Args = splitAndTrim(codexArgsStr, ",")
+			}
+			cfg.Agents.SetAgent("codex", codexAgent)
+		}
+		if flagSet["claude-bin"] || flagSet["claude-model"] || flagSet["claude-args"] {
+			claudeAgent := cfg.Agents.GetAgent("claude")
+			if flagSet["claude-bin"] {
+				claudeAgent.Binary = claudeBinary
+			}
+			if flagSet["claude-model"] {
+				claudeAgent.Model = claudeModel
+			}
+			if flagSet["claude-args"] {
+				claudeAgent.Args = splitAndTrim(claudeArgsStr, ",")
+			}
+			cfg.Agents.SetAgent("claude", claudeAgent)
+		}
+	}
+
 	return nil
 }
 
