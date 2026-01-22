@@ -502,19 +502,20 @@
         "config"
       ],
       "files": [
+        "README.md",
         "internal/config/config.go",
-        "internal/loop/loop.go",
         "internal/config/config_test.go",
         "internal/config/example.go",
-        "README.md"
+        "internal/loop/loop.go",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T13:46:26Z"
+      "updated_at": "2026-01-22T13:47:29Z"
     },
     {
       "id": "T033",
       "title": "Support user-scoped config in ~/.looper",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "findConfigFile only checks the current directory for looper.toml/.looper.toml. Add a user-level config location (for example ~/.looper/looper.toml or an OS-specific config dir) with lower precedence than project config.",
       "steps": [
         "Add a user config search path and merge order.",
@@ -526,10 +527,12 @@
       ],
       "files": [
         "internal/config/config.go",
+        "internal/config/config_test.go",
         "internal/config/example.go",
         "README.md",
         "MIGRATION.md"
-      ]
+      ],
+      "updated_at": "2026-01-22T13:50:32Z"
     },
     {
       "id": "T034",

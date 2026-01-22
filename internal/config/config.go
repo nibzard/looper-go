@@ -277,32 +277,41 @@ func (c *Config) GetBootstrapAgent() string {
 
 // Load loads configuration from multiple sources in priority order:
 // 1. Defaults
-// 2. Config file (TOML)
-// 3. Environment variables
-// 4. CLI flags
+// 2. User config file (~/.looper/looper.toml or OS-specific config dir)
+// 3. Project config file (looper.toml or .looper.toml in current directory)
+// 4. Environment variables
+// 5. CLI flags
 func Load(fs *flag.FlagSet, args []string) (*Config, error) {
 	cfg := &Config{}
 
 	// 1. Set defaults
 	setDefaults(cfg)
 
-	// 2. Try to load from config file
-	configFile := findConfigFile()
-	if configFile != "" {
-		if err := loadConfigFile(cfg, configFile); err != nil {
-			return nil, fmt.Errorf("loading config file %s: %w", configFile, err)
+	// 2. Try to load from user config file
+	userConfigFile := findUserConfigFile()
+	if userConfigFile != "" {
+		if err := loadConfigFile(cfg, userConfigFile); err != nil {
+			return nil, fmt.Errorf("loading user config file %s: %w", userConfigFile, err)
 		}
 	}
 
-	// 3. Override from environment
+	// 3. Try to load from project config file (overrides user config)
+	projectConfigFile := findProjectConfigFile()
+	if projectConfigFile != "" {
+		if err := loadConfigFile(cfg, projectConfigFile); err != nil {
+			return nil, fmt.Errorf("loading project config file %s: %w", projectConfigFile, err)
+		}
+	}
+
+	// 4. Override from environment
 	loadFromEnv(cfg)
 
-	// 4. Parse CLI flags (they override everything)
+	// 5. Parse CLI flags (they override everything)
 	if err := parseFlags(cfg, fs, args); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
 	}
 
-	// 5. Compute derived values
+	// 6. Compute derived values
 	if err := finalizeConfig(cfg); err != nil {
 		return nil, fmt.Errorf("finalizing config: %w", err)
 	}
@@ -332,13 +341,82 @@ func setDefaults(cfg *Config) {
 	cfg.Agents.SetAgent("claude", Agent{Binary: DefaultAgentBinaries()["claude"]})
 }
 
-// findConfigFile looks for a config file in the current directory.
-func findConfigFile() string {
+// findProjectConfigFile looks for a config file in the current directory.
+func findProjectConfigFile() string {
 	// Check for looper.toml in current directory
 	names := []string{"looper.toml", ".looper.toml"}
 	for _, name := range names {
 		if _, err := os.Stat(name); err == nil {
 			return name
+		}
+	}
+	return ""
+}
+
+// findConfigFile looks for config files in the following order:
+// 1. User config directory (~/.looper/looper.toml or OS-specific config dir)
+// 2. Project directory (./looper.toml or ./.looper.toml)
+// Returns the first config file found, or empty string if none exist.
+//
+// Deprecated: Use findUserConfigFile and findProjectConfigFile separately
+// for proper merge order. This is kept for backwards compatibility.
+func findConfigFile() string {
+	// First check for user-level config
+	if userCfg := findUserConfigFile(); userCfg != "" {
+		return userCfg
+	}
+
+	// Then check for project config in current directory
+	return findProjectConfigFile()
+}
+
+// findUserConfigFile looks for a user-level config file.
+// Checks ~/.looper/looper.toml first, then falls back to OS-specific
+// config directories if ~/.looper doesn't exist.
+func findUserConfigFile() string {
+	// First try ~/.looper/looper.toml
+	home, err := os.UserHomeDir()
+	if err == nil {
+		userConfigPath := filepath.Join(home, ".looper", "looper.toml")
+		if _, err := os.Stat(userConfigPath); err == nil {
+			return userConfigPath
+		}
+	}
+
+	// If ~/.looper doesn't exist, try OS-specific config directories
+	if cfgDir := osUserConfigDir(); cfgDir != "" {
+		userConfigPath := filepath.Join(cfgDir, "looper", "looper.toml")
+		if _, err := os.Stat(userConfigPath); err == nil {
+			return userConfigPath
+		}
+	}
+
+	return ""
+}
+
+// osUserConfigDir returns the OS-specific user config directory.
+// Returns empty string if the directory cannot be determined.
+func osUserConfigDir() string {
+	switch runtime.GOOS {
+	case "windows":
+		// On Windows, use %APPDATA%\looper
+		if appdata := os.Getenv("APPDATA"); appdata != "" {
+			return appdata
+		}
+	case "darwin":
+		// On macOS, use ~/Library/Application Support
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return filepath.Join(home, "Library", "Application Support")
+		}
+	case "linux", "openbsd", "freebsd", "netbsd":
+		// On Linux/BSD, respect XDG_CONFIG_HOME or use ~/.config
+		if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+			return xdg
+		}
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return filepath.Join(home, ".config")
 		}
 	}
 	return ""

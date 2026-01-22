@@ -159,9 +159,23 @@ looper run --bootstrap-agent claude
 Looper uses a configuration hierarchy (later entries override earlier):
 
 1. Built-in defaults
-2. Config file (`looper.toml` or `.looper.toml` in the current directory)
-3. Environment variables
-4. CLI flags
+2. User config file (`~/.looper/looper.toml` or OS-specific config directory)
+3. Project config file (`looper.toml` or `.looper.toml` in the current directory)
+4. Environment variables
+5. CLI flags
+
+### Config File Locations
+
+**User-level config** (for global defaults):
+- `~/.looper/looper.toml` (preferred)
+- OS-specific config directories (if `~/.looper` doesn't exist):
+  - **Windows**: `%APPDATA%\looper\looper.toml`
+  - **macOS**: `~/Library/Application Support/looper/looper.toml`
+  - **Linux/BSD**: `$XDG_CONFIG_HOME/looper/looper.toml` or `~/.config/looper/looper.toml`
+
+**Project-level config** (overrides user config):
+- `./looper.toml` (preferred)
+- `./.looper.toml`
 
 ### Config File
 

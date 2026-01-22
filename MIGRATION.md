@@ -49,15 +49,23 @@ The shell script used single-dash flags for everything. The Go CLI uses subcomma
 
 ### Configuration
 
-**New:** Go version supports `looper.toml` or `.looper.toml` in the current directory (shell had none).
+**New:** Go version supports config files (shell had none).
 
 **Before:** Shell script relied entirely on environment variables.
 
 **After:** Go version supports:
 1. Built-in defaults
-2. `looper.toml` or `.looper.toml` in project directory
-3. Environment variables
-4. CLI flags
+2. User config file (`~/.looper/looper.toml` or OS-specific config directory)
+3. `looper.toml` or `.looper.toml` in project directory
+4. Environment variables
+5. CLI flags
+
+User-level config (for global defaults) is loaded from:
+- `~/.looper/looper.toml` (preferred)
+- OS-specific config directories:
+  - **Windows**: `%APPDATA%\looper\looper.toml`
+  - **macOS**: `~/Library/Application Support/looper/looper.toml`
+  - **Linux/BSD**: `$XDG_CONFIG_HOME/looper/looper.toml` or `~/.config/looper/looper.toml`
 
 ### Environment Variables
 

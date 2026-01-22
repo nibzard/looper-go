@@ -505,3 +505,221 @@ args = ["arg5"]
 		t.Errorf("GetAgentBinary(opencode): got %q, want opencode", cfg.GetAgentBinary("opencode"))
 	}
 }
+
+// TestFindUserConfigFile tests user config file discovery.
+func TestFindUserConfigFile(t *testing.T) {
+	t.Run("findUserConfigFile prefers ~/.looper/looper.toml", func(t *testing.T) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Skip("Cannot get home directory")
+		}
+
+		userCfgDir := filepath.Join(home, ".looper")
+		userCfgFile := filepath.Join(userCfgDir, "looper.toml")
+
+		// Create directory if it doesn't exist
+		if err := os.MkdirAll(userCfgDir, 0755); err != nil {
+			t.Skipf("Cannot create .looper directory: %v", err)
+		}
+		defer os.RemoveAll(userCfgDir)
+
+		// Create user config file
+		if err := os.WriteFile(userCfgFile, []byte("max_iterations = 100"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		found := findUserConfigFile()
+		if found != userCfgFile {
+			t.Errorf("findUserConfigFile() = %q, want %q", found, userCfgFile)
+		}
+	})
+
+	t.Run("findUserConfigFile returns empty when no config exists", func(t *testing.T) {
+		// Ensure no ~/.looper/looper.toml exists
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Skip("Cannot get home directory")
+		}
+
+		userCfgFile := filepath.Join(home, ".looper", "looper.toml")
+		os.Remove(userCfgFile)
+
+		// Also check OS-specific config dir doesn't interfere
+		cfgDir := osUserConfigDir()
+		if cfgDir != "" {
+			os.RemoveAll(filepath.Join(cfgDir, "looper"))
+		}
+
+		found := findUserConfigFile()
+		if found != "" {
+			t.Errorf("findUserConfigFile() = %q, want empty string", found)
+		}
+	})
+}
+
+// TestFindProjectConfigFile tests project config file discovery.
+func TestFindProjectConfigFile(t *testing.T) {
+	t.Run("findProjectConfigFile finds looper.toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configFile := filepath.Join(tmpDir, "looper.toml")
+
+		if err := os.WriteFile(configFile, []byte("max_iterations = 50"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Change to temp directory
+		origWd, _ := os.Getwd()
+		defer os.Chdir(origWd)
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatal(err)
+		}
+
+		found := findProjectConfigFile()
+		if found != "looper.toml" {
+			t.Errorf("findProjectConfigFile() = %q, want looper.toml", found)
+		}
+	})
+
+	t.Run("findProjectConfigFile finds .looper.toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configFile := filepath.Join(tmpDir, ".looper.toml")
+
+		if err := os.WriteFile(configFile, []byte("max_iterations = 50"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Change to temp directory
+		origWd, _ := os.Getwd()
+		defer os.Chdir(origWd)
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatal(err)
+		}
+
+		found := findProjectConfigFile()
+		if found != ".looper.toml" {
+			t.Errorf("findProjectConfigFile() = %q, want .looper.toml", found)
+		}
+	})
+
+	t.Run("findProjectConfigFile prefers looper.toml over .looper.toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configFile1 := filepath.Join(tmpDir, "looper.toml")
+		configFile2 := filepath.Join(tmpDir, ".looper.toml")
+
+		if err := os.WriteFile(configFile1, []byte("max_iterations = 50"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(configFile2, []byte("max_iterations = 25"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Change to temp directory
+		origWd, _ := os.Getwd()
+		defer os.Chdir(origWd)
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatal(err)
+		}
+
+		found := findProjectConfigFile()
+		if found != "looper.toml" {
+			t.Errorf("findProjectConfigFile() = %q, want looper.toml", found)
+		}
+	})
+
+	t.Run("findProjectConfigFile returns empty when no config exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Change to temp directory (no config files)
+		origWd, _ := os.Getwd()
+		defer os.Chdir(origWd)
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatal(err)
+		}
+
+		found := findProjectConfigFile()
+		if found != "" {
+			t.Errorf("findProjectConfigFile() = %q, want empty string", found)
+		}
+	})
+}
+
+// TestConfigMergeOrder tests that user config is loaded first, then project config overrides.
+func TestConfigMergeOrder(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("Cannot get home directory")
+	}
+
+	// Create user config
+	userCfgDir := filepath.Join(home, ".looper")
+	if err := os.MkdirAll(userCfgDir, 0755); err != nil {
+		t.Skipf("Cannot create .looper directory: %v", err)
+	}
+	defer os.RemoveAll(userCfgDir)
+
+	userCfgFile := filepath.Join(userCfgDir, "looper.toml")
+	userCfgContent := []byte(`# User config
+max_iterations = 100
+schedule = "claude"
+`)
+	if err := os.WriteFile(userCfgFile, userCfgContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create project config
+	tmpDir := t.TempDir()
+	projectCfgFile := filepath.Join(tmpDir, "looper.toml")
+	projectCfgContent := []byte(`# Project config (overrides user config)
+max_iterations = 25  # This should override the user config
+todo_file = "project-tasks.json"
+`)
+	if err := os.WriteFile(projectCfgFile, projectCfgContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Change to temp directory
+	origWd, _ := os.Getwd()
+	defer os.Chdir(origWd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load config
+	cfg, err := Load(nil, []string{})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// User config sets schedule to claude
+	if cfg.Schedule != "claude" {
+		t.Errorf("Schedule from user config: got %q, want claude", cfg.Schedule)
+	}
+
+	// Project config overrides max_iterations
+	if cfg.MaxIterations != 25 {
+		t.Errorf("MaxIterations from project config: got %d, want 25", cfg.MaxIterations)
+	}
+
+	// Project config sets todo_file (path is made absolute by finalizeConfig)
+	wantTodoFile := filepath.Join(tmpDir, "project-tasks.json")
+	if cfg.TodoFile != wantTodoFile {
+		t.Errorf("TodoFile from project config: got %q, want %q", cfg.TodoFile, wantTodoFile)
+	}
+}
+
+// TestOSUserConfigDir tests OS-specific config directory detection.
+func TestOSUserConfigDir(t *testing.T) {
+	// Just test that the function returns something non-empty
+	// The exact path depends on the OS and environment
+	dir := osUserConfigDir()
+	if dir == "" {
+		// On some systems or test environments, this might be empty
+		// which is acceptable (fallback to ~/.looper)
+		t.Skip("osUserConfigDir() returned empty (acceptable fallback)")
+	}
+
+	// Verify the path is absolute
+	if !filepath.IsAbs(dir) {
+		t.Errorf("osUserConfigDir() = %q, want absolute path", dir)
+	}
+}
