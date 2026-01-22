@@ -1044,7 +1044,70 @@
         "internal/agents/agents_test.go",
         "to-do.json"
       ],
-      "updated_at": "2026-01-22T18:18:33Z"
+      "updated_at": "2026-01-22T18:18:58Z"
+    },
+    {
+      "id": "T058",
+      "title": "Remove tracked build/test binaries and ignore build artifacts",
+      "priority": 4,
+      "status": "todo",
+      "details": "Repository currently tracks ELF binaries (bin/looper, looper) and Go test binaries (loop.test, prompts.test, todo.test). Remove these from version control and add .gitignore entries to prevent accidental commits (including platform-specific binary patterns as needed).",
+      "tags": [
+        "maintenance",
+        "repo",
+        "build"
+      ],
+      "files": [
+        ".gitignore"
+      ]
+    },
+    {
+      "id": "T059",
+      "title": "Update smoke test to exercise Go binary instead of legacy looper.sh",
+      "priority": 3,
+      "status": "done",
+      "details": "scripts/smoke.sh currently runs bin/looper.sh, so make smoke does not validate the Go CLI. Switch the smoke script to run the Go binary (build or go run ./cmd/looper) with stub agent input, or add a flag to choose Go vs shell.",
+      "tags": [
+        "tests",
+        "smoke",
+        "go"
+      ],
+      "files": [
+        "scripts/smoke.sh",
+        "Makefile",
+        "scripts/smoke.sh"
+      ],
+      "updated_at": "2026-01-22T18:37:54Z"
+    },
+    {
+      "id": "T060",
+      "title": "Make make test run Go unit tests in addition to smoke",
+      "priority": 3,
+      "status": "todo",
+      "details": "Makefile test target currently aliases smoke only. Add go test ./... (and keep smoke if desired) so make test exercises unit tests and matches README expectations.",
+      "tags": [
+        "tests",
+        "makefile"
+      ],
+      "files": [
+        "Makefile",
+        "README.md"
+      ]
+    },
+    {
+      "id": "T061",
+      "title": "Sync legacy looper.sh schema/prompt with current to-do schema fields",
+      "priority": 4,
+      "status": "todo",
+      "details": "bin/looper.sh writes a schema that lacks description/reference and its bootstrap instructions omit those fields. Update the embedded schema and bootstrap prompt text to match to-do.schema.json/Go prompts, or clearly mark the shell script as deprecated.",
+      "tags": [
+        "shell",
+        "schema",
+        "compat"
+      ],
+      "files": [
+        "bin/looper.sh"
+      ]
     }
   ]
 }
