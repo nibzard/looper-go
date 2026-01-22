@@ -449,23 +449,14 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	prompt := l.renderIterationPrompt(iter, task, agentType)
 	l.printPromptIfDevMode(iter, "Iteration", prompt)
 
-	summary, err := l.runAgent(ctx, agentType, prompt, label, logWriter)
-	l.runHook(ctx, label, logWriter)
+	summary, err := l.runAgentStep(ctx, agentType, prompt, label, logWriter)
 	if err != nil {
 		_ = l.todoFile.SetTaskStatus(taskID, todo.StatusBlocked)
 		_ = l.saveTodo()
-		return fmt.Errorf("run agent: %w", err)
-	}
-
-	if err := l.reloadAndLog(logWriter); err != nil {
 		return err
 	}
 
-	if err := l.validateAndApplySummary(summary, taskID, logWriter); err != nil {
-		return err
-	}
-
-	return nil
+	return l.finalizeStep(summary, taskID, logWriter)
 }
 
 // runReview executes the review pass.
@@ -474,26 +465,15 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 	prompt := l.renderReviewPrompt(iter)
 	l.printPromptIfDevMode(iter, "Review", prompt)
 
-	reviewAgentType := l.cfg.GetReviewAgent()
+	agentType := l.cfg.GetReviewAgent()
 	label := reviewLabel(iter)
 
-	summary, err := l.runAgent(ctx, reviewAgentType, prompt, label, logWriter)
-	l.runHook(ctx, label, logWriter)
+	summary, err := l.runAgentStep(ctx, agentType, prompt, label, logWriter)
 	if err != nil {
 		return fmt.Errorf("run review agent: %w", err)
 	}
 
-	if err := l.reloadAndLog(logWriter); err != nil {
-		return err
-	}
-
-	if l.cfg.ApplySummary && summary != nil {
-		if err := l.applySummary(summary); err != nil {
-			return fmt.Errorf("apply review summary: %w", err)
-		}
-	}
-
-	return nil
+	return l.finalizeStep(summary, "", logWriter)
 }
 
 // applySummary applies a summary to the todo file.
@@ -792,6 +772,37 @@ func (l *Loop) runAgent(ctx context.Context, agentType, prompt, label string, lo
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
 	return agent.Run(ctx, prompt, logWriter)
+}
+
+// runAgentStep runs an agent with hook execution and returns the summary.
+func (l *Loop) runAgentStep(ctx context.Context, agentType, prompt, label string, logWriter agents.LogWriter) (*agents.Summary, error) {
+	summary, err := l.runAgent(ctx, agentType, prompt, label, logWriter)
+	l.runHook(ctx, label, logWriter)
+	if err != nil {
+		return nil, fmt.Errorf("run agent: %w", err)
+	}
+	return summary, nil
+}
+
+// finalizeStep reloads the todo file and applies the summary if configured.
+func (l *Loop) finalizeStep(summary *agents.Summary, expectedTaskID string, logWriter agents.LogWriter) error {
+	if err := l.reloadAndLog(logWriter); err != nil {
+		return err
+	}
+	if expectedTaskID != "" {
+		return l.validateAndApplySummary(summary, expectedTaskID, logWriter)
+	}
+	if l.cfg.ApplySummary && summary != nil {
+		if err := l.applySummary(summary); err != nil {
+			_ = logWriter.Write(agents.LogEvent{
+				Type:      "error",
+				Timestamp: time.Now().UTC(),
+				Content:   fmt.Sprintf("apply summary: %v", err),
+			})
+			return fmt.Errorf("apply summary: %w", err)
+		}
+	}
+	return nil
 }
 
 // reloadAndLog reloads the todo file and logs any error.
