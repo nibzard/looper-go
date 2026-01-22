@@ -4,6 +4,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,7 +14,9 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/nibzard/looper-go/internal/agents"
 	"github.com/nibzard/looper-go/internal/config"
 	"github.com/nibzard/looper-go/internal/logging"
 	"github.com/nibzard/looper-go/internal/loop"
@@ -79,6 +82,8 @@ func Run(ctx context.Context, args []string) error {
 		return tailCommand(cfg, remainingArgs)
 	case "ls":
 		return lsCommand(cfg, remainingArgs)
+	case "push":
+		return pushCommand(ctx, cfg, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -636,6 +641,7 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  doctor [file] Check dependencies, config, and task file validity")
 	fmt.Fprintln(w, "  tail          Tail the latest log file")
 	fmt.Fprintln(w, "  ls [status] [file]  List tasks by status")
+	fmt.Fprintln(w, "  push          Run a release workflow via the agent")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
 	fmt.Fprintln(w)
@@ -984,4 +990,202 @@ func resolvePromptDir(cfg *config.Config) string {
 		promptDir = filepath.Join(cfg.ProjectRoot, promptDir)
 	}
 	return promptDir
+}
+
+// pushCommand runs a release workflow via the agent.
+func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
+	// Parse push-specific flags
+	fs := flag.NewFlagSet("looper push", flag.ContinueOnError)
+	agentFlag := fs.String("agent", "codex", "Agent to use for release workflow (codex|claude)")
+	yes := fs.Bool("y", false, "Skip confirmation prompt")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+
+	// Determine work directory
+	workDir := cfg.ProjectRoot
+	if workDir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting working directory: %w", err)
+		}
+		workDir = wd
+	}
+
+	// Check for git
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		return fmt.Errorf("git not found in PATH: %w", err)
+	}
+
+	fmt.Printf("Git found: %s\n", gitPath)
+
+	// Check if we're in a git repository
+	gitDir := filepath.Join(workDir, ".git")
+	if _, err := os.Stat(gitDir); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("not a git repository (no .git directory in %s)", workDir)
+		}
+		return fmt.Errorf("checking git repository: %w", err)
+	}
+
+	fmt.Println("Git repository detected.")
+
+	// Check for git remote
+	var hasRemote bool
+	remotes, err := exec.Command("git", "-C", workDir, "remote", "-v").Output()
+	if err == nil && len(remotes) > 0 {
+		hasRemote = true
+		fmt.Println("Git remote detected.")
+	}
+
+	// Check for gh
+	var hasGH bool
+	ghPath, err := exec.LookPath("gh")
+	if err == nil {
+		hasGH = true
+		fmt.Printf("GitHub CLI found: %s\n", ghPath)
+
+		// Check gh auth status
+		if err := exec.Command("gh", "auth", "status").Run(); err != nil {
+			return fmt.Errorf("gh auth failed: %w (run 'gh auth login' first)", err)
+		}
+		fmt.Println("GitHub CLI authenticated.")
+	} else {
+		fmt.Println("GitHub CLI not found. Will skip GitHub-specific operations.")
+	}
+
+	// If no remote and gh is available, offer to create a repo
+	if !hasRemote && hasGH {
+		if !*yes {
+			fmt.Print("\nNo git remote detected. Create a GitHub repository? [y/N] ")
+			var response string
+			if _, err := fmt.Scanln(&response); err != nil {
+				return fmt.Errorf("reading response: %w", err)
+			}
+			if strings.ToLower(strings.TrimSpace(response)) != "y" {
+				fmt.Println("Skipping repository creation.")
+			} else {
+				// Create GitHub repo using gh
+				cmd := exec.Command("gh", "repo", "create", "--public", "--source", ".", "--remote", "origin", "--push")
+				cmd.Dir = workDir
+				if output, err := cmd.CombinedOutput(); err != nil {
+					return fmt.Errorf("creating GitHub repo: %w\nOutput: %s", err, string(output))
+				}
+				fmt.Println("GitHub repository created and remote added.")
+			}
+		}
+	}
+
+	// Confirm before running agent
+	if !*yes {
+		fmt.Print("\nProceed with release workflow? [y/N] ")
+		var response string
+		if _, err := fmt.Scanln(&response); err != nil {
+			return fmt.Errorf("reading response: %w", err)
+		}
+		if strings.ToLower(strings.TrimSpace(response)) != "y" {
+			fmt.Println("Aborted.")
+			return nil
+		}
+	}
+
+	// Set up prompt store and renderer
+	promptDir := resolvePromptDir(cfg)
+	promptStore := prompts.NewStore(workDir, promptDir)
+	renderer := prompts.NewRenderer(promptStore)
+
+	// Render push prompt
+	promptData := prompts.Data{
+		WorkDir: workDir,
+		Now:     time.Now().UTC().Format(time.RFC3339),
+	}
+	prompt, err := renderer.Render(prompts.PushPrompt, promptData)
+	if err != nil {
+		return fmt.Errorf("rendering push prompt: %w", err)
+	}
+
+	// Set up agent
+	agentType := agents.AgentType(*agentFlag)
+	agentConfig := agents.Config{
+		Binary: "",
+		Model:  "",
+		WorkDir: workDir,
+		Args:   nil,
+	}
+	switch agentType {
+	case agents.AgentTypeCodex:
+		agentConfig.Binary = cfg.Agents.Codex.Binary
+		agentConfig.Model = cfg.Agents.Codex.Model
+	case agents.AgentTypeClaude:
+		agentConfig.Binary = cfg.Agents.Claude.Binary
+		agentConfig.Model = cfg.Agents.Claude.Model
+	default:
+		return fmt.Errorf("invalid agent type: %s (use codex or claude)", agentType)
+	}
+
+	// Resolve binary path if not set
+	if agentConfig.Binary == "" {
+		path, err := agents.FindAgentBinary(agentType)
+		if err != nil {
+			return fmt.Errorf("finding agent binary: %w", err)
+		}
+		agentConfig.Binary = path
+	}
+
+	agent, err := agents.NewAgent(agentType, agentConfig)
+	if err != nil {
+		return fmt.Errorf("creating agent: %w", err)
+	}
+
+	// Set up logging for the push command
+	logDir, err := logging.FindLogDir(cfg.LogDir, workDir)
+	if err != nil {
+		return fmt.Errorf("finding log directory: %w", err)
+	}
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("creating log directory: %w", err)
+	}
+
+	runLogger, err := logging.NewRunLogger(logDir, workDir)
+	if err != nil {
+		return fmt.Errorf("creating run logger: %w", err)
+	}
+	defer runLogger.Close()
+	logWriter := agents.NewIOStreamLogWriter(runLogger.Writer())
+
+	// Also output to stdout unless LOOPER_QUIET is set
+	var multiLogWriter agents.LogWriter = logWriter
+	if os.Getenv("LOOPER_QUIET") == "" {
+		stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
+		stdoutWriter.SetIndent("  ")
+		multiLogWriter = agents.NewMultiLogWriter(logWriter, stdoutWriter)
+	}
+
+	fmt.Println("\n=== Running Release Workflow ===")
+
+	// Run the agent
+	summary, err := agent.Run(ctx, prompt, multiLogWriter)
+	if err != nil && !errors.Is(err, agents.ErrSummaryMissing) {
+		return fmt.Errorf("running agent: %w", err)
+	}
+
+	fmt.Println("\n=== Release Workflow Complete ===")
+	if summary != nil {
+		fmt.Printf("\nSummary: %s\n", summary.Summary)
+		if len(summary.Files) > 0 {
+			fmt.Printf("Files: %v\n", summary.Files)
+		}
+		if len(summary.Blockers) > 0 {
+			fmt.Printf("Blockers: %v\n", summary.Blockers)
+		}
+	}
+
+	fmt.Printf("\nLog saved to: %s\n", runLogger.LogPath)
+	return nil
 }

@@ -363,7 +363,7 @@
       "id": "T027",
       "title": "Add `looper push` to run a release workflow via the agent",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "The release runbook skill already exists under looper/skills/release-runbook (scripts/release.sh), but there is no CLI command that uses it. Add a push subcommand that checks for gh and git, creates a repo/remote if gh is present and no remote exists, and runs an agent with a prompt that instructs using the release-runbook skill to cut a release and push commits. Fail gracefully when gh is missing.",
       "steps": [
         "Add a push subcommand and a dedicated prompt for the release flow.",
@@ -378,10 +378,10 @@
       "files": [
         "cmd/root.go",
         "internal/prompts/prompts.go",
-        "skills/release-runbook/SKILL.md",
-        "skills/release-runbook/scripts/release.sh",
+        "prompts/push.txt",
         "README.md"
-      ]
+      ],
+      "updated_at": "2026-01-22T12:46:28Z"
     },
     {
       "id": "T028",
@@ -931,6 +931,9 @@
       ]
     },
     {
+      "id": "T053",
+      "title": "Document code quality audit results",
+      "priority": 3,
       "status": "done",
       "updated_at": "2026-01-22T12:38:57Z",
       "details": "Audit complete: no bugs found. Test stubs are legitimate test infrastructure. No TODO/FIXME markers in production code. Minor code quality observations documented."

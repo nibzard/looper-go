@@ -104,6 +104,11 @@ looper doctor
 
 # Show version
 looper version
+
+# Run a release workflow via the agent
+looper push
+looper push --agent claude
+looper push -y
 ```
 
 ## Iteration Schedules
@@ -315,6 +320,49 @@ The hook receives these arguments:
 ```
 <task_id> <status> <last_message_json_path> <label>
 ```
+
+## Release Workflow
+
+The `looper push` command runs a release workflow via an AI agent:
+
+```bash
+looper push [options]
+```
+
+The push command will:
+
+1. Verify git is available and you're in a git repository
+2. Check for `gh` (GitHub CLI) and verify authentication
+3. Offer to create a GitHub repository if no remote exists and `gh` is available
+4. Run an agent with instructions to follow the release-runbook skill at `skills/release-runbook/SKILL.md`
+5. Execute the release workflow: run tests, bump version, tag, push, create GitHub release, update Homebrew formula
+
+**Options:**
+- `--agent <codex|claude>` - Agent to use for release workflow (default: codex)
+- `-y` - Skip confirmation prompts
+
+**Example:**
+
+```bash
+# Run the release workflow with codex
+looper push
+
+# Run with claude and skip confirmation
+looper push --agent claude -y
+```
+
+The agent will follow the workflow steps defined in `skills/release-runbook/SKILL.md`, which includes:
+
+- Checking repo state and verifying tools
+- Determining the appropriate version bump
+- Running tests
+- Updating version references in files
+- Committing release changes
+- Creating and pushing git tags
+- Creating GitHub releases
+- Updating Homebrew formulas (if present)
+
+The output is logged to the log directory with label `push` for traceability.
 
 ## Git Behavior
 

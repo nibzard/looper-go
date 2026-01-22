@@ -16,6 +16,7 @@ const (
 	IterationPrompt = "iteration.txt"
 	ReviewPrompt    = "review.txt"
 	SummarySchema   = "summary.schema.json"
+	PushPrompt      = "push.txt"
 )
 
 // bundledTodoSchema is the embedded todo schema JSON.

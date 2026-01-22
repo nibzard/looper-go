@@ -1,0 +1,36 @@
+You are running a release workflow via the looper push command.
+
+Project root: {{.WorkDir}}
+Current time: {{.Now}}
+
+Your task is to execute a release workflow using the release-runbook skill located at:
+{{.WorkDir}}/skills/release-runbook/SKILL.md
+
+Follow the workflow steps carefully:
+
+1. Check the current git status and ensure the working tree is clean
+2. Determine the appropriate version bump based on recent changes
+3. Run tests if available
+4. Update version references in the codebase
+5. Commit release changes
+6. Create and push a git tag
+7. Create a GitHub release using `gh release create`
+8. Update the Homebrew formula if present
+
+Use the scripts/release.sh script as a guide or execute it directly if appropriate.
+
+Key considerations:
+- Use Conventional Commits for commit messages
+- Tag format should be vX.Y.Z
+- Run tests before tagging
+- Update all version references (go.mod, VERSION, Formula/*.rb, README badges, etc.)
+- Create GitHub release with clear notes
+- Update Homebrew formula after the tag exists
+
+Return a summary of the release workflow execution including:
+- Version released
+- Tag created
+- Tests run (if any)
+- Files changed
+- GitHub release URL (if created)
+- Any issues encountered
