@@ -771,18 +771,18 @@
         "ux"
       ],
       "files": [
+        "README.md",
         "cmd/root.go",
         "internal/config/config.go",
-        "README.md",
         "to-do.json"
       ],
-      "updated_at": "2026-01-22T15:56:28Z"
+      "updated_at": "2026-01-22T15:58:29Z"
     },
     {
       "id": "T050",
       "title": "Refactor loop orchestration for simplicity and elegance",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "Apply the most valuable refactors to simplify control flow and reduce cognitive load without changing behavior.",
       "steps": [
         "Identify the top complexity hotspots in loop orchestration.",
@@ -796,11 +796,13 @@
       ],
       "files": [
         "internal/loop/loop.go",
-        "internal/loop/loop_test.go"
+        "internal/loop/loop_test.go",
+        "to-do.json"
       ],
       "depends_on": [
         "T039"
-      ]
+      ],
+      "updated_at": "2026-01-22T16:01:28Z"
     },
     {
       "id": "T051",

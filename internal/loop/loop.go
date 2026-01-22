@@ -320,37 +320,16 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 		return fmt.Errorf("render bootstrap prompt: %w", err)
 	}
 
-	// Create bootstrap agent using the configured bootstrap agent
-	bootstrapAgentType := agents.AgentType(cfg.GetBootstrapAgent())
-	agentCfg := agents.Config{
-		Binary:    cfg.GetAgentBinary(string(bootstrapAgentType)),
-		Model:     cfg.GetAgentModel(string(bootstrapAgentType)),
-		Reasoning: cfg.GetAgentReasoning(string(bootstrapAgentType)),
-		Args:      cfg.GetAgentArgs(string(bootstrapAgentType)),
-		WorkDir:   workDir,
-	}
-	agent, err := agents.NewAgent(bootstrapAgentType, agentCfg)
-	if err != nil {
-		return fmt.Errorf("create bootstrap agent: %w", err)
-	}
-
-	// Log to stderr for bootstrap
+	bootstrapAgentType := cfg.GetBootstrapAgent()
 	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
 
-	_, err = agent.Run(ctx, prompt, logWriter)
+	_, err = runAgentWithConfig(ctx, cfg, bootstrapAgentType, prompt, "", workDir, logWriter)
 	if err != nil && !errors.Is(err, agents.ErrSummaryMissing) {
 		return fmt.Errorf("run bootstrap agent: %w", err)
 	}
 
-	info, err := os.Stat(todoPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("todo file was not created at %s", todoPath)
-		}
-		return fmt.Errorf("stat todo file: %w", err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("todo path is a directory: %s", todoPath)
+	if err := verifyTodoFileCreated(todoPath); err != nil {
+		return err
 	}
 
 	return nil
@@ -365,15 +344,7 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 		fmt.Fprintf(os.Stderr, "  - %v\n", e)
 	}
 
-	// Build error message for prompt
-	var errMsg string
-	if len(validationResult.Errors) > 0 {
-		errParts := make([]string, 0, len(validationResult.Errors))
-		for _, e := range validationResult.Errors {
-			errParts = append(errParts, e.Error())
-		}
-		errMsg = strings.Join(errParts, "\n")
-	}
+	errMsg := validationErrorsMessage(validationResult.Errors)
 
 	renderer := prompts.NewRenderer(promptStore)
 	promptData := prompts.NewDataForRepair(
@@ -388,24 +359,10 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 		return nil, fmt.Errorf("render repair prompt: %w", err)
 	}
 
-	// Create repair agent using the configured repair agent
-	repairAgentType := agents.AgentType(cfg.RepairAgent)
-	agentCfg := agents.Config{
-		Binary:    cfg.GetAgentBinary(string(repairAgentType)),
-		Model:     cfg.GetAgentModel(string(repairAgentType)),
-		Reasoning: cfg.GetAgentReasoning(string(repairAgentType)),
-		Args:      cfg.GetAgentArgs(string(repairAgentType)),
-		WorkDir:   workDir,
-	}
-	agent, err := agents.NewAgent(repairAgentType, agentCfg)
-	if err != nil {
-		return nil, fmt.Errorf("create repair agent: %w", err)
-	}
-
-	// Log to stderr for repair
+	repairAgentType := cfg.RepairAgent
 	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
 
-	_, err = agent.Run(ctx, prompt, logWriter)
+	_, err = runAgentWithConfig(ctx, cfg, repairAgentType, prompt, "", workDir, logWriter)
 	if err != nil && !errors.Is(err, agents.ErrSummaryMissing) {
 		return nil, fmt.Errorf("run repair agent: %w", err)
 	}
@@ -477,9 +434,8 @@ func (l *Loop) Run(ctx context.Context) error {
 // runIteration executes a single iteration for a task.
 func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) error {
 	taskID := task.ID
-	taskTitle := task.Title
-	taskStatus := string(task.Status)
 	label := iterationLabel(iter)
+	agentType := l.cfg.IterSchedule(iter)
 
 	// Mark task as doing
 	if err := l.todoFile.SetTaskDoing(taskID); err != nil {
@@ -489,98 +445,24 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 		return fmt.Errorf("save todo file: %w", err)
 	}
 
-	// Determine agent type
-	agentType := l.cfg.IterSchedule(iter)
+	logWriter := l.multiLogWriter()
+	prompt := l.renderIterationPrompt(iter, task, agentType)
+	l.printPromptIfDevMode(iter, "Iteration", prompt)
 
-	logWriter := l.logWriter
-	if logWriter == nil {
-		logWriter = agents.NullLogWriter{}
-	}
-
-	var multiLogWriter agents.LogWriter = logWriter
-	if os.Getenv("LOOPER_QUIET") == "" {
-		stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
-		stdoutWriter.SetIndent("  ")
-		multiLogWriter = agents.NewMultiLogWriter(logWriter, stdoutWriter)
-	}
-
-	// Render prompt
-	promptData := prompts.NewData(
-		l.todoPath,
-		l.schemaPath,
-		l.workDir,
-		prompts.Task{
-			ID:     taskID,
-			Title:  taskTitle,
-			Status: taskStatus,
-		},
-		iter,
-		agentType,
-		time.Now(),
-	)
-	prompt, err := l.renderer.Render(prompts.IterationPrompt, promptData)
+	summary, err := l.runAgent(ctx, agentType, prompt, label, logWriter)
+	l.runHook(ctx, label, logWriter)
 	if err != nil {
-		return fmt.Errorf("render prompt: %w", err)
-	}
-
-	// Print prompt if dev mode is enabled
-	if l.cfg.PrintPrompt && config.PromptDevModeEnabled() {
-		fmt.Fprintf(os.Stdout, "\n=== Iteration %d Prompt ===\n%s\n=== End Prompt ===\n\n", iter, prompt)
-	}
-
-	// Run agent
-	agentCfg := agents.Config{
-		Binary:          l.cfg.GetAgentBinary(agentType),
-		Model:           l.cfg.GetAgentModel(agentType),
-		Reasoning:       l.cfg.GetAgentReasoning(agentType),
-		Args:            l.cfg.GetAgentArgs(agentType),
-		WorkDir:         l.workDir,
-		LastMessagePath: l.lastMessagePath(label),
-	}
-	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
-	if err != nil {
-		return fmt.Errorf("create agent: %w", err)
-	}
-
-	summary, err := agent.Run(ctx, prompt, multiLogWriter)
-	l.runHook(ctx, label, multiLogWriter)
-	if err != nil {
-		// Mark task as blocked on error
 		_ = l.todoFile.SetTaskStatus(taskID, todo.StatusBlocked)
 		_ = l.saveTodo()
 		return fmt.Errorf("run agent: %w", err)
 	}
 
-	if err := l.reloadTodo(); err != nil {
-		_ = multiLogWriter.Write(agents.LogEvent{
-			Type:      "error",
-			Timestamp: time.Now().UTC(),
-			Content:   fmt.Sprintf("reload todo file: %v", err),
-		})
-		return fmt.Errorf("reload todo file: %w", err)
+	if err := l.reloadAndLog(logWriter); err != nil {
+		return err
 	}
 
-	// Validate summary matches selected task
-	if summary.TaskID != "" && summary.TaskID != taskID {
-		// Warn and skip summary apply
-		_ = multiLogWriter.Write(agents.LogEvent{
-			Type:      "error",
-			Timestamp: time.Now().UTC(),
-			Content:   fmt.Sprintf("summary task_id %q does not match selected task %q, skipping summary apply", summary.TaskID, taskID),
-		})
-		return nil
-	}
-
-	// Apply summary
-	if l.cfg.ApplySummary && summary != nil {
-		if err := l.applySummary(summary); err != nil {
-			_ = multiLogWriter.Write(agents.LogEvent{
-				Type:      "error",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("apply summary: %v", err),
-			})
-			return fmt.Errorf("apply summary: %w", err)
-		}
+	if err := l.validateAndApplySummary(summary, taskID, logWriter); err != nil {
+		return err
 	}
 
 	return nil
@@ -588,70 +470,23 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 
 // runReview executes the review pass.
 func (l *Loop) runReview(ctx context.Context, iter int) error {
-	logWriter := l.logWriter
-	if logWriter == nil {
-		logWriter = agents.NullLogWriter{}
-	}
+	logWriter := l.multiLogWriter()
+	prompt := l.renderReviewPrompt(iter)
+	l.printPromptIfDevMode(iter, "Review", prompt)
 
-	var multiLogWriter agents.LogWriter = logWriter
-	if os.Getenv("LOOPER_QUIET") == "" {
-		stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
-		stdoutWriter.SetIndent("  ")
-		multiLogWriter = agents.NewMultiLogWriter(logWriter, stdoutWriter)
-	}
-
-	// Render review prompt
-	promptData := prompts.NewData(
-		l.todoPath,
-		l.schemaPath,
-		l.workDir,
-		prompts.Task{},
-		iter,
-		"review",
-		time.Now(),
-	)
-	prompt, err := l.renderer.Render(prompts.ReviewPrompt, promptData)
-	if err != nil {
-		return fmt.Errorf("render review prompt: %w", err)
-	}
-
-	// Print prompt if dev mode is enabled
-	if l.cfg.PrintPrompt && config.PromptDevModeEnabled() {
-		fmt.Fprintf(os.Stdout, "\n=== Review Prompt ===\n%s\n=== End Prompt ===\n\n", prompt)
-	}
-
-	// Run review agent using configured review agent
 	reviewAgentType := l.cfg.GetReviewAgent()
 	label := reviewLabel(iter)
-	agentCfg := agents.Config{
-		Binary:          l.cfg.GetAgentBinary(reviewAgentType),
-		Model:           l.cfg.GetAgentModel(reviewAgentType),
-		Reasoning:       l.cfg.GetAgentReasoning(reviewAgentType),
-		Args:            l.cfg.GetAgentArgs(reviewAgentType),
-		WorkDir:         l.workDir,
-		LastMessagePath: l.lastMessagePath(label),
-	}
-	agent, err := agents.NewAgent(agents.AgentType(reviewAgentType), agentCfg)
-	if err != nil {
-		return fmt.Errorf("create review agent: %w", err)
-	}
 
-	summary, err := agent.Run(ctx, prompt, multiLogWriter)
-	l.runHook(ctx, label, multiLogWriter)
+	summary, err := l.runAgent(ctx, reviewAgentType, prompt, label, logWriter)
+	l.runHook(ctx, label, logWriter)
 	if err != nil {
 		return fmt.Errorf("run review agent: %w", err)
 	}
 
-	if err := l.reloadTodo(); err != nil {
-		_ = multiLogWriter.Write(agents.LogEvent{
-			Type:      "error",
-			Timestamp: time.Now().UTC(),
-			Content:   fmt.Sprintf("reload todo file: %v", err),
-		})
-		return fmt.Errorf("reload todo file: %w", err)
+	if err := l.reloadAndLog(logWriter); err != nil {
+		return err
 	}
 
-	// Apply summary if it adds tasks
 	if l.cfg.ApplySummary && summary != nil {
 		if err := l.applySummary(summary); err != nil {
 			return fmt.Errorf("apply review summary: %w", err)
@@ -829,12 +664,170 @@ func mergeStrings(existing, added []string) []string {
 	return result
 }
 
+// runAgentWithConfig runs an agent with the given configuration.
+// This is a standalone helper used by bootstrap and repair flows.
+func runAgentWithConfig(ctx context.Context, cfg *config.Config, agentType, prompt, label, workDir string, logWriter agents.LogWriter) (*agents.Summary, error) {
+	agentCfg := agents.Config{
+		Binary:    cfg.GetAgentBinary(agentType),
+		Model:     cfg.GetAgentModel(agentType),
+		Reasoning: cfg.GetAgentReasoning(agentType),
+		Args:      cfg.GetAgentArgs(agentType),
+		WorkDir:   workDir,
+	}
+	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create agent: %w", err)
+	}
+	return agent.Run(ctx, prompt, logWriter)
+}
+
+// verifyTodoFileCreated checks that the todo file was created and is valid.
+func verifyTodoFileCreated(todoPath string) error {
+	info, err := os.Stat(todoPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("todo file was not created at %s", todoPath)
+		}
+		return fmt.Errorf("stat todo file: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("todo path is a directory: %s", todoPath)
+	}
+	return nil
+}
+
+// validationErrorsMessage formats validation errors into a single string.
+func validationErrorsMessage(errors []error) string {
+	if len(errors) == 0 {
+		return ""
+	}
+	errParts := make([]string, 0, len(errors))
+	for _, e := range errors {
+		errParts = append(errParts, e.Error())
+	}
+	return strings.Join(errParts, "\n")
+}
+
 func iterationLabel(iter int) string {
 	return fmt.Sprintf("iter-%d", iter)
 }
 
 func reviewLabel(iter int) string {
 	return fmt.Sprintf("review-%d", iter)
+}
+
+// multiLogWriter returns a log writer that writes to both the log file and stdout.
+func (l *Loop) multiLogWriter() agents.LogWriter {
+	logWriter := l.logWriter
+	if logWriter == nil {
+		logWriter = agents.NullLogWriter{}
+	}
+	if os.Getenv("LOOPER_QUIET") != "" {
+		return logWriter
+	}
+	stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
+	stdoutWriter.SetIndent("  ")
+	return agents.NewMultiLogWriter(logWriter, stdoutWriter)
+}
+
+// renderIterationPrompt renders the iteration prompt for a task.
+func (l *Loop) renderIterationPrompt(iter int, task *todo.Task, agentType string) string {
+	promptData := prompts.NewData(
+		l.todoPath,
+		l.schemaPath,
+		l.workDir,
+		prompts.Task{
+			ID:     task.ID,
+			Title:  task.Title,
+			Status: string(task.Status),
+		},
+		iter,
+		agentType,
+		time.Now(),
+	)
+	prompt, err := l.renderer.Render(prompts.IterationPrompt, promptData)
+	if err != nil {
+		return fmt.Sprintf("// Error rendering prompt: %v", err)
+	}
+	return prompt
+}
+
+// renderReviewPrompt renders the review prompt.
+func (l *Loop) renderReviewPrompt(iter int) string {
+	promptData := prompts.NewData(
+		l.todoPath,
+		l.schemaPath,
+		l.workDir,
+		prompts.Task{},
+		iter,
+		"review",
+		time.Now(),
+	)
+	prompt, err := l.renderer.Render(prompts.ReviewPrompt, promptData)
+	if err != nil {
+		return fmt.Sprintf("// Error rendering prompt: %v", err)
+	}
+	return prompt
+}
+
+// printPromptIfDevMode prints the prompt if dev mode is enabled.
+func (l *Loop) printPromptIfDevMode(iter int, label string, prompt string) {
+	if l.cfg.PrintPrompt && config.PromptDevModeEnabled() {
+		fmt.Fprintf(os.Stdout, "\n=== %s %d Prompt ===\n%s\n=== End Prompt ===\n\n", label, iter, prompt)
+	}
+}
+
+// runAgent runs an agent with the given parameters.
+func (l *Loop) runAgent(ctx context.Context, agentType, prompt, label string, logWriter agents.LogWriter) (*agents.Summary, error) {
+	agentCfg := agents.Config{
+		Binary:          l.cfg.GetAgentBinary(agentType),
+		Model:           l.cfg.GetAgentModel(agentType),
+		Reasoning:       l.cfg.GetAgentReasoning(agentType),
+		Args:            l.cfg.GetAgentArgs(agentType),
+		WorkDir:         l.workDir,
+		LastMessagePath: l.lastMessagePath(label),
+	}
+	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create agent: %w", err)
+	}
+	return agent.Run(ctx, prompt, logWriter)
+}
+
+// reloadAndLog reloads the todo file and logs any error.
+func (l *Loop) reloadAndLog(logWriter agents.LogWriter) error {
+	if err := l.reloadTodo(); err != nil {
+		_ = logWriter.Write(agents.LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   fmt.Sprintf("reload todo file: %v", err),
+		})
+		return fmt.Errorf("reload todo file: %w", err)
+	}
+	return nil
+}
+
+// validateAndApplySummary validates the summary matches the expected task and applies it.
+func (l *Loop) validateAndApplySummary(summary *agents.Summary, expectedTaskID string, logWriter agents.LogWriter) error {
+	if summary.TaskID != "" && summary.TaskID != expectedTaskID {
+		_ = logWriter.Write(agents.LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   fmt.Sprintf("summary task_id %q does not match selected task %q, skipping summary apply", summary.TaskID, expectedTaskID),
+		})
+		return nil
+	}
+	if l.cfg.ApplySummary && summary != nil {
+		if err := l.applySummary(summary); err != nil {
+			_ = logWriter.Write(agents.LogEvent{
+				Type:      "error",
+				Timestamp: time.Now().UTC(),
+				Content:   fmt.Sprintf("apply summary: %v", err),
+			})
+			return fmt.Errorf("apply summary: %w", err)
+		}
+	}
+	return nil
 }
 
 // lastMessagePath returns the path for a last message file.
