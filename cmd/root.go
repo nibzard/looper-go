@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -2208,6 +2209,7 @@ func fmtCommand(cfg *config.Config, args []string) error {
 }
 
 // jsonEqual compares two JSON byte slices for semantic equality.
+// It uses reflect.DeepEqual for deterministic comparison regardless of map key order.
 func jsonEqual(a, b []byte) bool {
 	var va, vb interface{}
 	if err := json.Unmarshal(a, &va); err != nil {
@@ -2216,7 +2218,7 @@ func jsonEqual(a, b []byte) bool {
 	if err := json.Unmarshal(b, &vb); err != nil {
 		return false
 	}
-	return fmt.Sprint(va) == fmt.Sprint(vb)
+	return reflect.DeepEqual(va, vb)
 }
 
 // printDiff prints a unified diff between two byte slices.

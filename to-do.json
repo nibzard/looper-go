@@ -988,15 +988,16 @@
       ],
       "files": [
         "internal/logging/logging.go",
-        "internal/logging/logging_test.go"
+        "internal/logging/logging_test.go",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T17:40:20Z"
+      "updated_at": "2026-01-22T17:40:47Z"
     },
     {
       "id": "T055",
       "title": "Make fmtCommand JSON equality check deterministic",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "details": "cmd/root.go jsonEqual uses fmt.Sprint on decoded maps, which is nondeterministic and can make `looper fmt -check` fail on already-formatted files. Compare decoded JSON with reflect.DeepEqual (or similar) and adjust tests to avoid map-order flakiness.",
       "tags": [
         "cli",
@@ -1006,7 +1007,8 @@
       "files": [
         "cmd/root.go",
         "cmd/root_test.go"
-      ]
+      ],
+      "updated_at": "2026-01-22T17:42:44Z"
     },
     {
       "id": "T056",
