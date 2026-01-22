@@ -433,11 +433,13 @@ func (l *Loop) Run(ctx context.Context) error {
 
 // runIteration executes a single iteration for a task.
 func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) error {
-	taskID := task.ID
-	label := iterationLabel(iter)
 	agentType := l.cfg.IterSchedule(iter)
+	return l.runAgentForTask(ctx, iter, task, agentType, iterationLabel(iter))
+}
 
-	if err := l.markTaskDoing(taskID); err != nil {
+// runAgentForTask runs an agent for a specific task and handles the complete flow.
+func (l *Loop) runAgentForTask(ctx context.Context, iter int, task *todo.Task, agentType, label string) error {
+	if err := l.markTaskDoing(task.ID); err != nil {
 		return err
 	}
 
@@ -447,21 +449,20 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 
 	summary, err := l.runAgentStep(ctx, agentType, prompt, label, logWriter)
 	if err != nil {
-		_ = l.markTaskBlocked(taskID)
+		_ = l.markTaskBlocked(task.ID)
 		return err
 	}
 
-	return l.finalizeStep(summary, taskID, logWriter)
+	return l.finalizeStep(summary, task.ID, logWriter)
 }
 
 // runReview executes the review pass.
 func (l *Loop) runReview(ctx context.Context, iter int) error {
+	agentType := l.cfg.GetReviewAgent()
+	label := reviewLabel(iter)
 	logWriter := l.multiLogWriter()
 	prompt := l.renderReviewPrompt(iter)
 	l.printPromptIfDevMode(iter, "Review", prompt)
-
-	agentType := l.cfg.GetReviewAgent()
-	label := reviewLabel(iter)
 
 	summary, err := l.runAgentStep(ctx, agentType, prompt, label, logWriter)
 	if err != nil {
@@ -772,20 +773,14 @@ func (l *Loop) finalizeStep(summary *agents.Summary, expectedTaskID string, logW
 	if err := l.reloadAndLog(logWriter); err != nil {
 		return err
 	}
+
+	// For tasks with expected ID, validate task_id match before applying
 	if expectedTaskID != "" {
 		return l.validateAndApplySummary(summary, expectedTaskID, logWriter)
 	}
-	if l.cfg.ApplySummary && summary != nil {
-		if err := l.applySummary(summary); err != nil {
-			_ = logWriter.Write(agents.LogEvent{
-				Type:      "error",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("apply summary: %v", err),
-			})
-			return fmt.Errorf("apply summary: %w", err)
-		}
-	}
-	return nil
+
+	// For review pass, apply summary directly if configured
+	return l.maybeApplySummary(summary, logWriter)
 }
 
 // reloadAndLog reloads the todo file and logs any error.
@@ -803,6 +798,7 @@ func (l *Loop) reloadAndLog(logWriter agents.LogWriter) error {
 
 // validateAndApplySummary validates the summary matches the expected task and applies it.
 func (l *Loop) validateAndApplySummary(summary *agents.Summary, expectedTaskID string, logWriter agents.LogWriter) error {
+	// If summary has a task_id, ensure it matches the expected task
 	if summary.TaskID != "" && summary.TaskID != expectedTaskID {
 		_ = logWriter.Write(agents.LogEvent{
 			Type:      "error",
@@ -811,15 +807,25 @@ func (l *Loop) validateAndApplySummary(summary *agents.Summary, expectedTaskID s
 		})
 		return nil
 	}
-	if l.cfg.ApplySummary && summary != nil {
-		if err := l.applySummary(summary); err != nil {
-			_ = logWriter.Write(agents.LogEvent{
-				Type:      "error",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("apply summary: %v", err),
-			})
-			return fmt.Errorf("apply summary: %w", err)
-		}
+	// Set the expected task_id if missing, then apply
+	if summary.TaskID == "" {
+		summary.TaskID = expectedTaskID
+	}
+	return l.maybeApplySummary(summary, logWriter)
+}
+
+// maybeApplySummary applies the summary if configured, logging any errors.
+func (l *Loop) maybeApplySummary(summary *agents.Summary, logWriter agents.LogWriter) error {
+	if !l.cfg.ApplySummary || summary == nil {
+		return nil
+	}
+	if err := l.applySummary(summary); err != nil {
+		_ = logWriter.Write(agents.LogEvent{
+			Type:      "error",
+			Timestamp: time.Now().UTC(),
+			Content:   fmt.Sprintf("apply summary: %v", err),
+		})
+		return fmt.Errorf("apply summary: %w", err)
 	}
 	return nil
 }
