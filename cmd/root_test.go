@@ -8,6 +8,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nibzard/looper-go/internal/config"
+	"github.com/nibzard/looper-go/internal/prompts"
+	"github.com/nibzard/looper-go/internal/todo"
 )
 
 // TestRun tests the main Run function.
@@ -86,6 +90,93 @@ func TestRun(t *testing.T) {
 			t.Error("expected error for ls without todo file")
 		}
 	})
+}
+
+func TestInitCommandCreatesFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		TodoFile:    "to-do.json",
+		SchemaFile:  "to-do.schema.json",
+		ProjectRoot: tmpDir,
+	}
+
+	if err := initCommand(cfg, []string{}); err != nil {
+		t.Fatalf("initCommand() error = %v", err)
+	}
+
+	todoPath := filepath.Join(tmpDir, "to-do.json")
+	schemaPath := filepath.Join(tmpDir, "to-do.schema.json")
+	configPath := filepath.Join(tmpDir, "looper.toml")
+
+	for _, path := range []string{todoPath, schemaPath, configPath} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s to exist: %v", path, err)
+		}
+	}
+
+	todoFile, err := todo.Load(todoPath)
+	if err != nil {
+		t.Fatalf("todo.Load() error = %v", err)
+	}
+	if todoFile.SchemaVersion != 1 {
+		t.Errorf("SchemaVersion = %d, want 1", todoFile.SchemaVersion)
+	}
+	if len(todoFile.SourceFiles) != 1 || todoFile.SourceFiles[0] != "README.md" {
+		t.Errorf("SourceFiles = %v, want [README.md]", todoFile.SourceFiles)
+	}
+	if len(todoFile.Tasks) != 1 || todoFile.Tasks[0].ID != "T001" {
+		t.Fatalf("Tasks = %v, want one example task", todoFile.Tasks)
+	}
+
+	schemaData, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("ReadFile(schemaPath) error = %v", err)
+	}
+	bundledSchema, err := prompts.BundledSchema()
+	if err != nil {
+		t.Fatalf("BundledSchema() error = %v", err)
+	}
+	if string(schemaData) != string(bundledSchema) {
+		t.Error("schema file does not match bundled schema")
+	}
+
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile(configPath) error = %v", err)
+	}
+	if string(configData) != config.ExampleConfig() {
+		t.Error("config file does not match example config")
+	}
+}
+
+func TestInitCommandSkipsExistingFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		TodoFile:    "to-do.json",
+		SchemaFile:  "to-do.schema.json",
+		ProjectRoot: tmpDir,
+	}
+
+	todoPath := filepath.Join(tmpDir, "to-do.json")
+	if err := os.WriteFile(todoPath, []byte("existing"), 0644); err != nil {
+		t.Fatalf("WriteFile(todoPath) error = %v", err)
+	}
+
+	if err := initCommand(cfg, []string{"--skip-config"}); err != nil {
+		t.Fatalf("initCommand() error = %v", err)
+	}
+
+	data, err := os.ReadFile(todoPath)
+	if err != nil {
+		t.Fatalf("ReadFile(todoPath) error = %v", err)
+	}
+	if string(data) != "existing" {
+		t.Errorf("todo file was overwritten without --force")
+	}
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "to-do.schema.json")); err != nil {
+		t.Fatalf("expected schema file to be created: %v", err)
+	}
 }
 
 // TestSplitAndTrim tests the splitAndTrim helper.
@@ -293,35 +384,35 @@ func TestNormalizeAgentList(t *testing.T) {
 // TestNormalizeAgentOrDefault tests the normalizeAgentOrDefault helper.
 func TestNormalizeAgentOrDefault(t *testing.T) {
 	tests := []struct {
-		name        string
-		agent       string
-		defaultAgent string
-		expectedAgent string
-		expectedOK   bool
+		name            string
+		agent           string
+		defaultAgent    string
+		expectedAgent   string
+		expectedOK      bool
 		expectedDefault bool
 	}{
 		{
-			name:        "valid agent",
-			agent:       "codex",
-			defaultAgent: "claude",
-			expectedAgent: "codex",
-			expectedOK:   true,
+			name:            "valid agent",
+			agent:           "codex",
+			defaultAgent:    "claude",
+			expectedAgent:   "codex",
+			expectedOK:      true,
 			expectedDefault: false,
 		},
 		{
-			name:        "empty agent uses default",
-			agent:       "",
-			defaultAgent: "codex",
-			expectedAgent: "codex",
-			expectedOK:   true,
+			name:            "empty agent uses default",
+			agent:           "",
+			defaultAgent:    "codex",
+			expectedAgent:   "codex",
+			expectedOK:      true,
 			expectedDefault: true,
 		},
 		{
-			name:        "whitespace agent uses default",
-			agent:       "  ",
-			defaultAgent: "codex",
-			expectedAgent: "codex",
-			expectedOK:   true,
+			name:            "whitespace agent uses default",
+			agent:           "  ",
+			defaultAgent:    "codex",
+			expectedAgent:   "codex",
+			expectedOK:      true,
 			expectedDefault: true,
 		},
 	}
@@ -469,17 +560,17 @@ func TestVersionCommand(t *testing.T) {
 // mockConfigForTest creates a minimal config-like structure for testing
 // In real usage, this would be config.Config but we're avoiding circular imports
 type mockConfigForTest struct {
-	TodoFile      string
-	SchemaFile    string
-	LogDir        string
-	ProjectRoot   string
-	Schedule      string
-	RepairAgent   string
-	ReviewAgent   string
+	TodoFile       string
+	SchemaFile     string
+	LogDir         string
+	ProjectRoot    string
+	Schedule       string
+	RepairAgent    string
+	ReviewAgent    string
 	BootstrapAgent string
-	OddAgent      string
-	EvenAgent     string
-	RRAgents      []string
+	OddAgent       string
+	EvenAgent      string
+	RRAgents       []string
 }
 
 // TestDoctorCommandWithMockFiles tests doctor command with actual mock files.

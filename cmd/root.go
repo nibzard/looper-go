@@ -1278,25 +1278,28 @@ func initCommand(cfg *config.Config, args []string) error {
 
 	// Create to-do.schema.json
 	fmt.Printf("Creating %s...\n", schemaPath)
-	if err := createSchemaFile(schemaPath, *force); err != nil {
+	schemaAction, err := createSchemaFile(schemaPath, *force)
+	if err != nil {
 		return fmt.Errorf("creating schema file: %w", err)
 	}
-	fmt.Println("  ✅ Schema file created")
+	printInitAction("Schema", schemaAction)
 
 	// Create to-do.json
 	fmt.Printf("\nCreating %s...\n", todoPath)
-	if err := createTodoFile(todoPath, schemaPath, *force); err != nil {
+	todoAction, err := createTodoFile(todoPath, *force)
+	if err != nil {
 		return fmt.Errorf("creating todo file: %w", err)
 	}
-	fmt.Println("  ✅ Todo file created")
+	printInitAction("Todo", todoAction)
 
 	// Create looper.toml
 	if !*skipConfig {
 		fmt.Printf("\nCreating %s...\n", configPath)
-		if err := createConfigFile(configPath, *force); err != nil {
+		configAction, err := createConfigFile(configPath, *force)
+		if err != nil {
 			return fmt.Errorf("creating config file: %w", err)
 		}
-		fmt.Println("  ✅ Config file created")
+		printInitAction("Config", configAction)
 	}
 
 	fmt.Println()
@@ -1312,125 +1315,110 @@ func initCommand(cfg *config.Config, args []string) error {
 }
 
 // createSchemaFile creates the schema file.
-func createSchemaFile(path string, force bool) error {
-	// Check if file exists
-	if _, err := os.Stat(path); err == nil {
-		if !force {
-			return fmt.Errorf("file already exists (use --force to overwrite)")
+func createSchemaFile(path string, force bool) (initFileAction, error) {
+	return writeInitFile(path, force, func(path string) error {
+		schemaContent, err := prompts.BundledSchema()
+		if err != nil {
+			return fmt.Errorf("loading bundled schema: %w", err)
 		}
-		fmt.Printf("  Overwriting existing file...\n")
-	}
-
-	// Get the default schema content
-	schemaContent := `{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Codex RALF Todo",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["schema_version", "source_files", "tasks"],
-  "properties": {
-    "schema_version": { "type": "integer", "const": 1 },
-    "project": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "name": { "type": "string" },
-        "root": { "type": "string" }
-      }
-    },
-    "source_files": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "tasks": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "title", "priority", "status"],
-        "properties": {
-          "id": { "type": "string" },
-          "title": { "type": "string", "minLength": 1 },
-          "description": { "type": "string" },
-          "reference": { "type": "string" },
-          "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
-          "status": { "type": "string", "enum": ["todo", "doing", "blocked", "done"] },
-          "details": { "type": "string" },
-          "steps": { "type": "array", "items": { "type": "string" } },
-          "blockers": { "type": "array", "items": { "type": "string" } },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "files": { "type": "array", "items": { "type": "string" } },
-          "depends_on": { "type": "array", "items": { "type": "string" } },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
-        }
-      }
-    }
-  }
-}
-`
-
-	// Write the file
-	if err := os.WriteFile(path, []byte(schemaContent), 0644); err != nil {
-		return fmt.Errorf("writing schema file: %w", err)
-	}
-
-	return nil
+		if err := os.WriteFile(path, schemaContent, 0644); err != nil {
+			return fmt.Errorf("writing schema file: %w", err)
+		}
+		return nil
+	})
 }
 
 // createTodoFile creates a minimal todo file.
-func createTodoFile(path string, schemaPath string, force bool) error {
-	// Check if file exists
-	if _, err := os.Stat(path); err == nil {
-		if !force {
-			return fmt.Errorf("file already exists (use --force to overwrite)")
-		}
-		fmt.Printf("  Overwriting existing file...\n")
-	}
-
-	// Create a minimal todo file with one example task
-	todoFile := &todo.File{
-		SchemaVersion: 1,
-		Project: &todo.Project{
-			Name: "",
-			Root: ".",
-		},
-		SourceFiles: []string{"README.md"},
-		Tasks: []todo.Task{
-			{
-				ID:         "T001",
-				Title:      "Example: Add project documentation",
-				Description: "Create a README.md file documenting the project setup and usage.",
-				Reference:  "README.md",
-				Priority:   1,
-				Status:     todo.StatusTodo,
+func createTodoFile(path string, force bool) (initFileAction, error) {
+	return writeInitFile(path, force, func(path string) error {
+		// Create a minimal todo file with one example task
+		todoFile := &todo.File{
+			SchemaVersion: 1,
+			Project: &todo.Project{
+				Name: "",
+				Root: ".",
 			},
-		},
-	}
+			SourceFiles: []string{"README.md"},
+			Tasks: []todo.Task{
+				{
+					ID:          "T001",
+					Title:       "Example: Add project documentation",
+					Description: "Create a README.md file documenting the project setup and usage.",
+					Reference:   "README.md",
+					Priority:    1,
+					Status:      todo.StatusTodo,
+				},
+			},
+		}
 
-	// Save the file
-	if err := todoFile.Save(path); err != nil {
-		return fmt.Errorf("saving todo file: %w", err)
-	}
-
-	return nil
+		// Save the file
+		if err := todoFile.Save(path); err != nil {
+			return fmt.Errorf("saving todo file: %w", err)
+		}
+		return nil
+	})
 }
 
 // createConfigFile creates a looper.toml config file.
-func createConfigFile(path string, force bool) error {
-	// Check if file exists
-	if _, err := os.Stat(path); err == nil {
-		if !force {
-			return fmt.Errorf("file already exists (use --force to overwrite)")
+func createConfigFile(path string, force bool) (initFileAction, error) {
+	return writeInitFile(path, force, func(path string) error {
+		// Write the example config
+		configContent := config.ExampleConfig()
+		if err := os.WriteFile(path, []byte(configContent), 0644); err != nil {
+			return fmt.Errorf("writing config file: %w", err)
 		}
-		fmt.Printf("  Overwriting existing file...\n")
-	}
+		return nil
+	})
+}
 
-	// Write the example config
-	configContent := config.ExampleConfig()
-	if err := os.WriteFile(path, []byte(configContent), 0644); err != nil {
-		return fmt.Errorf("writing config file: %w", err)
-	}
+type initFileAction string
 
-	return nil
+const (
+	initFileCreated     initFileAction = "created"
+	initFileOverwritten initFileAction = "overwritten"
+	initFileSkipped     initFileAction = "skipped"
+)
+
+func writeInitFile(path string, force bool, write func(string) error) (initFileAction, error) {
+	exists, err := fileExists(path)
+	if err != nil {
+		return "", err
+	}
+	if exists && !force {
+		return initFileSkipped, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", fmt.Errorf("creating parent directory: %w", err)
+	}
+	if err := write(path); err != nil {
+		return "", err
+	}
+	if exists {
+		return initFileOverwritten, nil
+	}
+	return initFileCreated, nil
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func printInitAction(label string, action initFileAction) {
+	switch action {
+	case initFileCreated:
+		fmt.Printf("  ✅ %s file created\n", label)
+	case initFileOverwritten:
+		fmt.Printf("  ✅ %s file overwritten\n", label)
+	case initFileSkipped:
+		fmt.Printf("  Skipped (%s file already exists; use --force to overwrite)\n", strings.ToLower(label))
+	default:
+		fmt.Printf("  %s file unchanged\n", label)
+	}
 }

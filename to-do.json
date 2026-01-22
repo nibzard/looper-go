@@ -787,10 +787,9 @@
       ],
       "files": [
         "cmd/root.go",
-        "README.md",
-        "internal/config/example.go"
+        "cmd/root_test.go"
       ],
-      "updated_at": "2026-01-22T15:00:38Z"
+      "updated_at": "2026-01-22T15:11:42Z"
     },
     {
       "id": "T046",
