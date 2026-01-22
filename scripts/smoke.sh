@@ -14,6 +14,9 @@ trap cleanup EXIT
 
 mkdir -p "$PROJECT_DIR" "$STUB_BIN"
 
+# Copy prompts for the Go binary
+cp -r "$ROOT_DIR/prompts" "$PROJECT_DIR/prompts"
+
 log_contains() {
     local pattern="$1"
     local file="$2"
@@ -28,9 +31,16 @@ cat > "$STUB_BIN/codex" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Stub codex agent for smoke testing
+# Handles: codex exec --json [--output-last-message PATH] [-]
+
 last_message=""
-workdir=""
 json_output=0
+
+# Skip "exec" command
+if [ "${1:-}" = "exec" ]; then
+    shift
+fi
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -38,13 +48,12 @@ while [ "$#" -gt 0 ]; do
             last_message="$2"
             shift 2
             ;;
-        --cd)
-            workdir="$2"
-            shift 2
-            ;;
         --json)
             json_output=1
             shift
+            ;;
+        -m|-c)
+            shift 2  # Skip model and reasoning flags
             ;;
         -)
             shift
@@ -56,12 +65,11 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+# Consume stdin prompt
 cat >/dev/null || true
 
-if [ -n "$workdir" ]; then
-    mkdir -p "$workdir"
-    printf "smoke test readme\n" > "$workdir/README.md"
-fi
+# Create output in project directory (current dir when codex runs)
+printf "smoke test readme\n" > README.md
 
 summary='{"task_id":"T2","status":"done","summary":"smoke","files":["README.md"],"blockers":[]}'
 if [ -n "$last_message" ]; then
@@ -107,16 +115,18 @@ EOF
 (
     cd "$PROJECT_DIR"
     PATH="$STUB_BIN:$PATH" \
-        CODEX_BIN=codex \
-        CODEX_JSON_LOG=0 \
         LOOPER_GIT_INIT=0 \
-        MAX_ITERATIONS=1 \
-        "$ROOT_DIR/bin/looper.sh" to-do.json | tee "$RUN_LOG"
+        LOOPER_MAX_ITERATIONS=1 \
+        "$ROOT_DIR/bin/looper" run | tee "$RUN_LOG"
 )
 
-log_contains "Task: T2" "$RUN_LOG"
+# Check for T2 in JSONL summary output
+log_contains '"task_id":"T2"' "$RUN_LOG"
+# Verify README.md was created by the stub agent
 test -f "$PROJECT_DIR/README.md"
+# Verify to-do.schema.json was created by bootstrap
 test -f "$PROJECT_DIR/to-do.schema.json"
+# Verify task T2 status is done
 jq -e '.tasks[] | select(.id == "T2" and .status == "done")' "$PROJECT_DIR/to-do.json" >/dev/null
 
 echo "Smoke test passed."
