@@ -516,7 +516,7 @@
       "title": "Support user-scoped config in ~/.looper",
       "priority": 3,
       "status": "done",
-      "details": "findConfigFile only checks the current directory for looper.toml/.looper.toml. Add a user-level config location (for example ~/.looper/looper.toml or an OS-specific config dir) with lower precedence than project config.",
+      "details": "findConfigFile only checks the current directory for looper.toml/.looper.toml. Add a user-level config location (for example ~/.looper/looper.toml or an OS-specific config dir) with lower precedence than project config. Already implemented in internal/config/config.go with user config discovery/merge order plus tests and docs; no code changes required this iteration.",
       "steps": [
         "Add a user config search path and merge order.",
         "Document the new location and precedence rules.",
@@ -526,13 +526,14 @@
         "config"
       ],
       "files": [
+        "MIGRATION.md",
+        "README.md",
         "internal/config/config.go",
         "internal/config/config_test.go",
         "internal/config/example.go",
-        "README.md",
-        "MIGRATION.md"
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T13:53:00Z"
+      "updated_at": "2026-01-22T13:56:50Z"
     },
     {
       "id": "T034",
@@ -628,8 +629,8 @@
       "id": "T039",
       "title": "Review code elegance and maintainability",
       "priority": 3,
-      "status": "todo",
-      "details": "Assess package boundaries, naming consistency, duplication, and overall readability; capture refactor candidates with minimal behavior changes.",
+      "status": "done",
+      "details": "Code elegance review complete. Core findings: (1) cmd/root.go has duplicated path resolution patterns across commands; (2) agents/agents.go has excellent registry pattern but some duplicated utilities (windowsExecutableExts, splitAndTrim); (3) loop/loop.go has repeated agent creation and multi-log writer setup patterns; (4) config/config.go has repetitive env loading patterns. No bugs or structural issues identified. Refactor candidates are low-risk: extract shared path resolution utility, consolidate agent creation helper, extract multi-log writer setup, consolidate duplicated utilities into internal/util. Overall code quality is high with good separation of concerns.",
       "steps": [
         "Scan core packages for large functions and overlapping responsibilities.",
         "Identify refactor opportunities that simplify control flow or reduce coupling."
@@ -644,7 +645,8 @@
         "internal/agents/agents.go",
         "internal/loop/loop.go",
         "internal/config/config.go"
-      ]
+      ],
+      "updated_at": "2026-01-22T13:57:52Z"
     },
     {
       "id": "T040",
