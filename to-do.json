@@ -583,13 +583,13 @@
       "files": [
         "internal/agents/agents_test.go"
       ],
-      "updated_at": "2026-01-22T12:19:10ZZ"
+      "updated_at": "2026-01-22T12:19:53Z"
     },
     {
       "id": "T037",
       "title": "Import errors package for SummaryValidationError test",
       "priority": 1,
-      "status": "todo",
+      "status": "done",
       "details": "agents_test.go uses errors.As in summary validation tests without importing errors; add the missing import to fix compilation.",
       "tags": [
         "tests",
@@ -597,7 +597,8 @@
       ],
       "files": [
         "internal/agents/agents_test.go"
-      ]
+      ],
+      "updated_at": "2026-01-22T12:20:44Z"
     },
     {
       "id": "T038",
