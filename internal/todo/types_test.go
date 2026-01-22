@@ -708,8 +708,8 @@ func TestSelectTaskNumericIDOrdering(t *testing.T) {
 				{ID: "T2", Title: "Second task", Priority: 1, Status: StatusDoing},
 				{ID: "T1", Title: "First task", Priority: 1, Status: StatusTodo},
 			},
-			wantID:   "T1",
-			wantDesc: "T1 (lowest numeric ID among doing tasks: T1, T2, T10)",
+			wantID:   "T2",
+			wantDesc: "T2 is lowest numeric ID among doing tasks (T2 < T10)",
 		},
 		{
 			name: "select todo task with numeric ID ordering (T2 before T10)",
@@ -807,5 +807,298 @@ func TestSetTaskDoing(t *testing.T) {
 	err = f.SetTaskDoing("T999")
 	if err == nil {
 		t.Error("SetTaskDoing for non-existing task should return error")
+	}
+}
+
+func TestValidateDependencies(t *testing.T) {
+	tests := []struct {
+		name        string
+		tasks       []Task
+		wantErr     error
+		description string
+	}{
+		{
+			name: "no dependencies",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo},
+			},
+			wantErr:     nil,
+			description: "tasks without dependencies are valid",
+		},
+		{
+			name: "valid dependencies all done",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusDone},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+			},
+			wantErr:     nil,
+			description: "dependency on completed task is valid",
+		},
+		{
+			name: "valid dependencies chain",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T002"}},
+			},
+			wantErr:     nil,
+			description: "dependency chain is valid",
+		},
+		{
+			name: "valid multiple dependencies",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001", "T002"}},
+			},
+			wantErr:     nil,
+			description: "multiple dependencies are valid",
+		},
+		{
+			name: "missing dependency",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T999"}},
+			},
+			wantErr:     &MissingDependencyError{TaskID: "T002", DepID: "T999"},
+			description: "dependency on non-existent task is invalid",
+		},
+		{
+			name: "simple cycle",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo, DependsOn: []string{"T002"}},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+			},
+			wantErr:     &DependencyCycleError{Cycle: []string{"T001", "T002", "T001"}},
+			description: "direct cycle is detected",
+		},
+		{
+			name: "long cycle",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo, DependsOn: []string{"T004"}},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T002"}},
+				{ID: "T004", Title: "Fourth", Priority: 1, Status: StatusTodo, DependsOn: []string{"T003"}},
+			},
+			wantErr:     &DependencyCycleError{Cycle: []string{"T001", "T004", "T003", "T002", "T001"}},
+			description: "longer cycle is detected",
+		},
+		{
+			name: "self cycle",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+			},
+			wantErr:     &DependencyCycleError{Cycle: []string{"T001", "T001"}},
+			description: "self-dependency is detected as a cycle",
+		},
+		{
+			name: "diamond dependency valid",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+				{ID: "T004", Title: "Fourth", Priority: 1, Status: StatusTodo, DependsOn: []string{"T002", "T003"}},
+			},
+			wantErr:     nil,
+			description: "diamond dependency structure is valid (not a cycle)",
+		},
+		{
+			name: "missing dependency in chain",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T999", "T002"}},
+			},
+			wantErr:     &MissingDependencyError{TaskID: "T003", DepID: "T999"},
+			description: "missing dependency in multi-dependency list is detected",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &File{
+				SchemaVersion: 1,
+				SourceFiles:   []string{"README.md"},
+				Tasks:         tt.tasks,
+			}
+
+			err := f.ValidateDependencies()
+
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Errorf("%s: ValidateDependencies() returned error: %v", tt.description, err)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Errorf("%s: ValidateDependencies() returned nil, want error %T", tt.description, tt.wantErr)
+				return
+			}
+
+			// Check error type
+			switch wantErr := tt.wantErr.(type) {
+			case *MissingDependencyError:
+				gotErr, ok := err.(*MissingDependencyError)
+				if !ok {
+					t.Errorf("%s: error type is %T, want *MissingDependencyError", tt.description, err)
+				} else if gotErr.TaskID != wantErr.TaskID || gotErr.DepID != wantErr.DepID {
+					t.Errorf("%s: got %+v, want %+v", tt.description, gotErr, wantErr)
+				}
+			case *DependencyCycleError:
+				gotErr, ok := err.(*DependencyCycleError)
+				if !ok {
+					t.Errorf("%s: error type is %T, want *DependencyCycleError", tt.description, err)
+				} else {
+					// For cycle errors, just check that we got a cycle - the exact path may vary
+					if len(gotErr.Cycle) < 2 {
+						t.Errorf("%s: cycle too short: %v", tt.description, gotErr.Cycle)
+					}
+					// Verify first and last are the same (cycle property)
+					if gotErr.Cycle[0] != gotErr.Cycle[len(gotErr.Cycle)-1] {
+						t.Errorf("%s: cycle doesn't loop back: %v", tt.description, gotErr.Cycle)
+					}
+				}
+			default:
+				t.Errorf("%s: unexpected wantErr type: %T", tt.description, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestSelectTaskWithDependencies(t *testing.T) {
+	tests := []struct {
+		name     string
+		tasks    []Task
+		wantID   string
+		wantDesc string
+	}{
+		{
+			name: "select task without dependencies when dependencies exist",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second (depends on T001)", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+			},
+			wantID:   "T001",
+			wantDesc: "T001 has no dependencies, T002 depends on T001",
+		},
+		{
+			name: "select task after dependency is done",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusDone},
+				{ID: "T002", Title: "Second (depends on T001)", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+			},
+			wantID:   "T002",
+			wantDesc: "T001 is done, T002 can be selected",
+		},
+		{
+			name: "select higher priority task even with dependency",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 2, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusDone},
+				{ID: "T003", Title: "Third (depends on T002)", Priority: 1, Status: StatusTodo, DependsOn: []string{"T002"}},
+			},
+			wantID:   "T003",
+			wantDesc: "T003 has priority 1 and satisfied dependencies",
+		},
+		{
+			name: "no tasks with satisfied dependencies",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T002"}},
+			},
+			wantID:   "T001",
+			wantDesc: "T001 is the only one with satisfied (empty) dependencies",
+		},
+		{
+			name: "blocked task with unsatisfied dependencies not selected",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 2, Status: StatusTodo},
+				{ID: "T002", Title: "Second blocked", Priority: 1, Status: StatusBlocked, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 3, Status: StatusTodo},
+			},
+			wantID:   "T001",
+			wantDesc: "T002 is blocked but depends on T001, T001 selected first",
+		},
+		{
+			name: "multiple dependencies all must be done",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusDone},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo},
+				{ID: "T003", Title: "Third (depends on T001, T002)", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001", "T002"}},
+			},
+			wantID:   "T002",
+			wantDesc: "T003 depends on both T001 and T002, only T001 is done",
+		},
+		{
+			name: "all tasks have unsatisfied dependencies, pick lowest ID among todo",
+			tasks: []Task{
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T999"}},
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusTodo, DependsOn: []string{"T999"}},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T999"}},
+			},
+			wantID:   "",
+			wantDesc: "all tasks depend on missing T999, none can be selected",
+		},
+		{
+			name: "doing task with satisfied dependencies is selected",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusDone},
+				{ID: "T002", Title: "Second doing", Priority: 5, Status: StatusDoing, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T002",
+			wantDesc: "T002 depends on done T001 and is selected before todo tasks",
+		},
+		{
+			name: "doing task with unsatisfied dependencies is skipped",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusDone},
+				{ID: "T002", Title: "Second doing", Priority: 5, Status: StatusDoing, DependsOn: []string{"T003"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo},
+			},
+			wantID:   "T003",
+			wantDesc: "T002 depends on T003 which is not done, so T003 is selected",
+		},
+		{
+			name: "complex dependency chain with mixed completion",
+			tasks: []Task{
+				{ID: "T001", Title: "First", Priority: 1, Status: StatusDone},
+				{ID: "T002", Title: "Second", Priority: 1, Status: StatusTodo, DependsOn: []string{"T001"}},
+				{ID: "T003", Title: "Third", Priority: 1, Status: StatusTodo, DependsOn: []string{"T002"}},
+				{ID: "T004", Title: "Fourth", Priority: 2, Status: StatusTodo},
+			},
+			wantID:   "T002",
+			wantDesc: "T002 is next in chain after T001, selected over T004 (priority 1 vs 2)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &File{
+				SchemaVersion: 1,
+				SourceFiles:   []string{"README.md"},
+				Tasks:         tt.tasks,
+			}
+
+			got := f.SelectTask()
+
+			if tt.wantID == "" {
+				if got != nil {
+					t.Errorf("%s: SelectTask() = %v (%s), want nil", tt.name, got, got.ID)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Fatalf("%s: SelectTask() = nil, want task with ID %s (%s)", tt.name, tt.wantID, tt.wantDesc)
+			}
+
+			if got.ID != tt.wantID {
+				t.Errorf("%s: SelectTask() ID = %s, want %s (%s)", tt.name, got.ID, tt.wantID, tt.wantDesc)
+			}
+		})
 	}
 }

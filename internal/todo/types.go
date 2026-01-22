@@ -464,11 +464,12 @@ func (f *File) UpdateTask(id string, updater func(*Task)) error {
 // 3. Otherwise highest priority "blocked", tie-break by lowest id
 // Returns nil if no tasks are found.
 // ID comparison is numeric-aware: T2 sorts before T10.
+// Tasks with incomplete dependencies (depends_on) are not selected for any status.
 func (f *File) SelectTask() *Task {
 	// First, look for any "doing" task (lowest id wins)
 	var selected *Task
 	for i := range f.Tasks {
-		if f.Tasks[i].Status == StatusDoing {
+		if f.Tasks[i].Status == StatusDoing && f.dependenciesSatisfied(&f.Tasks[i]) {
 			if selected == nil || CompareIDs(f.Tasks[i].ID, selected.ID) {
 				selected = &f.Tasks[i]
 			}
@@ -478,10 +479,10 @@ func (f *File) SelectTask() *Task {
 		return selected
 	}
 
-	// No "doing" tasks, find highest priority "todo"
+	// No "doing" tasks, find highest priority "todo" with satisfied dependencies
 	bestPriority := 5 // maximum priority value (lowest priority)
 	for i := range f.Tasks {
-		if f.Tasks[i].Status == StatusTodo {
+		if f.Tasks[i].Status == StatusTodo && f.dependenciesSatisfied(&f.Tasks[i]) {
 			if selected == nil || f.Tasks[i].Priority < bestPriority ||
 				(f.Tasks[i].Priority == bestPriority && CompareIDs(f.Tasks[i].ID, selected.ID)) {
 				selected = &f.Tasks[i]
@@ -493,10 +494,10 @@ func (f *File) SelectTask() *Task {
 		return selected
 	}
 
-	// No "todo" tasks, find highest priority "blocked"
+	// No "todo" tasks, find highest priority "blocked" with satisfied dependencies
 	bestPriority = 5
 	for i := range f.Tasks {
-		if f.Tasks[i].Status == StatusBlocked {
+		if f.Tasks[i].Status == StatusBlocked && f.dependenciesSatisfied(&f.Tasks[i]) {
 			if selected == nil || f.Tasks[i].Priority < bestPriority ||
 				(f.Tasks[i].Priority == bestPriority && CompareIDs(f.Tasks[i].ID, selected.ID)) {
 				selected = &f.Tasks[i]
@@ -506,6 +507,109 @@ func (f *File) SelectTask() *Task {
 	}
 
 	return selected
+}
+
+// dependenciesSatisfied returns true if all tasks in the depends_on list have status "done".
+// Missing dependencies are treated as not satisfied.
+func (f *File) dependenciesSatisfied(task *Task) bool {
+	if len(task.DependsOn) == 0 {
+		return true
+	}
+	for _, depID := range task.DependsOn {
+		depTask := f.GetTask(depID)
+		if depTask == nil || depTask.Status != StatusDone {
+			return false
+		}
+	}
+	return true
+}
+
+// DependencyCycleError represents a dependency cycle detected in the task graph.
+type DependencyCycleError struct {
+	Cycle []string // The IDs forming the cycle
+}
+
+func (e *DependencyCycleError) Error() string {
+	return fmt.Sprintf("dependency cycle detected: %s (forms a loop)", strings.Join(e.Cycle, " -> "))
+}
+
+// MissingDependencyError represents a dependency on a non-existent task.
+type MissingDependencyError struct {
+	TaskID  string // The task with the invalid dependency
+	DepID   string // The missing dependency ID
+}
+
+func (e *MissingDependencyError) Error() string {
+	return fmt.Sprintf("task %q depends on non-existent task %q", e.TaskID, e.DepID)
+}
+
+// ValidateDependencies validates all task dependencies.
+// Returns nil if all dependencies are valid.
+// Returns DependencyCycleError if a cycle is detected.
+// Returns MissingDependencyError if a dependency references a non-existent task.
+func (f *File) ValidateDependencies() error {
+	// Build a map of task IDs to their dependencies
+	taskMap := make(map[string][]string)
+	for _, task := range f.Tasks {
+		taskMap[task.ID] = task.DependsOn
+	}
+
+	// Check for missing dependencies
+	for _, task := range f.Tasks {
+		for _, depID := range task.DependsOn {
+			if _, exists := taskMap[depID]; !exists {
+				return &MissingDependencyError{
+					TaskID: task.ID,
+					DepID:  depID,
+				}
+			}
+		}
+	}
+
+	// Detect cycles using depth-first search
+	visited := make(map[string]bool)
+	recStack := make(map[string]bool)
+	path := []string{}
+
+	var dfs func(string) error
+	dfs = func(taskID string) error {
+		visited[taskID] = true
+		recStack[taskID] = true
+		path = append(path, taskID)
+
+		for _, depID := range taskMap[taskID] {
+			if !visited[depID] {
+				if err := dfs(depID); err != nil {
+					return err
+				}
+			} else if recStack[depID] {
+				// Found a cycle - extract the cycle from the path
+				cycleStart := -1
+				for i, id := range path {
+					if id == depID {
+						cycleStart = i
+						break
+					}
+				}
+				cycle := append(path[cycleStart:], depID)
+				return &DependencyCycleError{Cycle: cycle}
+			}
+		}
+
+		path = path[:len(path)-1]
+		recStack[taskID] = false
+		return nil
+	}
+
+	for taskID := range taskMap {
+		if !visited[taskID] {
+			if err := dfs(taskID); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // SetTaskDoing marks a task as "doing" and sets updated_at.

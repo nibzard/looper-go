@@ -263,6 +263,11 @@ func loadAndValidateTodo(workDir, todoPath, schemaPath string, promptStore *prom
 		}
 	}
 
+	// Validate dependencies
+	if err := todoFile.ValidateDependencies(); err != nil {
+		return nil, fmt.Errorf("todo file dependency validation failed: %w", err)
+	}
+
 	return todoFile, nil
 }
 
