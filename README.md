@@ -127,6 +127,54 @@ looper fmt -d      # Display diffs of formatting changes
 # Show effective configuration
 looper config
 looper config --json  # Output in JSON format
+
+# Generate shell completion script
+looper completion bash  # Output bash completion to stdout
+looper completion zsh   # Output zsh completion to stdout
+looper completion fish  # Output fish completion to stdout
+looper completion powershell  # Output PowerShell completion to stdout
+```
+
+## Shell Completion
+
+Looper provides shell auto-completion for bash, zsh, fish, and PowerShell.
+
+### Installation
+
+**Bash:**
+```bash
+# For current session
+looper completion bash | source
+
+# For persistent completion, add to ~/.bashrc or ~/.bash_profile
+echo 'source <(looper completion bash)' >> ~/.bashrc
+```
+
+**Zsh:**
+```bash
+# For current session
+looper completion zsh | source
+
+# For persistent completion, add to ~/.zshrc
+echo 'source <(looper completion zsh)' >> ~/.zshrc
+
+# Or place the completion script in the zsh completion directory
+looper completion zsh > ~/.zsh/completion/_looper
+```
+
+**Fish:**
+```bash
+# For persistent completion, add to fish config directory
+looper completion fish > ~/.config/fish/completions/looper.fish
+```
+
+**PowerShell:**
+```powershell
+# For current session
+looper completion powershell | Invoke-Expression
+
+# For persistent completion, add to PowerShell profile
+looper completion powershell >> $PROFILE
 ```
 
 ## Iteration Schedules

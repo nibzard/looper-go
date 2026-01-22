@@ -92,6 +92,8 @@ func Run(ctx context.Context, args []string) error {
 		return fmtCommand(cfg, remainingArgs)
 	case "config":
 		return configCommand(cfg, args, remainingArgs)
+	case "completion":
+		return completionCommand(cfg, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -620,6 +622,538 @@ func versionCommand() error {
 	return nil
 }
 
+// completionCommand outputs shell completion scripts.
+func completionCommand(cfg *config.Config, args []string) error {
+	// Parse completion-specific flags
+	fs := flag.NewFlagSet("looper completion", flag.ContinueOnError)
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("usage: looper completion <shell>\nSupported shells: bash, zsh, fish, powershell")
+	}
+	if len(remaining) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[1:])
+	}
+
+	shell := strings.ToLower(strings.TrimSpace(remaining[0]))
+
+	switch shell {
+	case "bash":
+		return bashCompletion()
+	case "zsh":
+		return zshCompletion()
+	case "fish":
+		return fishCompletion()
+	case "powershell", "pwsh":
+		return powershellCompletion()
+	default:
+		return fmt.Errorf("unsupported shell: %s (supported: bash, zsh, fish, powershell)", shell)
+	}
+}
+
+// bashCompletion outputs bash completion script.
+func bashCompletion() error {
+	fmt.Println(`# looper bash completion
+_looper_completion() {
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="run tui doctor tail ls push init validate fmt config completion version help"
+    local global_flags="--help --h --version --v --todo --schema --log-dir --codex-bin --claude-bin --codex-model --claude-model --codex-reasoning --codex-args --claude-args"
+
+    # If we're completing a flag argument
+    if [[ "$prev" == --todo ]] || [[ "$prev" == --schema ]] || [[ "$prev" == --log-dir ]] || \
+       [[ "$prev" == --codex-bin ]] || [[ "$prev" == --claude-bin ]] || [[ "$prev" == --codex-model ]] || \
+       [[ "$prev" == --claude-model ]] || [[ "$prev" == --codex-reasoning ]] || [[ "$prev" == --prompt-dir ]] || \
+       [[ "$prev" == --hook ]] || [[ "$prev" == --config ]]; then
+        _filedir
+        return
+    fi
+
+    # Complete subcommands
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$global_flags" -- "$cur"))
+        return
+    fi
+
+    # Check if we already have a command
+    local i
+    for ((i=1; i<$cword; i++)); do
+        if [[ "${words[i]}" == @(run|tui|doctor|tail|ls|push|init|validate|fmt|config|completion|version|help) ]]; then
+            local cmd="${words[i]}"
+            case "$cmd" in
+                run)
+                    _looper_run_completion
+                    ;;
+                tui)
+                    _looper_tui_completion
+                    ;;
+                tail)
+                    _looper_tail_completion
+                    ;;
+                ls)
+                    _looper_ls_completion
+                    ;;
+                push)
+                    _looper_push_completion
+                    ;;
+                init)
+                    _looper_init_completion
+                    ;;
+                validate)
+                    _looper_validate_completion
+                    ;;
+                fmt)
+                    _looper_fmt_completion
+                    ;;
+                config)
+                    _looper_config_completion
+                    ;;
+            esac
+            return
+        fi
+    done
+
+    # No command yet, offer commands
+    COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+}
+
+_looper_run_completion() {
+    local flags="--ui --prompt --max-iterations --schedule --odd-agent --even-agent --rr-agents --repair-agent --review-agent --bootstrap-agent --apply-summary --git-init --hook --loop-delay --prompt-dir --print-prompt"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    else
+        _filedir
+    fi
+}
+
+_looper_tui_completion() {
+    local flags="--run"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    else
+        _filedir
+    fi
+}
+
+_looper_tail_completion() {
+    local flags="-f --follow -n"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    fi
+}
+
+_looper_ls_completion() {
+    local flags="--status -v"
+    local statuses="todo doing blocked done"
+    if [[ "$prev" == --status ]]; then
+        COMPREPLY=($(compgen -W "$statuses" -- "$cur"))
+    elif [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    else
+        _filedir
+    fi
+}
+
+_looper_push_completion() {
+    local flags="--agent -y"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    fi
+}
+
+_looper_init_completion() {
+    local flags="--force --skip-config --todo --schema --config"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    fi
+}
+
+_looper_validate_completion() {
+    local flags="--schema"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    else
+        _filedir
+    fi
+}
+
+_looper_fmt_completion() {
+    local flags="--check -w -write -d -diff"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    else
+        _filedir
+    fi
+}
+
+_looper_config_completion() {
+    local flags="--json"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    fi
+}
+
+complete -F _looper_completion looper`)
+	return nil
+}
+
+// zshCompletion outputs zsh completion script.
+func zshCompletion() error {
+	fmt.Println(`#compdef looper
+
+_looper() {
+    local -a commands
+    commands=(
+        'run:Run the loop (default command)'
+        'tui:Launch terminal UI'
+        'doctor:Check dependencies, config, and task file validity'
+        'tail:Tail the latest log file'
+        'ls:List tasks by status'
+        'push:Run a release workflow via the agent'
+        'init:Scaffold project files'
+        'validate:Validate task file against schema'
+        'fmt:Format task file with stable ordering'
+        'config:Show effective configuration'
+        'completion:Output shell completion script'
+        'version:Show version information'
+        'help:Show help message'
+    )
+
+    local -a global_flags
+    global_flags=(
+        '--help[Show help]'
+        '-h[Show help]'
+        '--version[Show version]'
+        '-v[Show version]'
+        '--todo[Todo file path]'
+        '--schema[Schema file path]'
+        '--log-dir[Log directory]'
+        '--codex-bin[Codex binary path]'
+        '--claude-bin[Claude binary path]'
+        '--codex-model[Codex model]'
+        '--claude-model[Claude model]'
+        '--codex-reasoning[Codex reasoning effort]'
+        '--codex-args[Extra args for Codex]'
+        '--claude-args[Extra args for Claude]'
+    )
+
+    case $words[2] in
+        run)
+            _looper_run
+            ;;
+        tui)
+            _looper_tui
+            ;;
+        tail)
+            _looper_tail
+            ;;
+        ls)
+            _looper_ls
+            ;;
+        push)
+            _looper_push
+            ;;
+        init)
+            _looper_init
+            ;;
+        validate)
+            _looper_validate
+            ;;
+        fmt)
+            _looper_fmt
+            ;;
+        config)
+            _looper_config
+            ;;
+        *)
+            if [[ $words[CURRENT] == -* ]]; then
+                _describe 'global options' global_flags
+            else
+                _describe 'command' commands
+            fi
+            ;;
+    esac
+}
+
+_looper_run() {
+    _arguments -s \
+        '--ui[UI mode (tui for terminal UI)]:mode:(tui)' \
+        '--prompt[User prompt to drive bootstrap]' \
+        '--max-iterations[Maximum iterations]:iterations:(50 100)' \
+        '--schedule[Iteration schedule]:schedule:(codex claude odd-even round-robin)' \
+        '--odd-agent[Agent for odd iterations]:agent:(codex claude)' \
+        '--even-agent[Agent for even iterations]:agent:(codex claude)' \
+        '--rr-agents[Comma-separated agent list for round-robin]:agents' \
+        '--repair-agent[Agent for repair operations]:agent:(codex claude)' \
+        '--review-agent[Agent for review pass]:agent:(codex claude)' \
+        '--bootstrap-agent[Agent for bootstrap operations]:agent:(codex claude)' \
+        '--apply-summary[Apply summaries to task file]:bool:(true false)' \
+        '--git-init[Initialize git repo if missing]:bool:(true false)' \
+        '--hook[Hook command to run after each iteration]:command' \
+        '--loop-delay[Delay between iterations in seconds]:seconds' \
+        '--prompt-dir[Prompt directory override (dev only)]:dir:_files' \
+        '--print-prompt[Print rendered prompts before running (dev only)]:bool:(true false)' \
+        '*::todo file:_files'
+}
+
+_looper_tui() {
+    _arguments -s \
+        '--run[Run the loop in the background]:bool:(true false)' \
+        '*::todo file:_files'
+}
+
+_looper_tail() {
+    _arguments -s \
+        {-f,--follow}'[Follow the log (like tail -f)]' \
+        '-n[Number of lines to show (0 = all)]:lines'
+}
+
+_looper_ls() {
+    _arguments -s \
+        '--status[Filter by status]:status:(todo doing blocked done)' \
+        '-v[Show more details]' \
+        '*::todo file:_files'
+}
+
+_looper_push() {
+    _arguments -s \
+        '--agent[Agent to use for release workflow]:agent:(codex claude)' \
+        '-y[Skip confirmation prompts]'
+}
+
+_looper_init() {
+    _arguments -s \
+        '--force[Overwrite existing files]' \
+        '--skip-config[Skip creating looper.toml]' \
+        '--todo[Path for to-do.json]:file:_files' \
+        '--schema[Path for to-do.schema.json]:file:_files' \
+        '--config[Path for looper.toml]:file:_files'
+}
+
+_looper_validate() {
+    _arguments -s \
+        '--schema[Path to schema file]:file:_files' \
+        '*::todo file:_files'
+}
+
+_looper_fmt() {
+    _arguments -s \
+        '--check[Check if file is formatted without writing]' \
+        {-w,-write}'[Write formatted file back to disk]' \
+        {-d,-diff}'[Display diffs of formatting changes]' \
+        '*::todo file:_files'
+}
+
+_looper_config() {
+    _arguments -s \
+        '--json[Output in JSON format]'
+}
+
+_looper`)
+	return nil
+}
+
+// fishCompletion outputs fish completion script.
+func fishCompletion() error {
+	fmt.Println(`# looper fish completion
+
+complete -c looper -f
+
+# Global options
+complete -c looper -s h -l help -d 'Show help'
+complete -c looper -s v -l version -d 'Show version'
+complete -c looper -l todo -r -d 'Todo file path'
+complete -c looper -l schema -r -d 'Schema file path'
+complete -c looper -l log-dir -r -d 'Log directory'
+complete -c looper -l codex-bin -r -d 'Codex binary path'
+complete -c looper -l claude-bin -r -d 'Claude binary path'
+complete -c looper -l codex-model -r -d 'Codex model'
+complete -c looper -l claude-model -r -d 'Claude model'
+complete -c looper -l codex-reasoning -r -d 'Codex reasoning effort'
+complete -c looper -l codex-args -r -d 'Extra args for Codex'
+complete -c looper -l claude-args -r -d 'Extra args for Claude'
+
+# Commands
+complete -c looper -n __fish_use_subcommand -f -a run -d 'Run the loop (default command)'
+complete -c looper -n __fish_use_subcommand -f -a tui -d 'Launch terminal UI'
+complete -c looper -n __fish_use_subcommand -f -a doctor -d 'Check dependencies, config, and task file validity'
+complete -c looper -n __fish_use_subcommand -f -a tail -d 'Tail the latest log file'
+complete -c looper -n __fish_use_subcommand -f -a ls -d 'List tasks by status'
+complete -c looper -n __fish_use_subcommand -f -a push -d 'Run a release workflow via the agent'
+complete -c looper -n __fish_use_subcommand -f -a init -d 'Scaffold project files'
+complete -c looper -n __fish_use_subcommand -f -a validate -d 'Validate task file against schema'
+complete -c looper -n __fish_use_subcommand -f -a fmt -d 'Format task file with stable ordering'
+complete -c looper -n __fish_use_subcommand -f -a config -d 'Show effective configuration'
+complete -c looper -n __fish_use_subcommand -f -a completion -d 'Output shell completion script'
+complete -c looper -n __fish_use_subcommand -f -a version -d 'Show version information'
+complete -c looper -n __fish_use_subcommand -f -a help -d 'Show help message'
+
+# Run command options
+complete -c looper -n "__fish_seen_subcommand_from run" -l ui -r -d 'UI mode (tui for terminal UI)' -f -a tui
+complete -c looper -n "__fish_seen_subcommand_from run" -l prompt -r -d 'User prompt to drive bootstrap'
+complete -c looper -n "__fish_seen_subcommand_from run" -l max-iterations -r -d 'Maximum iterations'
+complete -c looper -n "__fish_seen_subcommand_from run" -l schedule -r -d 'Iteration schedule' -f -a 'codex' -f -a 'claude' -f -a 'odd-even' -f -a 'round-robin'
+complete -c looper -n "__fish_seen_subcommand_from run" -l odd-agent -r -d 'Agent for odd iterations' -f -a 'codex' -f -a 'claude'
+complete -c looper -n "__fish_seen_subcommand_from run" -l even-agent -r -d 'Agent for even iterations' -f -a 'codex' -f -a 'claude'
+complete -c looper -n "__fish_seen_subcommand_from run" -l rr-agents -r -d 'Comma-separated agent list for round-robin'
+complete -c looper -n "__fish_seen_subcommand_from run" -l repair-agent -r -d 'Agent for repair operations' -f -a 'codex' -f -a 'claude'
+complete -c looper -n "__fish_seen_subcommand_from run" -l review-agent -r -d 'Agent for review pass' -f -a 'codex' -f -a 'claude'
+complete -c looper -n "__fish_seen_subcommand_from run" -l bootstrap-agent -r -d 'Agent for bootstrap operations' -f -a 'codex' -f -a 'claude'
+complete -c looper -n "__fish_seen_subcommand_from run" -l apply-summary -r -d 'Apply summaries to task file' -f -a 'true' -f -a 'false'
+complete -c looper -n "__fish_seen_subcommand_from run" -l git-init -r -d 'Initialize git repo if missing' -f -a 'true' -f -a 'false'
+complete -c looper -n "__fish_seen_subcommand_from run" -l hook -r -d 'Hook command to run after each iteration'
+complete -c looper -n "__fish_seen_subcommand_from run" -l loop-delay -r -d 'Delay between iterations in seconds'
+
+# TUI command options
+complete -c looper -n "__fish_seen_subcommand_from tui" -l run -d 'Run the loop in the background'
+
+# Tail command options
+complete -c looper -n "__fish_seen_subcommand_from tail" -s f -l follow -d 'Follow the log (like tail -f)'
+complete -c looper -n "__fish_seen_subcommand_from tail" -s n -r -d 'Number of lines to show (0 = all)'
+
+# Ls command options
+complete -c looper -n "__fish_seen_subcommand_from ls" -l status -r -d 'Filter by status' -f -a 'todo' -f -a 'doing' -f -a 'blocked' -f -a 'done'
+complete -c looper -n "__fish_seen_subcommand_from ls" -s v -d 'Show more details'
+
+# Push command options
+complete -c looper -n "__fish_seen_subcommand_from push" -l agent -r -d 'Agent to use for release workflow' -f -a 'codex' -f -a 'claude'
+complete -c looper -n "__fish_seen_subcommand_from push" -s y -d 'Skip confirmation prompts'
+
+# Init command options
+complete -c looper -n "__fish_seen_subcommand_from init" -l force -d 'Overwrite existing files'
+complete -c looper -n "__fish_seen_subcommand_from init" -l skip-config -d 'Skip creating looper.toml'
+complete -c looper -n "__fish_seen_subcommand_from init" -l todo -r -d 'Path for to-do.json'
+complete -c looper -n "__fish_seen_subcommand_from init" -l schema -r -d 'Path for to-do.schema.json'
+complete -c looper -n "__fish_seen_subcommand_from init" -l config -r -d 'Path for looper.toml'
+
+# Validate command options
+complete -c looper -n "__fish_seen_subcommand_from validate" -l schema -r -d 'Path to schema file'
+
+# Fmt command options
+complete -c looper -n "__fish_seen_subcommand_from fmt" -l check -d 'Check if file is formatted without writing'
+complete -c looper -n "__fish_seen_subcommand_from fmt" -s w -l write -d 'Write formatted file back to disk'
+complete -c looper -n "__fish_seen_subcommand_from fmt" -s d -l diff -d 'Display diffs of formatting changes'
+
+# Config command options
+complete -c looper -n "__fish_seen_subcommand_from config" -l json -d 'Output in JSON format'
+
+# Completion command options
+complete -c looper -n "__fish_seen_subcommand_from completion" -f -a 'bash' -d 'Output bash completion script'
+complete -c looper -n "__fish_seen_subcommand_from completion" -f -a 'zsh' -d 'Output zsh completion script'
+complete -c looper -n "__fish_seen_subcommand_from completion" -f -a 'fish' -d 'Output fish completion script'
+complete -c looper -n "__fish_seen_subcommand_from completion" -f -a 'powershell' -d 'Output PowerShell completion script'`)
+	return nil
+}
+
+// powershellCompletion outputs PowerShell completion script.
+func powershellCompletion() error {
+	fmt.Println(`# looper PowerShell completion
+
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
+
+Register-ArgumentCompleter -Native -CommandName looper -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $commands = @('run', 'tui', 'doctor', 'tail', 'ls', 'push', 'init', 'validate', 'fmt', 'config', 'completion', 'version', 'help')
+
+    $globalFlags = @('--help', '-h', '--version', '-v', '--todo', '--schema', '--log-dir', '--codex-bin', '--claude-bin', '--codex-model', '--claude-model', '--codex-reasoning', '--codex-args', '--claude-args')
+
+    function Get-SubCommand {
+        $commandAst.CommandElements |
+            Where-Object { $_.ParameterType -eq [CommandParameterType] -and $_.Extent -isnot [ParameterExpressionExtent] } |
+            Select-Object -ExpandProperty Extent -ExpandProperty Text
+    }
+
+    $subCommand = Get-SubCommand
+
+    if ($null -eq $subCommand -or $subCommand -eq '') {
+        # Complete subcommands
+        $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterValue, $_)
+        }
+
+        # Complete global flags
+        $globalFlags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+        }
+    } else {
+        switch ($subCommand) {
+            'run' {
+                $flags = @('--ui', '--prompt', '--max-iterations', '--schedule', '--odd-agent', '--even-agent', '--rr-agents', '--repair-agent', '--review-agent', '--bootstrap-agent', '--apply-summary', '--git-init', '--hook', '--loop-delay', '--prompt-dir', '--print-prompt')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'tui' {
+                $flags = @('--run')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'tail' {
+                $flags = @('-f', '--follow', '-n')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'ls' {
+                $flags = @('--status', '-v')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+                if ($commandAst.ToString() -match '--status\s+$') {
+                    @('todo', 'doing', 'blocked', 'done') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                        [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterValue, $_)
+                    }
+                }
+            }
+            'push' {
+                $flags = @('--agent', '-y')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'init' {
+                $flags = @('--force', '--skip-config', '--todo', '--schema', '--config')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'validate' {
+                $flags = @('--schema')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'fmt' {
+                $flags = @('--check', '-w', '--write', '-d', '--diff')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'config' {
+                $flags = @('--json')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
+            'completion' {
+                @('bash', 'zsh', 'fish', 'powershell') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterValue, $_)
+                }
+            }
+        }
+    }
+}`)
+	return nil
+}
+
 // printUsage prints the usage message.
 func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "Looper - A deterministic, autonomous loop runner")
@@ -638,6 +1172,7 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  validate      Validate task file against schema")
 	fmt.Fprintln(w, "  fmt           Format task file with stable ordering and 2-space indent")
 	fmt.Fprintln(w, "  config        Show effective configuration")
+	fmt.Fprintln(w, "  completion    Output shell completion script (bash|zsh|fish|powershell)")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
 	fmt.Fprintln(w)

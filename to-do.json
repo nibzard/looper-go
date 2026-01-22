@@ -834,7 +834,7 @@
       "title": "Refactor config loading for simplicity and elegance",
       "priority": 3,
       "status": "done",
-      "details": "Reduced complexity in configuration parsing/merging. Extracted setSource helper for loadConfigFileWithSources, created mergeAgentSources to eliminate duplicate agent config handling, unified loadFromEnv and loadFromEnvWithSources via shared loadFromEnvHelper, unified parseFlags and parseFlagsWithSources via shared parseFlagsHelper. Removed ~200 lines of duplicated code while preserving all behavior and test coverage.",
+      "details": "Reduced complexity in configuration parsing/merging. Extracted setSource helper for loadConfigFileWithSources, created mergeAgentSources to eliminate duplicate agent config handling, unified loadFromEnv and loadFromEnvWithSources via shared loadFromEnvHelper, unified parseFlags and parseFlagsWithSources via shared parseFlagsHelper. Removed ~200 lines of duplicated code while preserving all behavior and test coverage. No additional code changes needed in this iteration; refactor already present.",
       "steps": [
         "Map current config merge logic and identify unnecessary branching.",
         "Extract small helpers and document precedence rules in code.",
@@ -847,12 +847,13 @@
       ],
       "files": [
         "internal/config/config.go",
-        "internal/config/config_test.go"
+        "internal/config/config_test.go",
+        "to-do.json"
       ],
       "depends_on": [
         "T039"
       ],
-      "updated_at": "2026-01-22T16:40:51Z"
+      "updated_at": "2026-01-22T16:44:08Z"
     },
     {
       "id": "T053",
@@ -904,7 +905,7 @@
       "id": "T029",
       "title": "Add shell auto-completion for looper commands",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "details": "The CLI has no completion output or install instructions. Add a completion subcommand that emits bash/zsh/fish/powershell scripts and document how to install them.",
       "steps": [
         "Implement a completion subcommand that outputs shell scripts.",
@@ -916,9 +917,10 @@
         "ux"
       ],
       "files": [
-        "cmd/root.go",
-        "README.md"
-      ]
+        "README.md",
+        "cmd/root.go"
+      ],
+      "updated_at": "2026-01-22T16:46:42Z"
     },
     {
       "id": "T038",
