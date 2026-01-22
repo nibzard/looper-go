@@ -44,6 +44,7 @@ func TestIterSchedule(t *testing.T) {
 		{"round-robin 1", "round-robin", 1, "claude"},
 		{"round-robin 2", "round-robin", 2, "codex"},
 		{"round-robin alias", "round_robin", 1, "claude"},
+		{"custom agent schedule", "opencode", 1, "opencode"},
 	}
 
 	for _, tt := range tests {
@@ -172,15 +173,24 @@ func TestExpandPath(t *testing.T) {
 	}
 	if runtime.GOOS == "windows" {
 		t.Setenv("LOOPER_TEST_HOME", home)
-		tests = append(tests, struct{ input string; want string }{
+		tests = append(tests, struct {
+			input string
+			want  string
+		}{
 			input: `~\test`,
 			want:  filepath.Join(home, "test"),
-		}, struct{ input string; want string }{
+		}, struct {
+			input string
+			want  string
+		}{
 			input: `%LOOPER_TEST_HOME%\logs`,
 			want:  filepath.Join(home, "logs"),
 		})
 	} else {
-		tests = append(tests, struct{ input string; want string }{
+		tests = append(tests, struct {
+			input string
+			want  string
+		}{
 			input: `~\test`,
 			want:  `~\test`,
 		})
@@ -255,10 +265,10 @@ func TestBoolFromString(t *testing.T) {
 
 // TestAgentConfig tests the AgentConfig methods.
 func TestAgentConfig(t *testing.T) {
-	t.Run("GetAgent returns built-in agents", func(t *testing.T) {
+	t.Run("GetAgent returns configured agents", func(t *testing.T) {
 		cfg := AgentConfig{
-			Codex:  Agent{Binary: "codex-bin", Model: "gpt-5"},
-			Claude: Agent{Binary: "claude-bin", Model: "claude-4"},
+			"codex":  {Binary: "codex-bin", Model: "gpt-5"},
+			"claude": {Binary: "claude-bin", Model: "claude-4"},
 		}
 
 		codexAgent := cfg.GetAgent("codex")
@@ -278,23 +288,6 @@ func TestAgentConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("GetAgent prefers custom agents", func(t *testing.T) {
-		cfg := AgentConfig{
-			Codex: Agent{Binary: "codex-bin", Model: "gpt-5"},
-			Agents: map[string]Agent{
-				"codex": {Binary: "custom-codex", Model: "custom-gpt"},
-			},
-		}
-
-		codexAgent := cfg.GetAgent("codex")
-		if codexAgent.Binary != "custom-codex" {
-			t.Errorf("GetAgent(codex).Binary = %q, want custom-codex (custom should override built-in)", codexAgent.Binary)
-		}
-		if codexAgent.Model != "custom-gpt" {
-			t.Errorf("GetAgent(codex).Model = %q, want custom-gpt", codexAgent.Model)
-		}
-	})
-
 	t.Run("GetAgent returns empty for unknown types", func(t *testing.T) {
 		cfg := AgentConfig{}
 		agent := cfg.GetAgent("unknown")
@@ -306,31 +299,33 @@ func TestAgentConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("SetAgent updates built-in agents", func(t *testing.T) {
+	t.Run("SetAgent updates agents", func(t *testing.T) {
 		cfg := AgentConfig{}
 		cfg.SetAgent("codex", Agent{Binary: "my-codex", Model: "my-model"})
 
-		if cfg.Codex.Binary != "my-codex" {
-			t.Errorf("SetAgent(codex) - Binary = %q, want my-codex", cfg.Codex.Binary)
+		codexAgent := cfg.GetAgent("codex")
+		if codexAgent.Binary != "my-codex" {
+			t.Errorf("SetAgent(codex) - Binary = %q, want my-codex", codexAgent.Binary)
 		}
-		if cfg.Codex.Model != "my-model" {
-			t.Errorf("SetAgent(codex) - Model = %q, want my-model", cfg.Codex.Model)
+		if codexAgent.Model != "my-model" {
+			t.Errorf("SetAgent(codex) - Model = %q, want my-model", codexAgent.Model)
 		}
 
-		cfg.SetAgent("claude", Agent{Binary: "my-claude", Model: "claude-model"})
-		if cfg.Claude.Binary != "my-claude" {
-			t.Errorf("SetAgent(claude) - Binary = %q, want my-claude", cfg.Claude.Binary)
+		cfg.SetAgent("codex", Agent{Binary: "override-codex", Model: "override-model"})
+		codexAgent = cfg.GetAgent("codex")
+		if codexAgent.Binary != "override-codex" {
+			t.Errorf("SetAgent(codex) override - Binary = %q, want override-codex", codexAgent.Binary)
 		}
 	})
 
 	t.Run("SetAgent adds custom agents", func(t *testing.T) {
-		cfg := AgentConfig{}
+		var cfg AgentConfig
 		cfg.SetAgent("custom-agent", Agent{Binary: "custom-bin", Model: "custom-model"})
 
-		if cfg.Agents == nil {
-			t.Fatal("SetAgent(custom) should create Agents map")
+		if cfg == nil {
+			t.Fatal("SetAgent(custom) should initialize Agents map")
 		}
-		customAgent := cfg.Agents["custom-agent"]
+		customAgent := cfg.GetAgent("custom-agent")
 		if customAgent.Binary != "custom-bin" {
 			t.Errorf("SetAgent(custom) - Binary = %q, want custom-bin", customAgent.Binary)
 		}
@@ -345,8 +340,8 @@ func TestConfigGetAgentBinaryAndModel(t *testing.T) {
 	t.Run("built-in agents", func(t *testing.T) {
 		cfg := &Config{
 			Agents: AgentConfig{
-				Codex:  Agent{Binary: "codex-bin", Model: "gpt-5"},
-				Claude: Agent{Binary: "claude-bin", Model: "claude-4"},
+				"codex":  {Binary: "codex-bin", Model: "gpt-5"},
+				"claude": {Binary: "claude-bin", Model: "claude-4"},
 			},
 		}
 
@@ -368,9 +363,7 @@ func TestConfigGetAgentBinaryAndModel(t *testing.T) {
 	t.Run("custom agents", func(t *testing.T) {
 		cfg := &Config{
 			Agents: AgentConfig{
-				Agents: map[string]Agent{
-					"opencode": {Binary: "opencode-bin", Model: "opencode-model"},
-				},
+				"opencode": {Binary: "opencode-bin", Model: "opencode-model"},
 			},
 		}
 
@@ -382,21 +375,13 @@ func TestConfigGetAgentBinaryAndModel(t *testing.T) {
 		}
 	})
 
-	t.Run("custom overrides built-in", func(t *testing.T) {
+	t.Run("fallback to agent name when not configured", func(t *testing.T) {
 		cfg := &Config{
-			Agents: AgentConfig{
-				Codex: Agent{Binary: "codex-bin", Model: "gpt-5"},
-				Agents: map[string]Agent{
-					"codex": {Binary: "custom-codex", Model: "custom-model"},
-				},
-			},
+			Agents: AgentConfig{},
 		}
 
-		if cfg.GetAgentBinary("codex") != "custom-codex" {
-			t.Errorf("GetAgentBinary(codex) = %q, want custom-codex (custom should override)", cfg.GetAgentBinary("codex"))
-		}
-		if cfg.GetAgentModel("codex") != "custom-model" {
-			t.Errorf("GetAgentModel(codex) = %q, want custom-model", cfg.GetAgentModel("codex"))
+		if cfg.GetAgentBinary("opencode") != "opencode" {
+			t.Errorf("GetAgentBinary(opencode) = %q, want opencode", cfg.GetAgentBinary("opencode"))
 		}
 	})
 }
@@ -417,7 +402,7 @@ model = "gpt-5"
 binary = "my-claude"
 model = "claude-4"
 
-[agents.agents.opencode]
+[agents.opencode]
 binary = "opencode"
 model = "opencode-model"
 `)
@@ -432,25 +417,24 @@ model = "opencode-model"
 	}
 
 	// Check built-in agents
-	if cfg.Agents.Codex.Binary != "my-codex" {
-		t.Errorf("Codex.Binary: got %q, want my-codex", cfg.Agents.Codex.Binary)
+	codexAgent := cfg.Agents.GetAgent("codex")
+	if codexAgent.Binary != "my-codex" {
+		t.Errorf("codex.Binary: got %q, want my-codex", codexAgent.Binary)
 	}
-	if cfg.Agents.Codex.Model != "gpt-5" {
-		t.Errorf("Codex.Model: got %q, want gpt-5", cfg.Agents.Codex.Model)
+	if codexAgent.Model != "gpt-5" {
+		t.Errorf("codex.Model: got %q, want gpt-5", codexAgent.Model)
 	}
 
-	if cfg.Agents.Claude.Binary != "my-claude" {
-		t.Errorf("Claude.Binary: got %q, want my-claude", cfg.Agents.Claude.Binary)
+	claudeAgent := cfg.Agents.GetAgent("claude")
+	if claudeAgent.Binary != "my-claude" {
+		t.Errorf("claude.Binary: got %q, want my-claude", claudeAgent.Binary)
 	}
-	if cfg.Agents.Claude.Model != "claude-4" {
-		t.Errorf("Claude.Model: got %q, want claude-4", cfg.Agents.Claude.Model)
+	if claudeAgent.Model != "claude-4" {
+		t.Errorf("claude.Model: got %q, want claude-4", claudeAgent.Model)
 	}
 
 	// Check custom agent
-	if cfg.Agents.Agents == nil {
-		t.Fatal("Agents map should not be nil")
-	}
-	opencodeAgent := cfg.Agents.Agents["opencode"]
+	opencodeAgent := cfg.Agents.GetAgent("opencode")
 	if opencodeAgent.Binary != "opencode" {
 		t.Errorf("opencode.Binary: got %q, want opencode", opencodeAgent.Binary)
 	}

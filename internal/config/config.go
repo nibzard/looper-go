@@ -43,16 +43,16 @@ type Config struct {
 	UserPrompt string `toml:"-"` // User-provided prompt to drive bootstrap
 
 	// Loop settings
-	MaxIterations int    `toml:"max_iterations"`
-	Schedule      string `toml:"schedule"` // codex, claude, odd-even, round-robin
-	RepairAgent   string `toml:"repair_agent"` // codex or claude
-	ReviewAgent   string `toml:"review_agent"` // codex or claude (default: codex)
+	MaxIterations  int    `toml:"max_iterations"`
+	Schedule       string `toml:"schedule"`        // codex, claude, odd-even, round-robin
+	RepairAgent    string `toml:"repair_agent"`    // codex or claude
+	ReviewAgent    string `toml:"review_agent"`    // codex or claude (default: codex)
 	BootstrapAgent string `toml:"bootstrap_agent"` // codex or claude (default: codex)
 
 	// Scheduling options for odd-even and round-robin
-	OddAgent      string   `toml:"odd_agent"`      // agent for odd iterations (default: codex)
-	EvenAgent     string   `toml:"even_agent"`     // agent for even iterations (default: claude)
-	RRAgents      []string `toml:"rr_agents"`      // agent list for round-robin (default: claude,codex)
+	OddAgent  string   `toml:"odd_agent"`  // agent for odd iterations (default: codex)
+	EvenAgent string   `toml:"even_agent"` // agent for even iterations (default: claude)
+	RRAgents  []string `toml:"rr_agents"`  // agent list for round-robin (default: claude,codex)
 
 	// Agents
 	Agents AgentConfig `toml:"agents"`
@@ -74,51 +74,92 @@ type Config struct {
 }
 
 // AgentConfig holds agent-specific configuration.
-// For backward compatibility, it supports both the old fixed format (codex/claude fields)
-// and the new map-based format (custom agents).
-type AgentConfig struct {
-	// Built-in agents (backward compatible)
-	Codex  Agent          `toml:"codex"`
-	Claude Agent          `toml:"claude"`
-	Agents map[string]Agent `toml:"agents,omitempty"` // Custom agents by name
+// It is a map keyed by agent type (codex, claude, or any registered custom agent).
+type AgentConfig map[string]Agent
+
+// UnmarshalTOML supports both the new map-based layout and the legacy
+// agents.agents.<name> nested format for custom agents.
+func (ac *AgentConfig) UnmarshalTOML(data interface{}) error {
+	table, ok := data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("agents config must be a table")
+	}
+	if *ac == nil {
+		*ac = AgentConfig{}
+	}
+	return mergeAgentTables(*ac, table)
 }
 
 // GetAgent returns the configuration for a given agent type.
-// It first checks the custom agents map, then falls back to built-in agents.
-func (ac *AgentConfig) GetAgent(agentType string) Agent {
-	// Check custom agents first
-	if ac.Agents != nil {
-		if agent, ok := ac.Agents[agentType]; ok {
-			return agent
-		}
-	}
-	// Fall back to built-in agents
-	switch normalizeAgent(agentType) {
-	case "codex":
-		return ac.Codex
-	case "claude":
-		return ac.Claude
-	default:
-		// Return empty agent for unknown types
+func (ac AgentConfig) GetAgent(agentType string) Agent {
+	if ac == nil {
 		return Agent{}
 	}
+	key := normalizeAgent(agentType)
+	if key == "" {
+		return Agent{}
+	}
+	return ac[key]
 }
 
 // SetAgent sets the configuration for a given agent type.
-// For built-in agents (codex, claude), it sets the respective field.
-// For custom agents, it adds/updates the agents map.
 func (ac *AgentConfig) SetAgent(agentType string, config Agent) {
-	switch normalizeAgent(agentType) {
-	case "codex":
-		ac.Codex = config
-	case "claude":
-		ac.Claude = config
-	default:
-		if ac.Agents == nil {
-			ac.Agents = make(map[string]Agent)
-		}
-		ac.Agents[agentType] = config
+	key := normalizeAgent(agentType)
+	if key == "" {
+		return
 	}
+	if *ac == nil {
+		*ac = AgentConfig{}
+	}
+	(*ac)[key] = config
+}
+
+func mergeAgentTables(target AgentConfig, table map[string]interface{}) error {
+	for key, value := range table {
+		if key == "agents" {
+			nested, ok := value.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("agents.agents must be a table")
+			}
+			if err := mergeAgentTables(target, nested); err != nil {
+				return err
+			}
+			continue
+		}
+
+		raw, ok := value.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		agent, err := decodeAgentConfig(raw)
+		if err != nil {
+			return fmt.Errorf("agent %s: %w", key, err)
+		}
+		target[normalizeAgent(key)] = agent
+	}
+	return nil
+}
+
+func decodeAgentConfig(raw map[string]interface{}) (Agent, error) {
+	var agent Agent
+	if raw == nil {
+		return agent, nil
+	}
+	if v, ok := raw["binary"]; ok {
+		binary, ok := v.(string)
+		if !ok {
+			return agent, fmt.Errorf("binary must be a string")
+		}
+		agent.Binary = binary
+	}
+	if v, ok := raw["model"]; ok {
+		model, ok := v.(string)
+		if !ok {
+			return agent, fmt.Errorf("model must be a string")
+		}
+		agent.Model = model
+	}
+	return agent, nil
 }
 
 // Agent holds configuration for a single agent type.
@@ -130,11 +171,8 @@ type Agent struct {
 
 // IterSchedule returns the agent for a given iteration number.
 func (c *Config) IterSchedule(iter int) string {
-	switch normalizeSchedule(c.Schedule) {
-	case "codex":
-		return "codex"
-	case "claude":
-		return "claude"
+	schedule := normalizeSchedule(c.Schedule)
+	switch schedule {
 	case "odd-even":
 		if iter%2 == 1 {
 			// Odd iteration (1, 3, 5, ...)
@@ -161,6 +199,9 @@ func (c *Config) IterSchedule(iter int) string {
 		idx := (iter - 1) % len(agents)
 		return agents[idx]
 	default:
+		if schedule != "" {
+			return schedule
+		}
 		return "codex"
 	}
 }
@@ -228,18 +269,18 @@ func setDefaults(cfg *Config) {
 	cfg.MaxIterations = DefaultMaxIterations
 	cfg.Schedule = "codex"
 	cfg.RepairAgent = "codex"
-	cfg.ReviewAgent = ""   // Empty means use default (codex)
+	cfg.ReviewAgent = ""    // Empty means use default (codex)
 	cfg.BootstrapAgent = "" // Empty means use default (codex)
-	cfg.OddAgent = ""      // Empty means use default (codex)
-	cfg.EvenAgent = ""     // Empty means use default (claude)
-	cfg.RRAgents = nil     // nil means use default (claude,codex)
+	cfg.OddAgent = ""       // Empty means use default (codex)
+	cfg.EvenAgent = ""      // Empty means use default (claude)
+	cfg.RRAgents = nil      // nil means use default (claude,codex)
 	cfg.ApplySummary = DefaultApplySummary
 	cfg.GitInit = true
 	cfg.LoopDelaySeconds = 0
 
 	// Default agent binaries
-	cfg.Agents.Codex.Binary = DefaultAgentBinaries()["codex"]
-	cfg.Agents.Claude.Binary = DefaultAgentBinaries()["claude"]
+	cfg.Agents.SetAgent("codex", Agent{Binary: DefaultAgentBinaries()["codex"]})
+	cfg.Agents.SetAgent("claude", Agent{Binary: DefaultAgentBinaries()["claude"]})
 }
 
 // findConfigFile looks for a config file in the current directory.
@@ -330,16 +371,24 @@ func loadFromEnv(cfg *Config) {
 		}
 	}
 	if v := os.Getenv("CODEX_BIN"); v != "" {
-		cfg.Agents.Codex.Binary = v
+		agent := cfg.Agents.GetAgent("codex")
+		agent.Binary = v
+		cfg.Agents.SetAgent("codex", agent)
 	}
 	if v := os.Getenv("CLAUDE_BIN"); v != "" {
-		cfg.Agents.Claude.Binary = v
+		agent := cfg.Agents.GetAgent("claude")
+		agent.Binary = v
+		cfg.Agents.SetAgent("claude", agent)
 	}
 	if v := os.Getenv("CODEX_MODEL"); v != "" {
-		cfg.Agents.Codex.Model = v
+		agent := cfg.Agents.GetAgent("codex")
+		agent.Model = v
+		cfg.Agents.SetAgent("codex", agent)
 	}
 	if v := os.Getenv("CLAUDE_MODEL"); v != "" {
-		cfg.Agents.Claude.Model = v
+		agent := cfg.Agents.GetAgent("claude")
+		agent.Model = v
+		cfg.Agents.SetAgent("claude", agent)
 	}
 }
 
@@ -440,10 +489,14 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	fs.IntVar(&cfg.LoopDelaySeconds, "loop-delay", cfg.LoopDelaySeconds, "Delay between iterations (seconds)")
 
 	// Agents
-	fs.StringVar(&cfg.Agents.Codex.Binary, "codex-bin", cfg.Agents.Codex.Binary, "Codex binary")
-	fs.StringVar(&cfg.Agents.Claude.Binary, "claude-bin", cfg.Agents.Claude.Binary, "Claude binary")
-	fs.StringVar(&cfg.Agents.Codex.Model, "codex-model", cfg.Agents.Codex.Model, "Codex model")
-	fs.StringVar(&cfg.Agents.Claude.Model, "claude-model", cfg.Agents.Claude.Model, "Claude model")
+	codexBinary := cfg.GetAgentBinary("codex")
+	claudeBinary := cfg.GetAgentBinary("claude")
+	codexModel := cfg.GetAgentModel("codex")
+	claudeModel := cfg.GetAgentModel("claude")
+	fs.StringVar(&codexBinary, "codex-bin", codexBinary, "Codex binary")
+	fs.StringVar(&claudeBinary, "claude-bin", claudeBinary, "Claude binary")
+	fs.StringVar(&codexModel, "codex-model", codexModel, "Codex model")
+	fs.StringVar(&claudeModel, "claude-model", claudeModel, "Claude model")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -451,6 +504,8 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	if rrAgentsStr != "" {
 		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
 	}
+	cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel})
+	cfg.Agents.SetAgent("claude", Agent{Binary: claudeBinary, Model: claudeModel})
 	return nil
 }
 
@@ -546,14 +601,28 @@ func expandWindowsEnv(p string) string {
 }
 
 // GetAgentBinary returns the binary path for the given agent type.
-// It checks both custom agents and built-in agents.
+// It checks both custom agents and built-in defaults, then falls back to the agent name.
 func (c *Config) GetAgentBinary(agentType string) string {
-	return c.Agents.GetAgent(agentType).Binary
+	agentType = normalizeAgent(agentType)
+	if agentType == "" {
+		return ""
+	}
+	if agent := c.Agents.GetAgent(agentType); agent.Binary != "" {
+		return agent.Binary
+	}
+	if binary, ok := DefaultAgentBinaries()[agentType]; ok {
+		return binary
+	}
+	return agentType
 }
 
 // GetAgentModel returns the model for the given agent type.
 // It checks both custom agents and built-in agents.
 func (c *Config) GetAgentModel(agentType string) string {
+	agentType = normalizeAgent(agentType)
+	if agentType == "" {
+		return ""
+	}
 	return c.Agents.GetAgent(agentType).Model
 }
 

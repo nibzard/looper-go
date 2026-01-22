@@ -18,11 +18,11 @@ against `to-do.schema.json`, and repairs it if needed.
 
 - Bootstraps `to-do.json` and `to-do.schema.json` if missing.
 - Validates `to-do.json` (using JSON Schema when available).
-- Repairs invalid task files via configured agent (Codex or Claude).
+- Repairs invalid task files via configured agent (any registered agent).
 - Runs one task per iteration (doing > todo > blocked).
 - When tasks are exhausted, runs a review pass; appends a final
   `project-done` marker task if no new work is found.
-- Supports multiple iteration schedules (Codex, Claude, odd-even, round-robin).
+- Supports multiple iteration schedules (agent name, odd-even, round-robin).
 - Enforces JSON output from the model and logs JSONL per run.
 - Optionally applies model summaries back into `to-do.json`.
 
@@ -199,7 +199,7 @@ model = ""
 # Custom agents can be registered and configured
 # To add a custom agent, register it via init() in your code
 # and configure it under the agents map:
-# [agents.agents.opencode]
+# [agents.opencode]
 # binary = "opencode"
 # model = "custom-model"
 
@@ -346,7 +346,7 @@ The push command will:
 5. Execute the release workflow: run tests, bump version, tag, push, create GitHub release, update Homebrew formula
 
 **Options:**
-- `--agent <codex|claude>` - Agent to use for release workflow (default: codex)
+- `--agent <agent>` - Agent to use for release workflow (default: codex)
 - `-y` - Skip confirmation prompts
 
 **Example:**

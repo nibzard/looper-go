@@ -42,7 +42,7 @@ git_init = true
 # Delay between iterations (seconds)
 loop_delay_seconds = 0
 
-# Built-in agent configuration
+# Agent configuration (any registered agent type)
 [agents.codex]
 binary = "codex"
 model = ""
@@ -51,9 +51,9 @@ model = ""
 binary = "claude"
 model = ""
 
-# Custom agents can be configured under the agents.agents map
+# Custom agents can be configured under the agents map
 # The agent type must be registered via agents.RegisterAgent() in code
-# [agents.agents.opencode]
+# [agents.opencode]
 # binary = "opencode"
 # model = "custom-model"
 `

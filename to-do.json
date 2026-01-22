@@ -475,13 +475,15 @@
       ],
       "files": [
         "cmd/root.go",
-        "internal/config/config.go",
-        "internal/config/example.go",
-        "README.md",
         "internal/agents/agents.go",
-        "internal/agents/agents_test.go"
+        "internal/agents/doc.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/config/example.go",
+        "internal/loop/loop_test.go",
+        "README.md"
       ],
-      "updated_at": "2026-01-22T13:07:12Z"
+      "updated_at": "2026-01-22T13:28:43Z"
     },
     {
       "id": "T032",

@@ -406,6 +406,10 @@ func normalizeConfig(agentType AgentType, cfg Config) Config {
 			cfg.Binary = "codex"
 		case AgentTypeClaude:
 			cfg.Binary = "claude"
+		default:
+			if agentType != "" {
+				cfg.Binary = string(agentType)
+			}
 		}
 	}
 	if cfg.Timeout == 0 {

@@ -547,9 +547,9 @@ func TestEnsureSchemaExists(t *testing.T) {
 // TestHasProjectDoneMarker tests the project-done marker detection.
 func TestHasProjectDoneMarker(t *testing.T) {
 	tests := []struct {
-		name     string
-		tasks    []todo.Task
-		wantHas  bool
+		name    string
+		tasks   []todo.Task
+		wantHas bool
 	}{
 		{
 			name:    "no marker",
@@ -849,7 +849,7 @@ printf '{"task_id":"T001","status":"%s","summary":"%s"}\n' "$status" "$summary"
 		MaxIterations: 10,
 		LogDir:        filepath.Join(tmpDir, "logs"),
 	}
-	cfg.Agents.Codex.Binary = stubPath
+	cfg.Agents.SetAgent("codex", config.Agent{Binary: stubPath})
 
 	loop, err := New(cfg, tmpDir)
 	if err != nil {
