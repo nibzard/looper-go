@@ -572,11 +572,11 @@ func collectSummary(summaries <-chan *Summary) *Summary {
 
 // agentSpec captures agent-specific behavior.
 type agentSpec struct {
-	name            string
-	buildArgs       func(cfg Config, prompt string) []string
-	setupStdin      func(cmd *exec.Cmd, prompt string)
-	streamOutput    func(ctx context.Context, stdout, stderr io.Reader, logWriter LogWriter) agentStreamResult
-	postProcess     func(cfg Config, summary *Summary, logWriter LogWriter) (*Summary, error)
+	name         string
+	buildArgs    func(cfg Config, prompt string) []string
+	setupStdin   func(cmd *exec.Cmd, prompt string)
+	streamOutput func(ctx context.Context, stdout, stderr io.Reader, logWriter LogWriter) agentStreamResult
+	postProcess  func(cfg Config, summary *Summary, logWriter LogWriter) (*Summary, error)
 }
 
 // agentStreamResult holds streaming outputs.
@@ -586,11 +586,120 @@ type agentStreamResult struct {
 	lastMessage <-chan string
 }
 
+func sendErr(errs chan<- error, err error) {
+	if err == nil || errs == nil {
+		return
+	}
+	select {
+	case errs <- err:
+	default:
+	}
+}
+
+func sendString(ch chan<- string, value string) {
+	if ch == nil || value == "" {
+		return
+	}
+	select {
+	case ch <- value:
+	default:
+	}
+}
+
+func writeAssistantLine(logWriter LogWriter, line string) error {
+	return logWriter.Write(LogEvent{
+		Type:      "assistant_message",
+		Timestamp: time.Now().UTC(),
+		Content:   line,
+	})
+}
+
+func recordSummary(ctx context.Context, logWriter LogWriter, summaries chan *Summary, summary *Summary) error {
+	if summary == nil {
+		return nil
+	}
+	sendSummary(ctx, summaries, summary)
+	if err := logWriter.Write(LogEvent{
+		Type:      "summary",
+		Timestamp: time.Now().UTC(),
+		Summary:   summary,
+	}); err != nil {
+		return fmt.Errorf("write log event: %w", err)
+	}
+	return nil
+}
+
+func logRawEvent(logWriter LogWriter, raw map[string]any, line, assistantText string) error {
+	eventType := classifyEventType(raw)
+	event := LogEvent{
+		Type:      eventType,
+		Timestamp: time.Now().UTC(),
+	}
+
+	if eventType == "assistant_message" {
+		if assistantText != "" {
+			event.Content = assistantText
+		} else {
+			event.Content = line
+		}
+	} else {
+		event.Content = line
+	}
+
+	if tool := extractToolName(raw); tool != "" {
+		event.Tool = tool
+	}
+	if cmd, ok := extractCommand(raw); ok {
+		event.Command = cmd
+	}
+	if exitCode, ok := extractExitCode(raw); ok {
+		event.ExitCode = exitCode
+	}
+
+	if err := logWriter.Write(event); err != nil {
+		return fmt.Errorf("write log event: %w", err)
+	}
+	return nil
+}
+
+func streamWithStderr(
+	ctx context.Context,
+	stdout, stderr io.Reader,
+	logWriter LogWriter,
+	summaries chan *Summary,
+	errs chan error,
+	lastMessages chan string,
+	stdoutFn func() (string, error),
+) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		lastMessage, err := stdoutFn()
+		sendErr(errs, err)
+		sendString(lastMessages, lastMessage)
+	}()
+
+	go func() {
+		defer wg.Done()
+		streamStderr(ctx, stderr, logWriter, errs)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(summaries)
+		close(errs)
+		if lastMessages != nil {
+			close(lastMessages)
+		}
+	}()
+}
+
 // streamStderr streams stderr lines to the log writer as error events.
 // This is shared between codex and Claude agents.
 func streamStderr(ctx context.Context, stderr io.Reader, logWriter LogWriter, errs chan<- error) {
-	scanner := bufio.NewScanner(stderr)
-	scanner.Buffer(make([]byte, 0, scanBufferSize), maxScanTokenSize)
+	scanner := newScanner(stderr)
 	for scanner.Scan() {
 		if ctx.Err() != nil {
 			return
@@ -605,10 +714,7 @@ func streamStderr(ctx context.Context, stderr io.Reader, logWriter LogWriter, er
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		select {
-		case errs <- fmt.Errorf("stderr scanner error: %w", err):
-		default:
-		}
+		sendErr(errs, fmt.Errorf("stderr scanner error: %w", err))
 	}
 }
 
@@ -683,41 +789,19 @@ func (a *codexAgent) streamOutput(
 	summaries := make(chan *Summary, 1)
 	errs := make(chan error, 10)
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Stream stdout (JSON lines)
-	go func() {
-		defer wg.Done()
+	streamWithStderr(ctx, stdout, stderr, logWriter, summaries, errs, nil, func() (string, error) {
 		scanner := newScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if err := a.processLine(ctx, line, logWriter, summaries); err != nil {
-				select {
-				case errs <- err:
-				default:
-				}
+				sendErr(errs, err)
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			select {
-			case errs <- fmt.Errorf("scanner error: %w", err):
-			default:
-			}
+			return "", fmt.Errorf("scanner error: %w", err)
 		}
-	}()
-
-	// Stream stderr (plain text errors)
-	go func() {
-		defer wg.Done()
-		streamStderr(ctx, stderr, logWriter, errs)
-	}()
-
-	go func() {
-		wg.Wait()
-		close(summaries)
-		close(errs)
-	}()
+		return "", nil
+	})
 
 	return summaries, errs
 }
@@ -737,42 +821,12 @@ func (a *codexAgent) processLine(
 	var rawData map[string]any
 	if err := json.Unmarshal([]byte(line), &rawData); err != nil {
 		// Not JSON, log as assistant message
-		return logWriter.Write(LogEvent{
-			Type:      "assistant_message",
-			Timestamp: time.Now().UTC(),
-			Content:   line,
-		})
-	}
-
-	eventType := classifyEventType(rawData)
-	event := LogEvent{
-		Type:      eventType,
-		Timestamp: time.Now().UTC(),
+		return writeAssistantLine(logWriter, line)
 	}
 
 	text := extractTextFromMessage(rawData)
-	if eventType == "assistant_message" {
-		if text != "" {
-			event.Content = text
-		} else {
-			event.Content = line
-		}
-	} else {
-		event.Content = line
-	}
-
-	if tool := extractToolName(rawData); tool != "" {
-		event.Tool = tool
-	}
-	if cmd, ok := extractCommand(rawData); ok {
-		event.Command = cmd
-	}
-	if exitCode, ok := extractExitCode(rawData); ok {
-		event.ExitCode = exitCode
-	}
-
-	if err := logWriter.Write(event); err != nil {
-		return fmt.Errorf("write log event: %w", err)
+	if err := logRawEvent(logWriter, rawData, line, text); err != nil {
+		return err
 	}
 
 	summary, ok := parseSummaryFromRaw(rawData)
@@ -780,13 +834,8 @@ func (a *codexAgent) processLine(
 		summary, ok = parseSummaryFromText(text)
 	}
 	if ok {
-		sendSummary(ctx, summaries, summary)
-		if err := logWriter.Write(LogEvent{
-			Type:      "summary",
-			Timestamp: time.Now().UTC(),
-			Summary:   summary,
-		}); err != nil {
-			return fmt.Errorf("write log event: %w", err)
+		if err := recordSummary(ctx, logWriter, summaries, summary); err != nil {
+			return err
 		}
 	}
 
@@ -833,39 +882,9 @@ func (a *claudeAgent) streamOutput(
 	errs := make(chan error, 10)
 	lastMessages := make(chan string, 1)
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Stream stdout (stream-json format)
-	go func() {
-		defer wg.Done()
-		lastMessage, err := a.processStreamJSON(ctx, stdout, logWriter, summaries)
-		if err != nil {
-			select {
-			case errs <- err:
-			default:
-			}
-		}
-		if lastMessage != "" {
-			select {
-			case lastMessages <- lastMessage:
-			default:
-			}
-		}
-	}()
-
-	// Stream stderr (plain text errors)
-	go func() {
-		defer wg.Done()
-		streamStderr(ctx, stderr, logWriter, errs)
-	}()
-
-	go func() {
-		wg.Wait()
-		close(summaries)
-		close(errs)
-		close(lastMessages)
-	}()
+	streamWithStderr(ctx, stdout, stderr, logWriter, summaries, errs, lastMessages, func() (string, error) {
+		return a.processStreamJSON(ctx, stdout, logWriter, summaries)
+	})
 
 	return summaries, errs, lastMessages
 }
@@ -900,35 +919,8 @@ func (a *claudeAgent) processStreamJSON(
 		data, _ := json.Marshal(raw)
 		line := string(data)
 
-		eventType := classifyEventType(raw)
-		event := LogEvent{
-			Type:      eventType,
-			Timestamp: time.Now().UTC(),
-		}
-
-		content := ""
-		if eventType == "assistant_message" {
-			content = extractClaudeEventText(raw)
-			if content == "" {
-				content = line
-			}
-		} else {
-			content = line
-		}
-		event.Content = content
-
-		if tool := extractToolName(raw); tool != "" {
-			event.Tool = tool
-		}
-		if cmd, ok := extractCommand(raw); ok {
-			event.Command = cmd
-		}
-		if exitCode, ok := extractExitCode(raw); ok {
-			event.ExitCode = exitCode
-		}
-
-		if err := logWriter.Write(event); err != nil {
-			return "", fmt.Errorf("write log event: %w", err)
+		if err := logRawEvent(logWriter, raw, line, extractClaudeEventText(raw)); err != nil {
+			return "", err
 		}
 
 		if !sawFullMessage {
@@ -944,13 +936,8 @@ func (a *claudeAgent) processStreamJSON(
 
 	if lastMessageBuf.Len() > 0 {
 		if summary, ok := parseSummaryFromText(lastMessageBuf.String()); ok {
-			sendSummary(ctx, summaries, summary)
-			if err := logWriter.Write(LogEvent{
-				Type:      "summary",
-				Timestamp: time.Now().UTC(),
-				Summary:   summary,
-			}); err != nil {
-				return "", fmt.Errorf("write log event: %w", err)
+			if err := recordSummary(ctx, logWriter, summaries, summary); err != nil {
+				return "", err
 			}
 		}
 	}

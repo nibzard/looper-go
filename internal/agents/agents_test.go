@@ -960,3 +960,66 @@ func TestNewScanner(t *testing.T) {
 		t.Errorf("unexpected lines: %v", lines)
 	}
 }
+
+func TestLogRawEvent(t *testing.T) {
+	tests := []struct {
+		name          string
+		raw           map[string]any
+		line          string
+		assistantText string
+		wantType      string
+		wantContent   string
+		wantTool      string
+	}{
+		{
+			name:          "assistant message prefers assistant text",
+			raw:           map[string]any{"type": "assistant_message"},
+			line:          `{"type":"assistant_message"}`,
+			assistantText: "hello",
+			wantType:      "assistant_message",
+			wantContent:   "hello",
+		},
+		{
+			name:        "assistant message falls back to line",
+			raw:         map[string]any{"type": "assistant_message"},
+			line:        "raw line",
+			wantType:    "assistant_message",
+			wantContent: "raw line",
+		},
+		{
+			name:          "tool events use line content",
+			raw:           map[string]any{"type": "tool_use", "name": "tester"},
+			line:          `{"type":"tool_use","name":"tester"}`,
+			assistantText: "ignored",
+			wantType:      "tool",
+			wantContent:   `{"type":"tool_use","name":"tester"}`,
+			wantTool:      "tester",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logWriter := NewIOStreamLogWriter(&buf)
+
+			if err := logRawEvent(logWriter, tt.raw, tt.line, tt.assistantText); err != nil {
+				t.Fatalf("logRawEvent() error = %v", err)
+			}
+
+			var event LogEvent
+			if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &event); err != nil {
+				t.Fatalf("Unmarshal() error = %v", err)
+			}
+
+			if event.Type != tt.wantType {
+				t.Errorf("Type = %q, want %q", event.Type, tt.wantType)
+			}
+			if event.Content != tt.wantContent {
+				t.Errorf("Content = %q, want %q", event.Content, tt.wantContent)
+			}
+			if event.Tool != tt.wantTool {
+				t.Errorf("Tool = %q, want %q", event.Tool, tt.wantTool)
+			}
+		})
+	}
+}

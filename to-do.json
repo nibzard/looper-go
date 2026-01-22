@@ -820,12 +820,13 @@
         "agents"
       ],
       "files": [
-        "internal/agents/agents.go"
+        "internal/agents/agents.go",
+        "internal/agents/agents_test.go"
       ],
       "depends_on": [
         "T039"
       ],
-      "updated_at": "2026-01-22T16:27:29Z"
+      "updated_at": "2026-01-22T16:35:26Z"
     },
     {
       "id": "T052",
