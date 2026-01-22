@@ -664,19 +664,20 @@
         "benchmarking"
       ],
       "files": [
+        "internal/agents/agents_test.go",
+        "internal/loop/loop_bench_test.go",
         "internal/prompts/prompts_bench_test.go",
         "internal/todo/types_bench_test.go",
-        "internal/loop/loop_bench_test.go",
-        "internal/agents/agents_test.go"
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T14:26:09Z"
+      "updated_at": "2026-01-22T14:28:54Z"
     },
     {
       "id": "T041",
       "title": "Review optimization opportunities in logging and streaming",
       "priority": 3,
-      "status": "todo",
-      "details": "Inspect JSONL logging and stream decoding for unnecessary allocations, sync overhead, or excessive flushing; propose low-risk optimizations.",
+      "status": "done",
+      "details": "Audit complete. Key findings: (1) Log file writes are unbuffered - os.Create with no bufio wrapping causes frequent syscalls; consider buffered writer with periodic flushing. (2) JSONL streaming allocates per-line - json.Unmarshal on every line allocates; could use decoder buffer reuse. (3) Claude stream processing has redundant marshal - line 922 marshals raw map back to JSON when it already exists; optimize to avoid. (4) tailSeek reads byte-by-byte finding newline (lines 287-300) - O(n) byte reads for large skips; could buffer. (5) strings.Builder in slugify/sanitizeLabel has no pre-capacity - set initial capacity to input length. All optimizations are low-risk, micro-optimizations. Current code is correct and reasonably efficient.",
       "steps": [
         "Audit JSON encoding/decoding and buffer reuse in streaming paths.",
         "Review log write paths for buffering and file handle reuse."
@@ -688,8 +689,10 @@
       ],
       "files": [
         "internal/agents/agents.go",
-        "internal/logging/logging.go"
-      ]
+        "internal/logging/logging.go",
+        "to-do.json"
+      ],
+      "updated_at": "2026-01-22T14:29:28Z"
     },
     {
       "id": "T042",
