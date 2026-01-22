@@ -690,3 +690,193 @@ func TestProjectSlug(t *testing.T) {
 		t.Errorf("expected 8-char hash, got %s", hash)
 	}
 }
+
+// TestExtractRunID tests the extractRunID helper.
+func TestExtractRunID(t *testing.T) {
+	tests := []struct {
+		name        string
+		filename    string
+		wantRunID   string
+		wantIsLast  bool
+	}{
+		{
+			name:       "jsonl file",
+			filename:   "20060102-150405-12345.jsonl",
+			wantRunID:  "20060102-150405-12345",
+			wantIsLast: false,
+		},
+		{
+			name:       "last.json file with single word label",
+			filename:   "20060102-150405-12345-run.last.json",
+			wantRunID:  "20060102-150405-12345",
+			wantIsLast: true,
+		},
+		{
+			name:       "last.json file with hyphenated label",
+			filename:   "20060102-150405-12345-test-run.last.json",
+			wantRunID:  "20060102-150405-12345",
+			wantIsLast: true,
+		},
+		{
+			name:       "last.json file with underscore label",
+			filename:   "20060102-150405-12345-test_run.last.json",
+			wantRunID:  "20060102-150405-12345",
+			wantIsLast: true,
+		},
+		{
+			name:       "last.json file without label",
+			filename:   "20060102-150405-12345.last.json",
+			wantRunID:  "20060102-150405-12345",
+			wantIsLast: true,
+		},
+		{
+			name:       "invalid format - not enough parts",
+			filename:   "20060102.last.json",
+			wantRunID:  "",
+			wantIsLast: false,
+		},
+		{
+			name:       "unrelated file",
+			filename:   "readme.txt",
+			wantRunID:  "",
+			wantIsLast: false,
+		},
+		{
+			name:       "json data file",
+			filename:   "data.json",
+			wantRunID:  "",
+			wantIsLast: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runID, isLast := extractRunID(tt.filename)
+			if runID != tt.wantRunID {
+				t.Errorf("extractRunID(%q) runID = %q, want %q", tt.filename, runID, tt.wantRunID)
+			}
+			if isLast != tt.wantIsLast {
+				t.Errorf("extractRunID(%q) isLast = %v, want %v", tt.filename, isLast, tt.wantIsLast)
+			}
+		})
+	}
+}
+
+// TestFindLogRunGrouping tests that FindLogRuns correctly groups last-message files with their runs.
+func TestFindLogRunGrouping(t *testing.T) {
+	logDir := t.TempDir()
+
+	// Create a few log runs with associated last-message files
+	// Run 1
+	jsonl1 := "20060102-150405-12345.jsonl"
+	last1a := "20060102-150405-12345-run.last.json"
+	last1b := "20060102-150405-12345-review.last.json"
+	os.WriteFile(filepath.Join(logDir, jsonl1), []byte("log1"), 0644)
+	os.WriteFile(filepath.Join(logDir, last1a), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(logDir, last1b), []byte("{}"), 0644)
+
+	// Run 2
+	jsonl2 := "20060102-150406-12346.jsonl"
+	last2 := "20060102-150406-12346-iteration.last.json"
+	os.WriteFile(filepath.Join(logDir, jsonl2), []byte("log2"), 0644)
+	os.WriteFile(filepath.Join(logDir, last2), []byte("{}"), 0644)
+
+	runs, err := FindLogRuns(logDir)
+	if err != nil {
+		t.Fatalf("FindLogRuns() error = %v", err)
+	}
+
+	// Should have exactly 2 runs
+	if len(runs) != 2 {
+		t.Fatalf("FindLogRuns() returned %d runs, want 2", len(runs))
+	}
+
+	// Find each run by RunID
+	var run1, run2 *LogRun
+	for i := range runs {
+		if runs[i].RunID == "20060102-150405-12345" {
+			run1 = &runs[i]
+		} else if runs[i].RunID == "20060102-150406-12346" {
+			run2 = &runs[i]
+		}
+	}
+
+	if run1 == nil {
+		t.Fatal("run 1 (20060102-150405-12345) not found")
+	}
+	if run2 == nil {
+		t.Fatal("run 2 (20060102-150406-12346) not found")
+	}
+
+	// Verify run1 has correct files
+	if len(run1.Files) != 1 {
+		t.Errorf("run1 has %d Files, want 1", len(run1.Files))
+	}
+	if len(run1.LastMessageFiles) != 2 {
+		t.Errorf("run1 has %d LastMessageFiles, want 2", len(run1.LastMessageFiles))
+	}
+
+	// Verify run2 has correct files
+	if len(run2.Files) != 1 {
+		t.Errorf("run2 has %d Files, want 1", len(run2.Files))
+	}
+	if len(run2.LastMessageFiles) != 1 {
+		t.Errorf("run2 has %d LastMessageFiles, want 1", len(run2.LastMessageFiles))
+	}
+
+	// Verify files are in the correct run
+	if len(run1.Files) > 0 {
+		if got, want := filepath.Base(run1.Files[0]), jsonl1; got != want {
+			t.Errorf("run1.Files[0] = %s, want %s", got, want)
+		}
+	}
+	if len(run2.Files) > 0 {
+		if got, want := filepath.Base(run2.Files[0]), jsonl2; got != want {
+			t.Errorf("run2.Files[0] = %s, want %s", got, want)
+		}
+	}
+}
+
+// TestFindLogRunsWithLastMessageOnly tests that FindLogRuns handles runs with only last-message files.
+func TestFindLogRunsWithLastMessageOnly(t *testing.T) {
+	logDir := t.TempDir()
+
+	// Create a jsonl file
+	jsonl1 := "20060102-150405-12345.jsonl"
+	os.WriteFile(filepath.Join(logDir, jsonl1), []byte("log1"), 0644)
+
+	// Create a last-message file for a different run that has no jsonl (e.g., orphaned)
+	lastOrphan := "20060102-150406-99999-orphan.last.json"
+	os.WriteFile(filepath.Join(logDir, lastOrphan), []byte("{}"), 0644)
+
+	runs, err := FindLogRuns(logDir)
+	if err != nil {
+		t.Fatalf("FindLogRuns() error = %v", err)
+	}
+
+	// Should have 2 runs - one with jsonl, one orphan last-message
+	if len(runs) != 2 {
+		t.Fatalf("FindLogRuns() returned %d runs, want 2", len(runs))
+	}
+
+	// Find the orphan run
+	var orphanRun *LogRun
+	for i := range runs {
+		if runs[i].RunID == "20060102-150406-99999" {
+			orphanRun = &runs[i]
+			break
+		}
+	}
+
+	if orphanRun == nil {
+		t.Fatal("orphan run (20060102-150406-99999) not found")
+	}
+
+	// Orphan run should have no jsonl files, only last-message
+	if len(orphanRun.Files) != 0 {
+		t.Errorf("orphan run has %d Files, want 0", len(orphanRun.Files))
+	}
+	if len(orphanRun.LastMessageFiles) != 1 {
+		t.Errorf("orphan run has %d LastMessageFiles, want 1", len(orphanRun.LastMessageFiles))
+	}
+}

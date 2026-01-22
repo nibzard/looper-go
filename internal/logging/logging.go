@@ -424,12 +424,12 @@ func extractRunID(filename string) (string, bool) {
 	// Check for .last.json files (last message files)
 	if strings.HasSuffix(filename, ".last.json") {
 		base := strings.TrimSuffix(filename, ".last.json")
-		// Format: timestamp-pid-label
-		// Extract timestamp-pid part
+		// Format: timestamp-time-pid-label (e.g., 20060102-150405-12345-run)
+		// Extract timestamp-time-pid part (first three hyphen-separated parts)
 		parts := strings.Split(base, "-")
-		if len(parts) >= 2 {
-			// Rejoin the first two parts (timestamp and pid)
-			runID := strings.Join(parts[:2], "-")
+		if len(parts) >= 3 {
+			// Rejoin the first three parts (timestamp, time, and pid)
+			runID := strings.Join(parts[:3], "-")
 			return runID, true
 		}
 	}

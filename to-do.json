@@ -956,9 +956,10 @@
       ],
       "files": [
         "cmd/root.go",
-        "cmd/root_test.go"
+        "cmd/root_test.go",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T17:10:00Z"
+      "updated_at": "2026-01-22T17:12:57Z"
     },
     {
       "id": "T021",
@@ -973,6 +974,54 @@
         "to-do.json"
       ],
       "updated_at": "2026-01-21T01:30:31Z"
+    },
+    {
+      "id": "T054",
+      "title": "Fix log cleanup to group last-message files by full run ID",
+      "priority": 2,
+      "status": "done",
+      "details": "logging.extractRunID drops the PID for .last.json files, so FindLogRuns treats last-message files as separate runs; cleanCommand keep/delete counts are wrong and last-message files can be left behind. Parse timestamp+pid from last-message filenames and add tests to ensure LastMessageFiles are grouped with the correct run.",
+      "tags": [
+        "logging",
+        "bug",
+        "cleanup"
+      ],
+      "files": [
+        "internal/logging/logging.go",
+        "internal/logging/logging_test.go"
+      ],
+      "updated_at": "2026-01-22T17:28:57Z"
+    },
+    {
+      "id": "T055",
+      "title": "Make fmtCommand JSON equality check deterministic",
+      "priority": 2,
+      "status": "todo",
+      "details": "cmd/root.go jsonEqual uses fmt.Sprint on decoded maps, which is nondeterministic and can make `looper fmt -check` fail on already-formatted files. Compare decoded JSON with reflect.DeepEqual (or similar) and adjust tests to avoid map-order flakiness.",
+      "tags": [
+        "cli",
+        "bug",
+        "formatting"
+      ],
+      "files": [
+        "cmd/root.go",
+        "cmd/root_test.go"
+      ]
+    },
+    {
+      "id": "T056",
+      "title": "Align docs with current git_init and review agent behavior",
+      "priority": 4,
+      "status": "todo",
+      "details": "README.md and MIGRATION.md still claim git_init is a no-op and review agent always uses Codex. Update docs to reflect git_init now runs git init when enabled, review_agent is configurable, and document the --prompt/LOOPER_PROMPT bootstrap option; refresh internal/config/doc.go to mention user config file precedence.",
+      "tags": [
+        "docs"
+      ],
+      "files": [
+        "README.md",
+        "MIGRATION.md",
+        "internal/config/doc.go"
+      ]
     }
   ]
 }
