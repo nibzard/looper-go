@@ -426,13 +426,37 @@ func extractRunID(filename string) (string, bool) {
 		base := strings.TrimSuffix(filename, ".last.json")
 		// Format: timestamp-time-pid-label (e.g., 20060102-150405-12345-run)
 		// Extract timestamp-time-pid part (first three hyphen-separated parts)
-		parts := strings.Split(base, "-")
-		if len(parts) >= 3 {
-			// Rejoin the first three parts (timestamp, time, and pid)
-			runID := strings.Join(parts[:3], "-")
+		runID := parseRunIDPrefix(base)
+		if runID != "" {
 			return runID, true
 		}
 	}
 
 	return "", false
+}
+
+func parseRunIDPrefix(value string) string {
+	parts := strings.SplitN(value, "-", 4)
+	if len(parts) < 3 {
+		return ""
+	}
+	if len(parts[0]) != 8 || len(parts[1]) != 6 {
+		return ""
+	}
+	if !isDigits(parts[0]) || !isDigits(parts[1]) || !isDigits(parts[2]) {
+		return ""
+	}
+	return strings.Join(parts[:3], "-")
+}
+
+func isDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
 }

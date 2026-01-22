@@ -775,9 +775,9 @@ func TestFindLogRunGrouping(t *testing.T) {
 	os.WriteFile(filepath.Join(logDir, last1a), []byte("{}"), 0644)
 	os.WriteFile(filepath.Join(logDir, last1b), []byte("{}"), 0644)
 
-	// Run 2
-	jsonl2 := "20060102-150406-12346.jsonl"
-	last2 := "20060102-150406-12346-iteration.last.json"
+	// Run 2 (same timestamp, different pid)
+	jsonl2 := "20060102-150405-12346.jsonl"
+	last2 := "20060102-150405-12346-iteration.last.json"
 	os.WriteFile(filepath.Join(logDir, jsonl2), []byte("log2"), 0644)
 	os.WriteFile(filepath.Join(logDir, last2), []byte("{}"), 0644)
 
@@ -796,7 +796,7 @@ func TestFindLogRunGrouping(t *testing.T) {
 	for i := range runs {
 		if runs[i].RunID == "20060102-150405-12345" {
 			run1 = &runs[i]
-		} else if runs[i].RunID == "20060102-150406-12346" {
+		} else if runs[i].RunID == "20060102-150405-12346" {
 			run2 = &runs[i]
 		}
 	}
@@ -805,7 +805,7 @@ func TestFindLogRunGrouping(t *testing.T) {
 		t.Fatal("run 1 (20060102-150405-12345) not found")
 	}
 	if run2 == nil {
-		t.Fatal("run 2 (20060102-150406-12346) not found")
+		t.Fatal("run 2 (20060102-150405-12346) not found")
 	}
 
 	// Verify run1 has correct files
