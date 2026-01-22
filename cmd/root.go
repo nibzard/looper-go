@@ -697,6 +697,12 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  -status string")
 	fmt.Fprintln(w, "        Filter by status (todo|doing|blocked|done)")
 	fmt.Fprintln(w, "  -v    Show more details")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Push Options (use with 'push' command):")
+	fmt.Fprintln(w, "  -agent string")
+	fmt.Fprintln(w, "        Agent to use for release workflow (codex|claude)")
+	fmt.Fprintln(w, "  -y")
+	fmt.Fprintln(w, "        Skip confirmation prompts")
 }
 
 // printTasksByStatus prints tasks of a specific status.
@@ -1062,7 +1068,21 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 
 	// If no remote and gh is available, offer to create a repo
 	if !hasRemote && hasGH {
-		if !*yes {
+		createRepo := func() error {
+			cmd := exec.Command("gh", "repo", "create", "--public", "--source", ".", "--remote", "origin", "--push")
+			cmd.Dir = workDir
+			if output, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("creating GitHub repo: %w\nOutput: %s", err, string(output))
+			}
+			hasRemote = true
+			fmt.Println("GitHub repository created and remote added.")
+			return nil
+		}
+		if *yes {
+			if err := createRepo(); err != nil {
+				return err
+			}
+		} else {
 			fmt.Print("\nNo git remote detected. Create a GitHub repository? [y/N] ")
 			var response string
 			if _, err := fmt.Scanln(&response); err != nil {
@@ -1070,14 +1090,8 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 			}
 			if strings.ToLower(strings.TrimSpace(response)) != "y" {
 				fmt.Println("Skipping repository creation.")
-			} else {
-				// Create GitHub repo using gh
-				cmd := exec.Command("gh", "repo", "create", "--public", "--source", ".", "--remote", "origin", "--push")
-				cmd.Dir = workDir
-				if output, err := cmd.CombinedOutput(); err != nil {
-					return fmt.Errorf("creating GitHub repo: %w\nOutput: %s", err, string(output))
-				}
-				fmt.Println("GitHub repository created and remote added.")
+			} else if err := createRepo(); err != nil {
+				return err
 			}
 		}
 	}
@@ -1103,6 +1117,7 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	// Render push prompt
 	promptData := prompts.Data{
 		WorkDir: workDir,
+		HasGH:   hasGH,
 		Now:     time.Now().UTC().Format(time.RFC3339),
 	}
 	prompt, err := renderer.Render(prompts.PushPrompt, promptData)
@@ -1110,13 +1125,39 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		return fmt.Errorf("rendering push prompt: %w", err)
 	}
 
+	// Set up logging for the push command
+	logDir, err := logging.FindLogDir(cfg.LogDir, workDir)
+	if err != nil {
+		return fmt.Errorf("finding log directory: %w", err)
+	}
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("creating log directory: %w", err)
+	}
+
+	runLogger, err := logging.NewRunLogger(logDir, workDir)
+	if err != nil {
+		return fmt.Errorf("creating run logger: %w", err)
+	}
+	defer runLogger.Close()
+	logWriter := agents.NewIOStreamLogWriter(runLogger.Writer())
+	label := "push"
+
+	// Also output to stdout unless LOOPER_QUIET is set
+	var multiLogWriter agents.LogWriter = logWriter
+	if os.Getenv("LOOPER_QUIET") == "" {
+		stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
+		stdoutWriter.SetIndent("  ")
+		multiLogWriter = agents.NewMultiLogWriter(logWriter, stdoutWriter)
+	}
+
 	// Set up agent
 	agentType := agents.AgentType(*agentFlag)
 	agentConfig := agents.Config{
-		Binary: "",
-		Model:  "",
-		WorkDir: workDir,
-		Args:   nil,
+		Binary:          "",
+		Model:           "",
+		WorkDir:         workDir,
+		Args:            nil,
+		LastMessagePath: runLogger.LastMessagePath(label),
 	}
 	switch agentType {
 	case agents.AgentTypeCodex:
@@ -1141,30 +1182,6 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	agent, err := agents.NewAgent(agentType, agentConfig)
 	if err != nil {
 		return fmt.Errorf("creating agent: %w", err)
-	}
-
-	// Set up logging for the push command
-	logDir, err := logging.FindLogDir(cfg.LogDir, workDir)
-	if err != nil {
-		return fmt.Errorf("finding log directory: %w", err)
-	}
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return fmt.Errorf("creating log directory: %w", err)
-	}
-
-	runLogger, err := logging.NewRunLogger(logDir, workDir)
-	if err != nil {
-		return fmt.Errorf("creating run logger: %w", err)
-	}
-	defer runLogger.Close()
-	logWriter := agents.NewIOStreamLogWriter(runLogger.Writer())
-
-	// Also output to stdout unless LOOPER_QUIET is set
-	var multiLogWriter agents.LogWriter = logWriter
-	if os.Getenv("LOOPER_QUIET") == "" {
-		stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
-		stdoutWriter.SetIndent("  ")
-		multiLogWriter = agents.NewMultiLogWriter(logWriter, stdoutWriter)
 	}
 
 	fmt.Println("\n=== Running Release Workflow ===")

@@ -378,10 +378,11 @@
       "files": [
         "cmd/root.go",
         "internal/prompts/prompts.go",
+        "internal/prompts/prompts_test.go",
         "prompts/push.txt",
-        "README.md"
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T12:46:28Z"
+      "updated_at": "2026-01-22T12:53:33Z"
     },
     {
       "id": "T028",

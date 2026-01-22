@@ -2,6 +2,11 @@ You are running a release workflow via the looper push command.
 
 Project root: {{.WorkDir}}
 Current time: {{.Now}}
+{{if .HasGH}}
+GitHub CLI available: yes
+{{else}}
+GitHub CLI available: no (skip GitHub repo creation and release steps; note in summary)
+{{end}}
 
 Your task is to execute a release workflow using the release-runbook skill located at:
 {{.WorkDir}}/skills/release-runbook/SKILL.md

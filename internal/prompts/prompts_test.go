@@ -570,6 +570,59 @@ WorkDir: {{.WorkDir}}
 	}
 }
 
+// TestRenderPushPrompt tests rendering the push prompt.
+func TestRenderPushPrompt(t *testing.T) {
+	tmpDir := t.TempDir()
+	promptsDir := filepath.Join(tmpDir, "prompts")
+	if err := os.Mkdir(promptsDir, 0755); err != nil {
+		t.Fatalf("Failed to create prompts dir: %v", err)
+	}
+
+	// Create a minimal push prompt template
+	pushPrompt := `Push: {{.WorkDir}}
+Now: {{.Now}}
+{{if .HasGH}}GH: yes{{else}}GH: no{{end}}
+`
+	promptPath := filepath.Join(promptsDir, PushPrompt)
+	if err := os.WriteFile(promptPath, []byte(pushPrompt), 0644); err != nil {
+		t.Fatalf("Failed to write push prompt: %v", err)
+	}
+
+	store := NewStore(tmpDir, "")
+	renderer := NewRenderer(store)
+	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	data := Data{
+		WorkDir: "/work",
+		Now:     now.UTC().Format(time.RFC3339),
+		HasGH:   true,
+	}
+	output, err := renderer.Render(PushPrompt, data)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	if !strings.Contains(output, "Push: /work") {
+		t.Errorf("Output should contain workdir, got: %s", output)
+	}
+	if !strings.Contains(output, "Now: 2024-01-02T03:04:05Z") {
+		t.Errorf("Output should contain timestamp, got: %s", output)
+	}
+	if !strings.Contains(output, "GH: yes") {
+		t.Errorf("Output should contain GH availability, got: %s", output)
+	}
+
+	_, err = renderer.Render(PushPrompt, Data{Now: now.UTC().Format(time.RFC3339)})
+	if err == nil || !strings.Contains(err.Error(), "requires WorkDir") {
+		t.Errorf("Expected WorkDir error, got: %v", err)
+	}
+
+	_, err = renderer.Render(PushPrompt, Data{WorkDir: "/work"})
+	if err == nil || !strings.Contains(err.Error(), "requires Now") {
+		t.Errorf("Expected Now error, got: %v", err)
+	}
+}
+
 // TestDefaultPromptDir tests the DefaultPromptDir function.
 func TestDefaultPromptDir(t *testing.T) {
 	workDir := "/test/work"

@@ -120,6 +120,7 @@ type Data struct {
 	TodoPath     string
 	SchemaPath   string
 	WorkDir      string
+	HasGH        bool
 	SelectedTask Task
 	Iteration    int
 	Schedule     string
@@ -215,6 +216,7 @@ var requiredByPrompt = map[string][]requiredVar{
 	RepairPrompt:    {reqTodoPath, reqSchemaPath},
 	IterationPrompt: {reqTodoPath, reqSchemaPath, reqWorkDir, reqIteration, reqSchedule, reqNow, reqTaskID, reqTaskTitle, reqTaskStatus},
 	ReviewPrompt:    {reqTodoPath, reqSchemaPath, reqWorkDir},
+	PushPrompt:      {reqWorkDir, reqNow},
 }
 
 func validateRequired(name string, data Data) error {
