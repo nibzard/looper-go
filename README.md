@@ -81,6 +81,9 @@ brew install nibzard/tap/looper
 ## Usage
 
 ```bash
+# Initialize a new project
+looper init
+
 # Run the loop (default command)
 looper
 
@@ -153,6 +156,57 @@ looper run --bootstrap-agent claude
 - **Repair agent** - Used for repairing invalid task files (default: `codex`)
 - **Review agent** - Used for the review pass when no tasks are found (default: `codex`)
 - **Bootstrap agent** - Used for creating the initial task file (default: `codex`)
+
+## Initializing a Project
+
+The `looper init` command scaffolds the initial project files:
+
+```bash
+looper init
+```
+
+This creates:
+- `to-do.json` - Task file with one example task
+- `to-do.schema.json` - JSON Schema for validation
+- `looper.toml` - Configuration file with defaults
+
+### Init Options
+
+```bash
+# Overwrite existing files
+looper init --force
+
+# Skip creating looper.toml (use defaults or existing config)
+looper init --skip-config
+
+# Specify custom file paths
+looper init --todo my-tasks.json --schema my-schema.json --config my-config.toml
+```
+
+### What Gets Created
+
+**to-do.json** - Contains a minimal task structure:
+```json
+{
+  "schema_version": 1,
+  "project": {
+    "root": "."
+  },
+  "source_files": ["README.md"],
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Example: Add project documentation",
+      "description": "Create a README.md file documenting the project setup and usage.",
+      "reference": "README.md",
+      "priority": 1,
+      "status": "todo"
+    }
+  ]
+}
+```
+
+**looper.toml** - Contains commented configuration with all available options.
 
 ## Configuration
 

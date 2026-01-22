@@ -739,9 +739,10 @@
       "files": [
         "cmd/root_test.go",
         "internal/hooks/hooks_test.go",
-        "internal/logging/logging_test.go"
+        "internal/logging/logging_test.go",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T14:51:00Z"
+      "updated_at": "2026-01-22T14:51:14Z"
     },
     {
       "id": "T044",
@@ -759,19 +760,20 @@
         "dependencies"
       ],
       "files": [
-        "internal/agents/agents.go",
-        "internal/hooks/hooks.go",
         "cmd/root.go",
         "go.mod",
-        "go.sum"
+        "go.sum",
+        "internal/agents/agents.go",
+        "internal/hooks/hooks.go",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T14:54:08Z"
+      "updated_at": "2026-01-22T14:57:31Z"
     },
     {
       "id": "T045",
       "title": "Add `looper init` to scaffold project files",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "Create a command that bootstraps `to-do.json`, `to-do.schema.json`, and a starter `looper.toml`, with safe defaults and optional --force behavior.",
       "steps": [
         "Implement an init subcommand that writes starter files when missing.",
@@ -785,10 +787,10 @@
       ],
       "files": [
         "cmd/root.go",
-        "internal/todo/types.go",
-        "to-do.schema.json",
-        "README.md"
-      ]
+        "README.md",
+        "internal/config/example.go"
+      ],
+      "updated_at": "2026-01-22T15:00:38Z"
     },
     {
       "id": "T046",

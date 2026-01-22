@@ -84,6 +84,8 @@ func Run(ctx context.Context, args []string) error {
 		return lsCommand(cfg, remainingArgs)
 	case "push":
 		return pushCommand(ctx, cfg, remainingArgs)
+	case "init":
+		return initCommand(cfg, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -626,6 +628,7 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  tail          Tail the latest log file")
 	fmt.Fprintln(w, "  ls [status] [file]  List tasks by status")
 	fmt.Fprintln(w, "  push          Run a release workflow via the agent")
+	fmt.Fprintln(w, "  init          Scaffold project files (to-do.json, to-do.schema.json, looper.toml)")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
 	fmt.Fprintln(w)
@@ -687,6 +690,18 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "        Agent to use for release workflow")
 	fmt.Fprintln(w, "  -y")
 	fmt.Fprintln(w, "        Skip confirmation prompts")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Init Options (use with 'init' command):")
+	fmt.Fprintln(w, "  -force")
+	fmt.Fprintln(w, "        Overwrite existing files")
+	fmt.Fprintln(w, "  -skip-config")
+	fmt.Fprintln(w, "        Skip creating looper.toml")
+	fmt.Fprintln(w, "  -todo string")
+	fmt.Fprintln(w, "        Path for to-do.json (default: to-do.json)")
+	fmt.Fprintln(w, "  -schema string")
+	fmt.Fprintln(w, "        Path for to-do.schema.json (default: to-do.schema.json)")
+	fmt.Fprintln(w, "  -config string")
+	fmt.Fprintln(w, "        Path for looper.toml (default: looper.toml)")
 }
 
 // printTasksByStatus prints tasks of a specific status.
@@ -1212,5 +1227,210 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	}
 
 	fmt.Printf("\nLog saved to: %s\n", runLogger.LogPath)
+	return nil
+}
+
+// initCommand scaffolds project files (to-do.json, to-do.schema.json, looper.toml).
+func initCommand(cfg *config.Config, args []string) error {
+	// Parse init-specific flags
+	fs := flag.NewFlagSet("looper init", flag.ContinueOnError)
+	force := fs.Bool("force", false, "Overwrite existing files")
+	skipConfig := fs.Bool("skip-config", false, "Skip creating looper.toml")
+	todoFile := fs.String("todo", cfg.TodoFile, "Path for to-do.json")
+	schemaFile := fs.String("schema", cfg.SchemaFile, "Path for to-do.schema.json")
+	configFile := fs.String("config", "looper.toml", "Path for looper.toml")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+
+	// Determine work directory
+	workDir := cfg.ProjectRoot
+	if workDir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting working directory: %w", err)
+		}
+		workDir = wd
+	}
+
+	// Resolve file paths
+	todoPath := *todoFile
+	schemaPath := *schemaFile
+	configPath := *configFile
+	if !filepath.IsAbs(todoPath) {
+		todoPath = filepath.Join(workDir, todoPath)
+	}
+	if !filepath.IsAbs(schemaPath) {
+		schemaPath = filepath.Join(workDir, schemaPath)
+	}
+	if !filepath.IsAbs(configPath) {
+		configPath = filepath.Join(workDir, configPath)
+	}
+
+	fmt.Println("Looper Init")
+	fmt.Println("===========")
+	fmt.Println()
+
+	// Create to-do.schema.json
+	fmt.Printf("Creating %s...\n", schemaPath)
+	if err := createSchemaFile(schemaPath, *force); err != nil {
+		return fmt.Errorf("creating schema file: %w", err)
+	}
+	fmt.Println("  ✅ Schema file created")
+
+	// Create to-do.json
+	fmt.Printf("\nCreating %s...\n", todoPath)
+	if err := createTodoFile(todoPath, schemaPath, *force); err != nil {
+		return fmt.Errorf("creating todo file: %w", err)
+	}
+	fmt.Println("  ✅ Todo file created")
+
+	// Create looper.toml
+	if !*skipConfig {
+		fmt.Printf("\nCreating %s...\n", configPath)
+		if err := createConfigFile(configPath, *force); err != nil {
+			return fmt.Errorf("creating config file: %w", err)
+		}
+		fmt.Println("  ✅ Config file created")
+	}
+
+	fmt.Println()
+	fmt.Println("✅ Project initialized successfully!")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Printf("  1. Edit %s to add your tasks\n", todoPath)
+	fmt.Println("  2. Run 'looper' to start the loop")
+	fmt.Println("  3. Run 'looper doctor' to check your setup")
+	fmt.Println()
+
+	return nil
+}
+
+// createSchemaFile creates the schema file.
+func createSchemaFile(path string, force bool) error {
+	// Check if file exists
+	if _, err := os.Stat(path); err == nil {
+		if !force {
+			return fmt.Errorf("file already exists (use --force to overwrite)")
+		}
+		fmt.Printf("  Overwriting existing file...\n")
+	}
+
+	// Get the default schema content
+	schemaContent := `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex RALF Todo",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_files", "tasks"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "root": { "type": "string" }
+      }
+    },
+    "source_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "priority", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "reference": { "type": "string" },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "status": { "type": "string", "enum": ["todo", "doing", "blocked", "done"] },
+          "details": { "type": "string" },
+          "steps": { "type": "array", "items": { "type": "string" } },
+          "blockers": { "type": "array", "items": { "type": "string" } },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "depends_on": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
+`
+
+	// Write the file
+	if err := os.WriteFile(path, []byte(schemaContent), 0644); err != nil {
+		return fmt.Errorf("writing schema file: %w", err)
+	}
+
+	return nil
+}
+
+// createTodoFile creates a minimal todo file.
+func createTodoFile(path string, schemaPath string, force bool) error {
+	// Check if file exists
+	if _, err := os.Stat(path); err == nil {
+		if !force {
+			return fmt.Errorf("file already exists (use --force to overwrite)")
+		}
+		fmt.Printf("  Overwriting existing file...\n")
+	}
+
+	// Create a minimal todo file with one example task
+	todoFile := &todo.File{
+		SchemaVersion: 1,
+		Project: &todo.Project{
+			Name: "",
+			Root: ".",
+		},
+		SourceFiles: []string{"README.md"},
+		Tasks: []todo.Task{
+			{
+				ID:         "T001",
+				Title:      "Example: Add project documentation",
+				Description: "Create a README.md file documenting the project setup and usage.",
+				Reference:  "README.md",
+				Priority:   1,
+				Status:     todo.StatusTodo,
+			},
+		},
+	}
+
+	// Save the file
+	if err := todoFile.Save(path); err != nil {
+		return fmt.Errorf("saving todo file: %w", err)
+	}
+
+	return nil
+}
+
+// createConfigFile creates a looper.toml config file.
+func createConfigFile(path string, force bool) error {
+	// Check if file exists
+	if _, err := os.Stat(path); err == nil {
+		if !force {
+			return fmt.Errorf("file already exists (use --force to overwrite)")
+		}
+		fmt.Printf("  Overwriting existing file...\n")
+	}
+
+	// Write the example config
+	configContent := config.ExampleConfig()
+	if err := os.WriteFile(path, []byte(configContent), 0644); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+
 	return nil
 }
