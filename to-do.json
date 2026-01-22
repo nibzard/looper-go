@@ -772,9 +772,11 @@
       ],
       "files": [
         "cmd/root.go",
-        "internal/config/config.go"
+        "internal/config/config.go",
+        "README.md",
+        "to-do.json"
       ],
-      "updated_at": 1769096682.459525
+      "updated_at": "2026-01-22T15:56:28Z"
     },
     {
       "id": "T050",

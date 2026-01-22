@@ -1738,40 +1738,18 @@ func printConfigTable(cws *config.ConfigWithSources) error {
 	printConfigItem("Schedule", cfg.Schedule, cws.Sources["schedule"])
 	printConfigItem("Repair agent", cfg.RepairAgent, cws.Sources["repair_agent"])
 
-	reviewAgent := cfg.ReviewAgent
-	if reviewAgent == "" {
-		reviewAgent = "codex (default)"
-	}
-	printConfigItem("Review agent", reviewAgent, cws.Sources["review_agent"])
-
-	bootstrapAgent := cfg.BootstrapAgent
-	if bootstrapAgent == "" {
-		bootstrapAgent = "codex (default)"
-	}
-	printConfigItem("Bootstrap agent", bootstrapAgent, cws.Sources["bootstrap_agent"])
+	printConfigItem("Review agent", cfg.GetReviewAgent(), cws.Sources["review_agent"])
+	printConfigItem("Bootstrap agent", cfg.GetBootstrapAgent(), cws.Sources["bootstrap_agent"])
 	fmt.Println()
 
 	// Schedule options
 	if cfg.Schedule == "odd-even" || cfg.Schedule == "round-robin" {
 		fmt.Println("Schedule Options:")
 		if cfg.Schedule == "odd-even" {
-			oddAgent := cfg.OddAgent
-			if oddAgent == "" {
-				oddAgent = "codex (default)"
-			}
-			printConfigItem("Odd agent", oddAgent, cws.Sources["odd_agent"])
-
-			evenAgent := cfg.EvenAgent
-			if evenAgent == "" {
-				evenAgent = "claude (default)"
-			}
-			printConfigItem("Even agent", evenAgent, cws.Sources["even_agent"])
+			printConfigItem("Odd agent", effectiveOddAgent(cfg), cws.Sources["odd_agent"])
+			printConfigItem("Even agent", effectiveEvenAgent(cfg), cws.Sources["even_agent"])
 		} else if cfg.Schedule == "round-robin" {
-			rrAgents := "claude,codex (default)"
-			if cfg.RRAgents != nil && len(cfg.RRAgents) > 0 {
-				rrAgents = strings.Join(cfg.RRAgents, ",")
-			}
-			printConfigItem("Round-robin agents", rrAgents, cws.Sources["rr_agents"])
+			printConfigItem("Round-robin agents", strings.Join(effectiveRRAgents(cfg), ","), cws.Sources["rr_agents"])
 		}
 		fmt.Println()
 	}
@@ -1811,11 +1789,28 @@ func printConfigTable(cws *config.ConfigWithSources) error {
 
 // printConfigItem prints a single configuration item with its source.
 func printConfigItem(label, value string, source config.ConfigSource) {
-	fmt.Printf("  %-20s %s", label+":", value)
-	if source != config.SourceDefault {
-		fmt.Printf(" [%s]", source)
+	fmt.Printf("  %-20s %s [%s]\n", label+":", value, source)
+}
+
+func effectiveOddAgent(cfg *config.Config) string {
+	if agent := normalizeAgent(cfg.OddAgent); agent != "" {
+		return agent
 	}
-	fmt.Println()
+	return "codex"
+}
+
+func effectiveEvenAgent(cfg *config.Config) string {
+	if agent := normalizeAgent(cfg.EvenAgent); agent != "" {
+		return agent
+	}
+	return "claude"
+}
+
+func effectiveRRAgents(cfg *config.Config) []string {
+	if agents := normalizeAgentList(cfg.RRAgents); len(agents) > 0 {
+		return agents
+	}
+	return []string{"claude", "codex"}
 }
 
 // printAgentConfig prints agent configuration.
@@ -1853,8 +1848,8 @@ func printConfigJSON(cws *config.ConfigWithSources) error {
 			"max_iterations":  map[string]interface{}{"value": cfg.MaxIterations, "source": cws.Sources["max_iterations"]},
 			"schedule":        map[string]interface{}{"value": cfg.Schedule, "source": cws.Sources["schedule"]},
 			"repair_agent":    map[string]interface{}{"value": cfg.RepairAgent, "source": cws.Sources["repair_agent"]},
-			"review_agent":    map[string]interface{}{"value": cfg.ReviewAgent, "source": cws.Sources["review_agent"]},
-			"bootstrap_agent": map[string]interface{}{"value": cfg.BootstrapAgent, "source": cws.Sources["bootstrap_agent"]},
+			"review_agent":    map[string]interface{}{"value": cfg.GetReviewAgent(), "source": cws.Sources["review_agent"]},
+			"bootstrap_agent": map[string]interface{}{"value": cfg.GetBootstrapAgent(), "source": cws.Sources["bootstrap_agent"]},
 		},
 		"agents": map[string]interface{}{
 			"codex": map[string]interface{}{
@@ -1892,16 +1887,12 @@ func printConfigJSON(cws *config.ConfigWithSources) error {
 	// Handle schedule options
 	if cfg.Schedule == "odd-even" {
 		output["schedule_options"] = map[string]interface{}{
-			"odd_agent":  map[string]interface{}{"value": cfg.OddAgent, "source": cws.Sources["odd_agent"]},
-			"even_agent": map[string]interface{}{"value": cfg.EvenAgent, "source": cws.Sources["even_agent"]},
+			"odd_agent":  map[string]interface{}{"value": effectiveOddAgent(cfg), "source": cws.Sources["odd_agent"]},
+			"even_agent": map[string]interface{}{"value": effectiveEvenAgent(cfg), "source": cws.Sources["even_agent"]},
 		}
 	} else if cfg.Schedule == "round-robin" {
-		rrAgents := []string{}
-		if cfg.RRAgents != nil {
-			rrAgents = cfg.RRAgents
-		}
 		output["schedule_options"] = map[string]interface{}{
-			"rr_agents": map[string]interface{}{"value": rrAgents, "source": cws.Sources["rr_agents"]},
+			"rr_agents": map[string]interface{}{"value": effectiveRRAgents(cfg), "source": cws.Sources["rr_agents"]},
 		}
 	}
 
