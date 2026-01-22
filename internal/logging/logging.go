@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -333,4 +334,105 @@ func tailFollow(w io.Writer, file *os.File) error {
 			return err
 		}
 	}
+}
+
+// LogRun represents a single log run with its associated files.
+type LogRun struct {
+	RunID            string
+	ModTime          time.Time
+	Files            []string
+	LastMessageFiles []string
+}
+
+// FindLogRuns finds all log runs in a directory, grouped by run ID.
+func FindLogRuns(logDir string) ([]LogRun, error) {
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		return nil, fmt.Errorf("read log dir: %w", err)
+	}
+
+	// Group files by run ID
+	runMap := make(map[string]*LogRun)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		// Extract run ID from filename
+		// Format: <timestamp>-<pid>.jsonl or <timestamp>-<pid>-<label>.last.json
+		runID, isLast := extractRunID(name)
+		if runID == "" {
+			continue
+		}
+
+		fullPath := filepath.Join(logDir, name)
+
+		if _, exists := runMap[runID]; !exists {
+			runMap[runID] = &LogRun{
+				RunID:            runID,
+				ModTime:          info.ModTime(),
+				Files:            []string{},
+				LastMessageFiles: []string{},
+			}
+		}
+
+		run := runMap[runID]
+
+		// Update mod time if this file is newer
+		if info.ModTime().After(run.ModTime) {
+			run.ModTime = info.ModTime()
+		}
+
+		if isLast {
+			run.LastMessageFiles = append(run.LastMessageFiles, fullPath)
+		} else {
+			run.Files = append(run.Files, fullPath)
+		}
+	}
+
+	// Convert to slice and sort by mod time descending
+	runs := make([]LogRun, 0, len(runMap))
+	for _, run := range runMap {
+		runs = append(runs, *run)
+	}
+
+	sort.Slice(runs, func(i, j int) bool {
+		return runs[i].ModTime.After(runs[j].ModTime)
+	})
+
+	return runs, nil
+}
+
+// extractRunID extracts the run ID from a log filename.
+// Returns the run ID and whether this is a last message file.
+func extractRunID(filename string) (string, bool) {
+	// Check for .jsonl files (main log files)
+	if strings.HasSuffix(filename, ".jsonl") {
+		base := strings.TrimSuffix(filename, ".jsonl")
+		// Run ID format: timestamp-pid
+		// We just use the whole base as the run ID
+		return base, false
+	}
+
+	// Check for .last.json files (last message files)
+	if strings.HasSuffix(filename, ".last.json") {
+		base := strings.TrimSuffix(filename, ".last.json")
+		// Format: timestamp-pid-label
+		// Extract timestamp-pid part
+		parts := strings.Split(base, "-")
+		if len(parts) >= 2 {
+			// Rejoin the first two parts (timestamp and pid)
+			runID := strings.Join(parts[:2], "-")
+			return runID, true
+		}
+	}
+
+	return "", false
 }

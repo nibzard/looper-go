@@ -918,10 +918,11 @@
       ],
       "files": [
         "README.md",
+        "cmd/completion_test.go",
         "cmd/root.go",
-        "cmd/completion_test.go"
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T16:53:35Z"
+      "updated_at": "2026-01-22T16:54:19Z"
     },
     {
       "id": "T038",
@@ -941,7 +942,7 @@
       "id": "T049",
       "title": "Add log retention and cleanup command",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "details": "Provide a cleanup command to remove old log runs by age or count, with dry-run support and clear summaries.",
       "steps": [
         "Add a clean subcommand with filters (age, count) and dry-run.",
@@ -957,7 +958,8 @@
         "cmd/root.go",
         "internal/logging/logging.go",
         "README.md"
-      ]
+      ],
+      "updated_at": "2026-01-22T17:00:17Z"
     },
     {
       "id": "T021",

@@ -94,6 +94,8 @@ func Run(ctx context.Context, args []string) error {
 		return configCommand(cfg, args, remainingArgs)
 	case "completion":
 		return completionCommand(cfg, remainingArgs)
+	case "clean":
+		return cleanCommand(cfg, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -662,7 +664,7 @@ _looper_completion() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="run tui doctor tail ls push init validate fmt config completion version help"
+    local commands="run tui doctor tail ls push init validate fmt config clean completion version help"
     local global_flags="--help --h --version --v --todo --schema --log-dir --codex-bin --claude-bin --codex-model --claude-model --codex-reasoning --codex-args --claude-args"
 
     # If we're completing a flag argument
@@ -683,7 +685,7 @@ _looper_completion() {
     # Check if we already have a command
     local i
     for ((i=1; i<$cword; i++)); do
-        if [[ "${words[i]}" == @(run|tui|doctor|tail|ls|push|init|validate|fmt|config|completion|version|help) ]]; then
+        if [[ "${words[i]}" == @(run|tui|doctor|tail|ls|push|init|validate|fmt|config|clean|completion|version|help) ]]; then
             local cmd="${words[i]}"
             case "$cmd" in
                 run)
@@ -712,6 +714,9 @@ _looper_completion() {
                     ;;
                 config)
                     _looper_config_completion
+                    ;;
+                clean)
+                    _looper_clean_completion
                     ;;
             esac
             return
@@ -798,6 +803,13 @@ _looper_config_completion() {
     fi
 }
 
+_looper_clean_completion() {
+    local flags="--dry-run --keep --age"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+    fi
+}
+
 complete -F _looper_completion looper`)
 	return nil
 }
@@ -819,6 +831,7 @@ _looper() {
         'validate:Validate task file against schema'
         'fmt:Format task file with stable ordering'
         'config:Show effective configuration'
+        'clean:Remove old log runs by age or count'
         'completion:Output shell completion script'
         'version:Show version information'
         'help:Show help message'
@@ -869,6 +882,9 @@ _looper() {
             ;;
         config)
             _looper_config
+            ;;
+        clean)
+            _looper_clean
             ;;
         *)
             if [[ $words[CURRENT] == -* ]]; then
@@ -954,6 +970,13 @@ _looper_config() {
         '--json[Output in JSON format]'
 }
 
+_looper_clean() {
+    _arguments -s \
+        '--dry-run[Show what would be deleted without deleting]' \
+        '--keep[Number of recent runs to keep]:count' \
+        '--age[Delete logs older than duration]:duration'
+}
+
 _looper`)
 	return nil
 }
@@ -989,6 +1012,7 @@ complete -c looper -n __fish_use_subcommand -f -a init -d 'Scaffold project file
 complete -c looper -n __fish_use_subcommand -f -a validate -d 'Validate task file against schema'
 complete -c looper -n __fish_use_subcommand -f -a fmt -d 'Format task file with stable ordering'
 complete -c looper -n __fish_use_subcommand -f -a config -d 'Show effective configuration'
+complete -c looper -n __fish_use_subcommand -f -a clean -d 'Remove old log runs by age or count'
 complete -c looper -n __fish_use_subcommand -f -a completion -d 'Output shell completion script'
 complete -c looper -n __fish_use_subcommand -f -a version -d 'Show version information'
 complete -c looper -n __fish_use_subcommand -f -a help -d 'Show help message'
@@ -1042,6 +1066,11 @@ complete -c looper -n "__fish_seen_subcommand_from fmt" -s d -l diff -d 'Display
 # Config command options
 complete -c looper -n "__fish_seen_subcommand_from config" -l json -d 'Output in JSON format'
 
+# Clean command options
+complete -c looper -n "__fish_seen_subcommand_from clean" -l dry-run -d 'Show what would be deleted without deleting'
+complete -c looper -n "__fish_seen_subcommand_from clean" -l keep -r -d 'Number of recent runs to keep'
+complete -c looper -n "__fish_seen_subcommand_from clean" -l age -r -d 'Delete logs older than duration (e.g., 7d, 24h, 30m)'
+
 # Completion command options
 complete -c looper -n "__fish_seen_subcommand_from completion" -f -a 'bash' -d 'Output bash completion script'
 complete -c looper -n "__fish_seen_subcommand_from completion" -f -a 'zsh' -d 'Output zsh completion script'
@@ -1060,7 +1089,7 @@ using namespace System.Management.Automation.Language
 Register-ArgumentCompleter -Native -CommandName looper -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
-    $commands = @('run', 'tui', 'doctor', 'tail', 'ls', 'push', 'init', 'validate', 'fmt', 'config', 'completion', 'version', 'help')
+    $commands = @('run', 'tui', 'doctor', 'tail', 'ls', 'push', 'init', 'validate', 'fmt', 'config', 'clean', 'completion', 'version', 'help')
 
     $globalFlags = @('--help', '-h', '--version', '-v', '--todo', '--schema', '--log-dir', '--codex-bin', '--claude-bin', '--codex-model', '--claude-model', '--codex-reasoning', '--codex-args', '--claude-args')
 
@@ -1143,6 +1172,12 @@ Register-ArgumentCompleter -Native -CommandName looper -ScriptBlock {
                     [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
                 }
             }
+            'clean' {
+                $flags = @('--dry-run', '--keep', '--age')
+                $flags | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterName, $_)
+                }
+            }
             'completion' {
                 @('bash', 'zsh', 'fish', 'powershell') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                     [System.Management.Automation.CompletionResult]::new($_, $_, [CompletionResultType]::ParameterValue, $_)
@@ -1172,6 +1207,7 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  validate      Validate task file against schema")
 	fmt.Fprintln(w, "  fmt           Format task file with stable ordering and 2-space indent")
 	fmt.Fprintln(w, "  config        Show effective configuration")
+	fmt.Fprintln(w, "  clean         Remove old log runs by age or count")
 	fmt.Fprintln(w, "  completion    Output shell completion script (bash|zsh|fish|powershell)")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
@@ -1258,6 +1294,14 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "        Write formatted file back to disk")
 	fmt.Fprintln(w, "  -d, -diff")
 	fmt.Fprintln(w, "        Display diffs of formatting changes")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Clean Options (use with 'clean' command):")
+	fmt.Fprintln(w, "  -dry-run")
+	fmt.Fprintln(w, "        Show what would be deleted without deleting")
+	fmt.Fprintln(w, "  -keep int")
+	fmt.Fprintln(w, "        Number of recent runs to keep (0 = delete all)")
+	fmt.Fprintln(w, "  -age duration")
+	fmt.Fprintln(w, "        Delete logs older than duration (e.g., 7d, 24h, 30m)")
 }
 
 // printTasksByStatus prints tasks of a specific status.
@@ -2434,4 +2478,206 @@ func printConfigJSON(cws *config.ConfigWithSources) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(output)
+}
+
+// cleanCommand removes old log runs by age or count.
+func cleanCommand(cfg *config.Config, args []string) error {
+	// Parse clean-specific flags
+	fs := flag.NewFlagSet("looper clean", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", false, "Show what would be deleted without deleting")
+	keepCount := fs.Int("keep", 0, "Number of recent runs to keep (0 = delete all)")
+	keepAge := fs.String("age", "", "Delete logs older than duration (e.g., 7d, 24h, 30m)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+
+	// Determine work directory
+	workDir := cfg.ProjectRoot
+	if workDir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting working directory: %w", err)
+		}
+		workDir = wd
+	}
+
+	// Find the log directory
+	logDir, err := logging.FindLogDir(cfg.LogDir, workDir)
+	if err != nil {
+		return fmt.Errorf("finding log directory: %w", err)
+	}
+
+	// Check if log directory exists
+	if _, err := os.Stat(logDir); err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No log directory found.")
+			return nil
+		}
+		return fmt.Errorf("accessing log directory: %w", err)
+	}
+
+	// Parse age duration if specified
+	var ageCutoff time.Time
+	if *keepAge != "" {
+		d, err := time.ParseDuration(*keepAge)
+		if err != nil {
+			return fmt.Errorf("parsing age duration: %w\nSupported: 7d, 24h, 30m, etc.", err)
+		}
+		ageCutoff = time.Now().Add(-d)
+	}
+
+	// Find all log runs
+	runs, err := logging.FindLogRuns(logDir)
+	if err != nil {
+		return fmt.Errorf("finding log runs: %w", err)
+	}
+
+	if len(runs) == 0 {
+		fmt.Println("No log runs found.")
+		return nil
+	}
+
+	// Filter runs based on criteria
+	var toDelete []logging.LogRun
+	var toKeep []logging.LogRun
+
+	for _, run := range runs {
+		shouldDelete := false
+
+		// Check age filter
+		if !ageCutoff.IsZero() && run.ModTime.Before(ageCutoff) {
+			shouldDelete = true
+		}
+
+		// Check count filter (only if not already marked for deletion)
+		if !shouldDelete && *keepCount > 0 {
+			// Runs are sorted by modtime descending (newest first)
+			// So we keep the first keepCount runs
+			if len(toKeep) >= *keepCount {
+				shouldDelete = true
+			}
+		}
+
+		// Also delete if no filters are specified (confirm with user)
+		if *keepCount == 0 && *keepAge == "" {
+			shouldDelete = true
+		}
+
+		if shouldDelete {
+			toDelete = append(toDelete, run)
+		} else {
+			toKeep = append(toKeep, run)
+		}
+	}
+
+	// If no filters specified, ask for confirmation
+	if *keepCount == 0 && *keepAge == "" && !*dryRun {
+		if len(toDelete) == 0 {
+			fmt.Println("No log runs to delete.")
+			return nil
+		}
+		fmt.Printf("This will delete all %d log run(s). Continue? [y/N] ", len(toDelete))
+		var response string
+		if _, err := fmt.Scanln(&response); err != nil {
+			return fmt.Errorf("reading response: %w", err)
+		}
+		if strings.ToLower(strings.TrimSpace(response)) != "y" {
+			fmt.Println("Aborted.")
+			return nil
+		}
+	}
+
+	// Print summary
+	fmt.Println("Log Cleanup Summary")
+	fmt.Println("===================")
+	fmt.Printf("Log directory: %s\n", logDir)
+	fmt.Printf("Total runs: %d\n", len(runs))
+	fmt.Printf("To keep: %d\n", len(toKeep))
+	fmt.Printf("To delete: %d\n", len(toDelete))
+	if *keepCount > 0 {
+		fmt.Printf("Keep count: %d\n", *keepCount)
+	}
+	if *keepAge != "" {
+		fmt.Printf("Age cutoff: %s (logs older than %s)\n", ageCutoff.Format(time.RFC3339), *keepAge)
+	}
+	if *dryRun {
+		fmt.Println("Dry run: no files will be deleted")
+	}
+	fmt.Println()
+
+	// List files to delete
+	if len(toDelete) > 0 {
+		fmt.Println("Files to be deleted:")
+		for _, run := range toDelete {
+			age := time.Since(run.ModTime)
+			ageStr := formatDuration(age)
+			fmt.Printf("  - %s (modified %s ago, %d files)\n", run.RunID, ageStr, len(run.Files))
+		}
+		fmt.Println()
+	}
+
+	// Delete files
+	if !*dryRun && len(toDelete) > 0 {
+		var deleted int
+		var totalSize int64
+		for _, run := range toDelete {
+			for _, file := range run.Files {
+				info, err := os.Stat(file)
+				if err != nil {
+					fmt.Printf("Warning: could not stat %s: %v\n", file, err)
+					continue
+				}
+				totalSize += info.Size()
+
+				if err := os.Remove(file); err != nil {
+					fmt.Printf("Warning: could not delete %s: %v\n", file, err)
+					continue
+				}
+				deleted++
+			}
+			// Also remove the last message files
+			for _, lastFile := range run.LastMessageFiles {
+				if err := os.Remove(lastFile); err != nil {
+					// Ignore errors for last message files (may not exist)
+				}
+			}
+		}
+
+		fmt.Printf("Deleted %d file(s), freed %s\n", deleted, formatBytes(totalSize))
+	}
+
+	return nil
+}
+
+// formatDuration formats a duration in a human-readable way.
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+// formatBytes formats a byte size in a human-readable way.
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

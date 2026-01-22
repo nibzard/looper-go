@@ -128,6 +128,12 @@ looper fmt -d      # Display diffs of formatting changes
 looper config
 looper config --json  # Output in JSON format
 
+# Clean up old log runs
+looper clean --dry-run              # Show what would be deleted
+looper clean --keep 10              # Keep 10 most recent runs
+looper clean --age 7d               # Delete logs older than 7 days
+looper clean --keep 5 --age 30d     # Keep 5 recent, delete any older than 30 days
+
 # Generate shell completion script
 looper completion bash  # Output bash completion to stdout
 looper completion zsh   # Output zsh completion to stdout
@@ -508,6 +514,38 @@ The agent will follow the workflow steps defined in `skills/release-runbook/SKIL
 - Updating Homebrew formulas (if present)
 
 The output is logged to the log directory with label `push` for traceability.
+
+## Log Cleanup
+
+The `looper clean` command removes old log runs by age or count, with dry-run support and clear summaries.
+
+```bash
+# Dry run - see what would be deleted
+looper clean --dry-run
+
+# Keep only the N most recent runs
+looper clean --keep 10
+
+# Delete logs older than a duration
+looper clean --age 7d    # 7 days
+looper clean --age 24h   # 24 hours
+looper clean --age 30m   # 30 minutes
+
+# Combine filters
+looper clean --keep 5 --age 30d
+```
+
+**Options:**
+- `--dry-run` - Show what would be deleted without actually deleting
+- `--keep N` - Keep N most recent runs (0 = delete all)
+- `--age DURATION` - Delete logs older than duration (e.g., `7d`, `24h`, `30m`)
+
+The command will:
+1. Find all log runs in the log directory
+2. Group files by run ID (timestamp-pid)
+3. Filter based on your criteria
+4. Show a summary of what will be deleted
+5. Ask for confirmation before deleting (unless using filters or `--dry-run`)
 
 ## Git Behavior
 
