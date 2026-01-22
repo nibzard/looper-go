@@ -435,34 +435,13 @@ func applyTimeout(ctx context.Context, timeout time.Duration) (context.Context, 
 	return context.WithTimeout(ctx, timeout)
 }
 
-// codexAgent implements Agent for Codex.
-type codexAgent struct {
-	cfg Config
-}
-
-// NewCodexAgent creates a new Codex agent.
-func NewCodexAgent(cfg Config) Agent {
-	return &codexAgent{cfg: normalizeConfig(AgentTypeCodex, cfg)}
-}
-
-// Run executes the Codex agent.
-func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter) (*Summary, error) {
+// runAgent executes an agent using the provided spec.
+// This consolidates the common run logic for all agent types.
+func runAgent(ctx context.Context, cfg Config, prompt string, logWriter LogWriter, spec agentSpec) (*Summary, error) {
 	logWriter = normalizeLogWriter(logWriter)
-	cfg := normalizeConfig(AgentTypeCodex, a.cfg)
 
-	// Build arguments
-	args := []string{"exec", "--json"}
-	if cfg.Model != "" {
-		args = append(args, "-m", cfg.Model)
-	}
-	if cfg.Reasoning != "" {
-		args = append(args, "-c", "model_reasoning_effort="+cfg.Reasoning)
-	}
-	args = append(args, cfg.Args...)
-	if cfg.LastMessagePath != "" {
-		args = append(args, "--output-last-message", cfg.LastMessagePath)
-	}
-	args = append(args, "-")
+	// Build agent-specific arguments
+	args := spec.buildArgs(cfg, prompt)
 
 	// Apply timeout
 	var cancel context.CancelFunc
@@ -474,7 +453,9 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
 	}
-	cmd.Stdin = strings.NewReader(ensurePromptTerminator(prompt))
+	if spec.setupStdin != nil {
+		spec.setupStdin(cmd, prompt)
+	}
 
 	// Capture stdout and stderr
 	stdout, err := cmd.StdoutPipe()
@@ -493,7 +474,7 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 			Timestamp: time.Now().UTC(),
 			Content:   err.Error(),
 		})
-		return nil, fmt.Errorf("start codex: %w", err)
+		return nil, fmt.Errorf("start %s: %w", spec.name, err)
 	}
 
 	if err := logWriter.Write(LogEvent{
@@ -505,7 +486,7 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 	}
 
 	// Stream output
-	summaries, errs := a.streamOutput(ctx, stdout, stderr, logWriter)
+	streamResult := spec.streamOutput(ctx, stdout, stderr, logWriter)
 
 	// Wait for command to finish
 	runErr := cmd.Wait()
@@ -520,23 +501,38 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 	}
 
 	// Collect results
-	var summary *Summary
+	summary := collectSummary(streamResult.summaries)
 	var outputErrs []error
-
-	for s := range summaries {
-		summary = s
-	}
-	for e := range errs {
+	for e := range streamResult.errs {
 		outputErrs = append(outputErrs, e)
 	}
+	var lastMessage string
+	if streamResult.lastMessage != nil {
+		for msg := range streamResult.lastMessage {
+			if msg != "" {
+				lastMessage = msg
+			}
+		}
+	}
 
-	if summary == nil && cfg.LastMessagePath != "" {
-		if parsed, ok := parseSummaryFromFile(cfg.LastMessagePath); ok {
-			summary = parsed
+	// Agent-specific post-processing
+	if spec.postProcess != nil {
+		postSummary, err := spec.postProcess(cfg, summary, logWriter)
+		if err != nil {
+			return nil, err
+		}
+		if postSummary != nil {
+			summary = postSummary
+		}
+	}
+
+	// Handle last-message file for Claude
+	if cfg.LastMessagePath != "" && lastMessage != "" {
+		if err := writeLastMessageFile(cfg.LastMessagePath, lastMessage, summary); err != nil {
 			_ = logWriter.Write(LogEvent{
-				Type:      "summary",
+				Type:      "error",
 				Timestamp: time.Now().UTC(),
-				Summary:   summary,
+				Content:   fmt.Sprintf("write last message: %v", err),
 			})
 		}
 	}
@@ -547,21 +543,101 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 			_ = logWriter.Write(LogEvent{
 				Type:      "error",
 				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("codex timeout after %s", cfg.Timeout),
+				Content:   fmt.Sprintf("%s timeout after %s", spec.name, cfg.Timeout),
 			})
-			return nil, fmt.Errorf("codex timeout after %s", cfg.Timeout)
+			return nil, fmt.Errorf("%s timeout after %s", spec.name, cfg.Timeout)
 		}
 		if len(outputErrs) > 0 {
-			return nil, fmt.Errorf("codex failed: %w (output errors: %v)", runErr, outputErrs)
+			return nil, fmt.Errorf("%s failed: %w (output errors: %v)", spec.name, runErr, outputErrs)
 		}
-		return nil, fmt.Errorf("codex failed: %w", runErr)
+		return nil, fmt.Errorf("%s failed: %w", spec.name, runErr)
 	}
 
 	if summary == nil {
-		return nil, fmt.Errorf("codex: %w", ErrSummaryMissing)
+		return nil, fmt.Errorf("%s: %w", spec.name, ErrSummaryMissing)
 	}
 
 	return summary, nil
+}
+
+// collectSummary extracts the last summary from the channel.
+func collectSummary(summaries <-chan *Summary) *Summary {
+	var summary *Summary
+	for s := range summaries {
+		summary = s
+	}
+	return summary
+}
+
+// agentSpec captures agent-specific behavior.
+type agentSpec struct {
+	name            string
+	buildArgs       func(cfg Config, prompt string) []string
+	setupStdin      func(cmd *exec.Cmd, prompt string)
+	streamOutput    func(ctx context.Context, stdout, stderr io.Reader, logWriter LogWriter) agentStreamResult
+	postProcess     func(cfg Config, summary *Summary, logWriter LogWriter) (*Summary, error)
+}
+
+// agentStreamResult holds streaming outputs.
+type agentStreamResult struct {
+	summaries     <-chan *Summary
+	errs          <-chan error
+	lastMessage   <-chan string
+}
+
+// codexAgent implements Agent for Codex.
+type codexAgent struct {
+	cfg Config
+}
+
+// NewCodexAgent creates a new Codex agent.
+func NewCodexAgent(cfg Config) Agent {
+	return &codexAgent{cfg: normalizeConfig(AgentTypeCodex, cfg)}
+}
+
+// Run executes the Codex agent.
+func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter) (*Summary, error) {
+	spec := agentSpec{
+		name: "codex",
+		buildArgs: func(cfg Config, prompt string) []string {
+			args := []string{"exec", "--json"}
+			if cfg.Model != "" {
+				args = append(args, "-m", cfg.Model)
+			}
+			if cfg.Reasoning != "" {
+				args = append(args, "-c", "model_reasoning_effort="+cfg.Reasoning)
+			}
+			args = append(args, cfg.Args...)
+			if cfg.LastMessagePath != "" {
+				args = append(args, "--output-last-message", cfg.LastMessagePath)
+			}
+			return append(args, "-")
+		},
+		setupStdin: func(cmd *exec.Cmd, prompt string) {
+			cmd.Stdin = strings.NewReader(ensurePromptTerminator(prompt))
+		},
+		streamOutput: func(ctx context.Context, stdout, stderr io.Reader, logWriter LogWriter) agentStreamResult {
+			summaries, errs := a.streamOutput(ctx, stdout, stderr, logWriter)
+			return agentStreamResult{summaries: summaries, errs: errs}
+		},
+		postProcess: func(cfg Config, summary *Summary, logWriter LogWriter) (*Summary, error) {
+			if summary != nil {
+				return summary, nil
+			}
+			if cfg.LastMessagePath != "" {
+				if parsed, ok := parseSummaryFromFile(cfg.LastMessagePath); ok {
+					_ = logWriter.Write(LogEvent{
+						Type:      "summary",
+						Timestamp: time.Now().UTC(),
+						Summary:   parsed,
+					})
+					return parsed, nil
+				}
+			}
+			return nil, nil
+		},
+	}
+	return runAgent(ctx, a.cfg, prompt, logWriter, spec)
 }
 
 // streamOutput streams stdout and stderr from the codex process.
@@ -713,119 +789,22 @@ func NewClaudeAgent(cfg Config) Agent {
 
 // Run executes the Claude agent.
 func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWriter) (*Summary, error) {
-	logWriter = normalizeLogWriter(logWriter)
-	cfg := normalizeConfig(AgentTypeClaude, a.cfg)
-
-	// Build arguments
-	args := []string{"--output-format", "stream-json"}
-	if cfg.Model != "" {
-		args = append(args, "--model", cfg.Model)
+	spec := agentSpec{
+		name: "claude",
+		buildArgs: func(cfg Config, prompt string) []string {
+			args := []string{"--output-format", "stream-json"}
+			if cfg.Model != "" {
+				args = append(args, "--model", cfg.Model)
+			}
+			args = append(args, cfg.Args...)
+			return append(args, "-p", prompt)
+		},
+		streamOutput: func(ctx context.Context, stdout, stderr io.Reader, logWriter LogWriter) agentStreamResult {
+			summaries, errs, lastMessages := a.streamOutput(ctx, stdout, stderr, logWriter)
+			return agentStreamResult{summaries: summaries, errs: errs, lastMessage: lastMessages}
+		},
 	}
-	args = append(args, cfg.Args...)
-	args = append(args, "-p", prompt)
-
-	// Apply timeout
-	var cancel context.CancelFunc
-	ctx, cancel = applyTimeout(ctx, cfg.Timeout)
-	defer cancel()
-
-	// Create command
-	cmd := exec.CommandContext(ctx, cfg.Binary, args...)
-	if cfg.WorkDir != "" {
-		cmd.Dir = cfg.WorkDir
-	}
-
-	// Capture stdout and stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("create stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("create stderr pipe: %w", err)
-	}
-
-	// Start command
-	if err := cmd.Start(); err != nil {
-		_ = logWriter.Write(LogEvent{
-			Type:      "error",
-			Timestamp: time.Now().UTC(),
-			Content:   err.Error(),
-		})
-		return nil, fmt.Errorf("start claude: %w", err)
-	}
-
-	if err := logWriter.Write(LogEvent{
-		Type:      "command",
-		Timestamp: time.Now().UTC(),
-		Command:   cmd.Args,
-	}); err != nil {
-		return nil, fmt.Errorf("write log event: %w", err)
-	}
-
-	// Stream output
-	summaries, errs, lastMessages := a.streamOutput(ctx, stdout, stderr, logWriter)
-
-	// Wait for command to finish
-	runErr := cmd.Wait()
-	exitCode := exitCodeFromError(runErr)
-	if err := logWriter.Write(LogEvent{
-		Type:      "command",
-		Timestamp: time.Now().UTC(),
-		Command:   cmd.Args,
-		ExitCode:  exitCode,
-	}); err != nil {
-		return nil, fmt.Errorf("write log event: %w", err)
-	}
-
-	// Collect results
-	var summary *Summary
-	var outputErrs []error
-	var lastMessage string
-
-	for s := range summaries {
-		summary = s
-	}
-	for e := range errs {
-		outputErrs = append(outputErrs, e)
-	}
-	for msg := range lastMessages {
-		if msg != "" {
-			lastMessage = msg
-		}
-	}
-
-	if cfg.LastMessagePath != "" {
-		if err := writeLastMessageFile(cfg.LastMessagePath, lastMessage, summary); err != nil {
-			_ = logWriter.Write(LogEvent{
-				Type:      "error",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("write last message: %v", err),
-			})
-		}
-	}
-
-	// Handle errors
-	if runErr != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			_ = logWriter.Write(LogEvent{
-				Type:      "error",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("claude timeout after %s", cfg.Timeout),
-			})
-			return nil, fmt.Errorf("claude timeout after %s", cfg.Timeout)
-		}
-		if len(outputErrs) > 0 {
-			return nil, fmt.Errorf("claude failed: %w (output errors: %v)", runErr, outputErrs)
-		}
-		return nil, fmt.Errorf("claude failed: %w", runErr)
-	}
-
-	if summary == nil {
-		return nil, fmt.Errorf("claude: %w", ErrSummaryMissing)
-	}
-
-	return summary, nil
+	return runAgent(ctx, a.cfg, prompt, logWriter, spec)
 }
 
 // streamOutput streams stdout and stderr from the claude process.
