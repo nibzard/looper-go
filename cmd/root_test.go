@@ -4,13 +4,16 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nibzard/looper-go/internal/config"
+	"github.com/nibzard/looper-go/internal/logging"
 	"github.com/nibzard/looper-go/internal/prompts"
 	"github.com/nibzard/looper-go/internal/todo"
 )
@@ -870,6 +873,303 @@ func TestJsonEqual(t *testing.T) {
 			got := jsonEqual([]byte(tt.a), []byte(tt.b))
 			if got != tt.equal {
 				t.Errorf("jsonEqual() = %v, want %v", got, tt.equal)
+			}
+		})
+	}
+}
+
+// TestCleanCommand tests the clean command.
+func TestCleanCommand(t *testing.T) {
+	t.Run("dry run shows what would be deleted", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create the log directory structure that FindLogDir expects
+		// It will be: <baseDir>/<project-slug>
+		// We need to create the actual log directory that clean will find
+		logBaseDir := filepath.Join(tmpDir, "logs")
+		if err := os.MkdirAll(logBaseDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := &config.Config{
+			LogDir:      logBaseDir,
+			ProjectRoot: tmpDir,
+		}
+
+		// Find the actual log directory that will be used
+		logDir, err := logging.FindLogDir(cfg.LogDir, cfg.ProjectRoot)
+		if err != nil {
+			t.Fatalf("FindLogDir() error = %v", err)
+		}
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create some mock log files
+		runs := []struct {
+			name    string
+			content string
+		}{
+			{"20240101-120000-100.jsonl", `{"timestamp":"2024-01-01T12:00:00Z"}`},
+			{"20240101-120000-100-run.last.json", `{"last":"message"}`},
+			{"20240102-120000-101.jsonl", `{"timestamp":"2024-01-02T12:00:00Z"}`},
+			{"20240102-120000-101-run.last.json", `{"last":"message"}`},
+		}
+
+		for _, r := range runs {
+			path := filepath.Join(logDir, r.name)
+			if err := os.WriteFile(path, []byte(r.content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			// Set different modification times
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Run clean with dry-run
+		err = cleanCommand(cfg, []string{"--dry-run"})
+		if err != nil {
+			t.Fatalf("cleanCommand() dry-run error = %v", err)
+		}
+
+		// Verify files still exist (dry-run shouldn't delete)
+		for _, r := range runs {
+			path := filepath.Join(logDir, r.name)
+			if _, err := os.Stat(path); err != nil {
+				t.Errorf("file %s should still exist after dry-run: %v", r.name, err)
+			}
+		}
+	})
+
+	t.Run("keep flag preserves recent runs", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create the log directory structure
+		logBaseDir := filepath.Join(tmpDir, "logs")
+		if err := os.MkdirAll(logBaseDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := &config.Config{
+			LogDir:      logBaseDir,
+			ProjectRoot: tmpDir,
+		}
+
+		// Find the actual log directory that will be used
+		logDir, err := logging.FindLogDir(cfg.LogDir, cfg.ProjectRoot)
+		if err != nil {
+			t.Fatalf("FindLogDir() error = %v", err)
+		}
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create mock log files with different timestamps
+		for i := 0; i < 5; i++ {
+			name := fmt.Sprintf("2024010%d-120000-10%d.jsonl", i+1, i)
+			path := filepath.Join(logDir, name)
+			if err := os.WriteFile(path, []byte(`{}`), 0644); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Keep only 2 most recent runs
+		err = cleanCommand(cfg, []string{"--keep", "2"})
+		if err != nil {
+			t.Fatalf("cleanCommand() --keep error = %v", err)
+		}
+
+		// Check that 2 files remain
+		entries, err := os.ReadDir(logDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// We expect 2 jsonl files to remain
+		jsonlCount := 0
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".jsonl") {
+				jsonlCount++
+			}
+		}
+		if jsonlCount != 2 {
+			t.Errorf("expected 2 .jsonl files after --keep 2, got %d", jsonlCount)
+		}
+	})
+
+	t.Run("no log directory is handled gracefully", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		nonExistentDir := filepath.Join(tmpDir, "nonexistent")
+
+		cfg := &config.Config{
+			LogDir:      nonExistentDir,
+			ProjectRoot: tmpDir,
+		}
+
+		err := cleanCommand(cfg, []string{})
+		if err != nil {
+			t.Errorf("cleanCommand() with non-existent log dir should not error, got %v", err)
+		}
+	})
+
+	t.Run("empty log directory shows message", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create the log directory structure
+		logBaseDir := filepath.Join(tmpDir, "logs")
+		if err := os.MkdirAll(logBaseDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := &config.Config{
+			LogDir:      logBaseDir,
+			ProjectRoot: tmpDir,
+		}
+
+		// Find the actual log directory that will be used
+		logDir, err := logging.FindLogDir(cfg.LogDir, cfg.ProjectRoot)
+		if err != nil {
+			t.Fatalf("FindLogDir() error = %v", err)
+		}
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		err = cleanCommand(cfg, []string{})
+		if err != nil {
+			t.Errorf("cleanCommand() with empty log dir should not error, got %v", err)
+		}
+	})
+
+	t.Run("age flag deletes old logs", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("skipping age-based test in short mode (requires file time manipulation)")
+		}
+
+		tmpDir := t.TempDir()
+
+		// Create the log directory structure
+		logBaseDir := filepath.Join(tmpDir, "logs")
+		if err := os.MkdirAll(logBaseDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := &config.Config{
+			LogDir:      logBaseDir,
+			ProjectRoot: tmpDir,
+		}
+
+		// Find the actual log directory that will be used
+		logDir, err := logging.FindLogDir(cfg.LogDir, cfg.ProjectRoot)
+		if err != nil {
+			t.Fatalf("FindLogDir() error = %v", err)
+		}
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create an old log file and manually set its modtime
+		oldFile := filepath.Join(logDir, "20240101-120000-100.jsonl")
+		if err := os.WriteFile(oldFile, []byte(`{}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+		// Set modtime to 2 days ago
+		oldTime := time.Now().Add(-48 * time.Hour)
+		if err := os.Chtimes(oldFile, oldTime, oldTime); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create a recent log file
+		recentFile := filepath.Join(logDir, "20240103-120000-101.jsonl")
+		if err := os.WriteFile(recentFile, []byte(`{}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Delete logs older than 1 day
+		err = cleanCommand(cfg, []string{"--age", "24h"})
+		if err != nil {
+			t.Fatalf("cleanCommand() --age error = %v", err)
+		}
+
+		// Old file should be deleted, recent should remain
+		if _, err := os.Stat(oldFile); !os.IsNotExist(err) {
+			t.Error("old log file should have been deleted")
+		}
+		if _, err := os.Stat(recentFile); err != nil {
+			t.Error("recent log file should still exist")
+		}
+	})
+}
+
+func TestParseRetentionDuration(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  time.Duration
+	}{
+		{"days", "7d", 7 * 24 * time.Hour},
+		{"days and hours", "1d12h", 36 * time.Hour},
+		{"fractional days", "1.5d", 36 * time.Hour},
+		{"hours only", "24h", 24 * time.Hour},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseRetentionDuration(tt.input)
+			if err != nil {
+				t.Fatalf("parseRetentionDuration(%q) error = %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Errorf("parseRetentionDuration(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFormatDuration tests the formatDuration helper.
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"seconds", 30 * time.Second, "30s"},
+		{"minutes", 5 * time.Minute, "5m"},
+		{"hours", 3 * time.Hour, "3h"},
+		{"one day", 24 * time.Hour, "1d"},
+		{"two days", 2 * 24 * time.Hour, "2d"},
+		{"more than a day", 51 * time.Hour, "2d"}, // anything >= 24h becomes days
+		{"less than a day", 23 * time.Hour, "23h"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatDuration(tt.d)
+			if got != tt.want {
+				t.Errorf("formatDuration(%v) = %q, want %q", tt.d, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFormatBytes tests the formatBytes helper.
+func TestFormatBytes(t *testing.T) {
+	tests := []struct {
+		name string
+		b    int64
+		want string
+	}{
+		{"bytes", 512, "512 B"},
+		{"kilobytes", 1024, "1.0 KB"},
+		{"megabytes", 1024 * 1024, "1.0 MB"},
+		{"gigabytes", 1024 * 1024 * 1024, "1.0 GB"},
+		{"fractional KB", 1536, "1.5 KB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatBytes(tt.b)
+			if got != tt.want {
+				t.Errorf("formatBytes(%d) = %q, want %q", tt.b, got, tt.want)
 			}
 		})
 	}

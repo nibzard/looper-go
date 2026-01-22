@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2524,7 +2525,7 @@ func cleanCommand(cfg *config.Config, args []string) error {
 	// Parse age duration if specified
 	var ageCutoff time.Time
 	if *keepAge != "" {
-		d, err := time.ParseDuration(*keepAge)
+		d, err := parseRetentionDuration(*keepAge)
 		if err != nil {
 			return fmt.Errorf("parsing age duration: %w\nSupported: 7d, 24h, 30m, etc.", err)
 		}
@@ -2666,6 +2667,66 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+func parseRetentionDuration(input string) (time.Duration, error) {
+	if strings.TrimSpace(input) == "" {
+		return 0, fmt.Errorf("duration is empty")
+	}
+
+	if !strings.Contains(input, "d") {
+		return time.ParseDuration(input)
+	}
+
+	normalized, err := normalizeDurationWithDays(input)
+	if err != nil {
+		return 0, err
+	}
+
+	return time.ParseDuration(normalized)
+}
+
+func normalizeDurationWithDays(input string) (string, error) {
+	if !strings.Contains(input, "d") {
+		return input, nil
+	}
+
+	var b strings.Builder
+	for i := 0; i < len(input); {
+		c := input[i]
+		if (c >= '0' && c <= '9') || c == '.' {
+			start := i
+			for i < len(input) {
+				c = input[i]
+				if (c >= '0' && c <= '9') || c == '.' {
+					i++
+					continue
+				}
+				break
+			}
+
+			if i < len(input) && input[i] == 'd' {
+				numStr := input[start:i]
+				value, err := strconv.ParseFloat(numStr, 64)
+				if err != nil {
+					return "", fmt.Errorf("invalid day duration %q: %w", numStr, err)
+				}
+				hours := value * 24
+				b.WriteString(strconv.FormatFloat(hours, 'f', -1, 64))
+				b.WriteByte('h')
+				i++
+				continue
+			}
+
+			b.WriteString(input[start:i])
+			continue
+		}
+
+		b.WriteByte(c)
+		i++
+	}
+
+	return b.String(), nil
 }
 
 // formatBytes formats a byte size in a human-readable way.
