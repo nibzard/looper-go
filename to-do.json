@@ -1050,7 +1050,7 @@
       "id": "T058",
       "title": "Remove tracked build/test binaries and ignore build artifacts",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "details": "Repository currently tracks ELF binaries (bin/looper, looper) and Go test binaries (loop.test, prompts.test, todo.test). Remove these from version control and add .gitignore entries to prevent accidental commits (including platform-specific binary patterns as needed).",
       "tags": [
         "maintenance",
@@ -1059,7 +1059,8 @@
       ],
       "files": [
         ".gitignore"
-      ]
+      ],
+      "updated_at": "2026-01-22T18:43:15Z"
     },
     {
       "id": "T059",
@@ -1090,9 +1091,10 @@
         "makefile"
       ],
       "files": [
-        "Makefile"
+        "Makefile",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T18:42:03Z"
+      "updated_at": "2026-01-22T18:42:32Z"
     },
     {
       "id": "T061",

@@ -21,5 +21,10 @@ to-do.json
 to-do.schema.json
 *.jsonl
 
+# Go build artifacts
+bin/
+*.test
+looper
+
 # OS
 .DS_Store
