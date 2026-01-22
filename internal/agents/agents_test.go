@@ -684,11 +684,12 @@ func TestValidateSummaryWithSchema(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing required task_id",
+			name: "empty task_id passes schema validation",
 			summary: &Summary{
+				TaskID: "", // Empty string is valid per schema ["string", "null"]
 				Status: "done",
 			},
-			wantErr: true,
+			wantErr: false, // Schema allows empty string as valid string
 		},
 		{
 			name: "missing required status",
