@@ -1083,16 +1083,16 @@
       "id": "T060",
       "title": "Make make test run Go unit tests in addition to smoke",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "Makefile test target currently aliases smoke only. Add go test ./... (and keep smoke if desired) so make test exercises unit tests and matches README expectations.",
       "tags": [
         "tests",
         "makefile"
       ],
       "files": [
-        "Makefile",
-        "README.md"
-      ]
+        "Makefile"
+      ],
+      "updated_at": "2026-01-22T18:40:00Z"
     },
     {
       "id": "T061",

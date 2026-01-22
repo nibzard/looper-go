@@ -26,6 +26,7 @@ smoke:
 	./scripts/smoke.sh
 
 test: smoke
+	$(GO) test ./...
 
 clean:
 	rm -f $(BUILDDIR)/$(BINARY)
