@@ -918,9 +918,10 @@
       ],
       "files": [
         "README.md",
-        "cmd/root.go"
+        "cmd/root.go",
+        "cmd/completion_test.go"
       ],
-      "updated_at": "2026-01-22T16:46:42Z"
+      "updated_at": "2026-01-22T16:53:35Z"
     },
     {
       "id": "T038",
