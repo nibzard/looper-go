@@ -437,12 +437,8 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	label := iterationLabel(iter)
 	agentType := l.cfg.IterSchedule(iter)
 
-	// Mark task as doing
-	if err := l.todoFile.SetTaskDoing(taskID); err != nil {
-		return fmt.Errorf("mark task doing: %w", err)
-	}
-	if err := l.saveTodo(); err != nil {
-		return fmt.Errorf("save todo file: %w", err)
+	if err := l.markTaskDoing(taskID); err != nil {
+		return err
 	}
 
 	logWriter := l.multiLogWriter()
@@ -451,8 +447,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 
 	summary, err := l.runAgentStep(ctx, agentType, prompt, label, logWriter)
 	if err != nil {
-		_ = l.todoFile.SetTaskStatus(taskID, todo.StatusBlocked)
-		_ = l.saveTodo()
+		_ = l.markTaskBlocked(taskID)
 		return err
 	}
 
@@ -647,13 +642,7 @@ func mergeStrings(existing, added []string) []string {
 // runAgentWithConfig runs an agent with the given configuration.
 // This is a standalone helper used by bootstrap and repair flows.
 func runAgentWithConfig(ctx context.Context, cfg *config.Config, agentType, prompt, label, workDir string, logWriter agents.LogWriter) (*agents.Summary, error) {
-	agentCfg := agents.Config{
-		Binary:    cfg.GetAgentBinary(agentType),
-		Model:     cfg.GetAgentModel(agentType),
-		Reasoning: cfg.GetAgentReasoning(agentType),
-		Args:      cfg.GetAgentArgs(agentType),
-		WorkDir:   workDir,
-	}
+	agentCfg := buildAgentConfigFromConfig(cfg, agentType, workDir)
 	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
@@ -759,15 +748,9 @@ func (l *Loop) printPromptIfDevMode(iter int, label string, prompt string) {
 
 // runAgent runs an agent with the given parameters.
 func (l *Loop) runAgent(ctx context.Context, agentType, prompt, label string, logWriter agents.LogWriter) (*agents.Summary, error) {
-	agentCfg := agents.Config{
-		Binary:          l.cfg.GetAgentBinary(agentType),
-		Model:           l.cfg.GetAgentModel(agentType),
-		Reasoning:       l.cfg.GetAgentReasoning(agentType),
-		Args:            l.cfg.GetAgentArgs(agentType),
-		WorkDir:         l.workDir,
-		LastMessagePath: l.lastMessagePath(label),
-	}
-	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
+	cfg := l.buildAgentConfig(agentType)
+	cfg.LastMessagePath = l.lastMessagePath(label)
+	agent, err := agents.NewAgent(agents.AgentType(agentType), cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
@@ -847,6 +830,46 @@ func (l *Loop) lastMessagePath(label string) string {
 		return ""
 	}
 	return l.runLogger.LastMessagePath(label)
+}
+
+// markTaskDoing marks a task as doing and saves the todo file.
+func (l *Loop) markTaskDoing(taskID string) error {
+	if err := l.todoFile.SetTaskDoing(taskID); err != nil {
+		return fmt.Errorf("mark task doing: %w", err)
+	}
+	return l.saveTodo()
+}
+
+// markTaskBlocked marks a task as blocked and saves the todo file.
+func (l *Loop) markTaskBlocked(taskID string) error {
+	_ = l.todoFile.SetTaskStatus(taskID, todo.StatusBlocked)
+	_ = l.saveTodo()
+	return nil
+}
+
+// buildAgentConfig creates an agent configuration for the given agent type.
+func (l *Loop) buildAgentConfig(agentType string) agents.Config {
+	return agents.Config{
+		Binary:          l.cfg.GetAgentBinary(agentType),
+		Model:           l.cfg.GetAgentModel(agentType),
+		Reasoning:       l.cfg.GetAgentReasoning(agentType),
+		Args:            l.cfg.GetAgentArgs(agentType),
+		WorkDir:         l.workDir,
+		LastMessagePath: "", // Set by caller when needed
+	}
+}
+
+// buildAgentConfigFromConfig creates an agent configuration from a config object.
+// This is a standalone helper used by bootstrap and repair flows.
+func buildAgentConfigFromConfig(cfg *config.Config, agentType, workDir string) agents.Config {
+	return agents.Config{
+		Binary:          cfg.GetAgentBinary(agentType),
+		Model:           cfg.GetAgentModel(agentType),
+		Reasoning:       cfg.GetAgentReasoning(agentType),
+		Args:            cfg.GetAgentArgs(agentType),
+		WorkDir:         workDir,
+		LastMessagePath: "", // Not used in bootstrap/repair flows
+	}
 }
 
 // Status represents a status update for TUI monitoring.
