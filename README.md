@@ -223,7 +223,7 @@ looper run --bootstrap-agent claude
 ```
 
 - **Repair agent** - Used for repairing invalid task files (default: `codex`)
-- **Review agent** - Used for the review pass when no tasks are found (default: `codex`)
+- **Review agent** - Used for the review pass when no tasks are found (configurable, defaults to `codex`)
 - **Bootstrap agent** - Used for creating the initial task file (default: `codex`)
 
 ## Initializing a Project
@@ -346,8 +346,8 @@ model = ""
 # Output
 apply_summary = true
 
-# Git (currently no-op in Go CLI)
-git_init = true
+# Git
+# git_init = true  # Run 'git init' before bootstrap when enabled
 
 # Hooks
 hook_command = "/path/to/hook.sh"
@@ -372,10 +372,11 @@ Looper reads the config file from the current working directory (not the todo fi
 - `LOOPER_ITER_EVEN_AGENT` - Agent for even iterations
 - `LOOPER_ITER_RR_AGENTS` - Comma-separated agent list for round-robin
 - `LOOPER_APPLY_SUMMARY` - Apply summaries to task file (1/0)
-- `LOOPER_GIT_INIT` - Accepted but currently unused by the Go CLI (1/0)
+- `LOOPER_GIT_INIT` - Run 'git init' before bootstrap when enabled (1/0)
 - `LOOPER_HOOK` - Hook command to run after each iteration
 - `LOOPER_LOOP_DELAY` - Delay between iterations (seconds)
 - `LOOPER_PROMPT_DIR` - Prompt directory override (dev only, requires `LOOPER_PROMPT_MODE=dev`)
+- `LOOPER_PROMPT` - User prompt for bootstrap (brainstorms tasks from your idea instead of scanning docs)
 - `LOOPER_PRINT_PROMPT` - Print rendered prompts (1/0, dev only)
 - `CODEX_BIN` / `CLAUDE_BIN` - Agent binary paths (on Windows, use `codex.exe` / `claude.exe`)
 - `CODEX_MODEL` / `CLAUDE_MODEL` - Model selection
@@ -549,7 +550,16 @@ The command will:
 
 ## Git Behavior
 
-Looper does not auto-initialize git repositories. Run `git init` yourself if you need one.
+Looper can automatically initialize a git repository when `git_init` is enabled:
+
+```bash
+looper run --git-init
+# Or via config: git_init = true
+# Or via env: LOOPER_GIT_INIT=1
+```
+
+When `git init` is enabled and git is available, Looper runs `git init` before the bootstrap phase if the current directory is not already a git repository.
+
 When git is available, Looper uses it to resolve the project root for log grouping.
 
 ## Dev Mode (Prompt Development)

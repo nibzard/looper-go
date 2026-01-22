@@ -76,9 +76,10 @@ Most environment variables remain the same. The Go CLI also accepts:
 - `LOOPER_REVIEW_AGENT` - Agent for review pass (default: codex)
 - `LOOPER_BOOTSTRAP_AGENT` - Agent for bootstrap (default: codex)
 - `LOOPER_APPLY_SUMMARY` - Apply summaries to task file (1/0)
-- `LOOPER_GIT_INIT` - Accepted but currently unused by the Go CLI (1/0)
+- `LOOPER_GIT_INIT` - Run 'git init' before bootstrap when enabled (1/0)
 - `LOOPER_LOOP_DELAY` - Delay between iterations (seconds)
 - `LOOPER_PROMPT_DIR` - Prompt directory override (dev only; requires `LOOPER_PROMPT_MODE=dev`)
+- `LOOPER_PROMPT` - User prompt for bootstrap (brainstorms tasks from your idea instead of scanning docs)
 - `LOOPER_PRINT_PROMPT` - Print rendered prompts (1/0, dev only)
 - `LOOPER_HOOK` - Hook command to run after each iteration
 
@@ -158,7 +159,7 @@ The Go version normalizes agent names and schedules more strictly:
 
 **Before:** Shell used whatever agent was configured for iterations.
 
-**After:** Go version uses the configured `review_agent` for the review pass (defaults to Codex if not set). You can configure this via:
+**After:** Go version uses the configured `review_agent` for the review pass (defaults to Codex if not set). The review agent is fully configurable via:
 - TOML: `review_agent = "claude"`
 - Env: `LOOPER_REVIEW_AGENT=claude`
 - Flag: `--review-agent claude`
@@ -170,7 +171,12 @@ When git is available, Looper resolves the project root via `git rev-parse --sho
 
 ### Git Initialization
 
-The Go CLI does not automatically run `git init`. Initialize repositories manually if you need one.
+**Before:** Shell did not support git initialization.
+
+**After:** Go version supports `git_init` option. When enabled, Looper runs `git init` before the bootstrap phase if the current directory is not already a git repository. Configure via:
+- TOML: `git_init = true`
+- Env: `LOOPER_GIT_INIT=1`
+- Flag: `--git-init`
 
 ## Migration Steps
 
@@ -291,8 +297,10 @@ If you need to revert to the shell version:
 |--------|-------|-----|
 | Implementation | Bash script | Compiled Go binary |
 | Commands | Flags (`--ls`, `--tail`) | Subcommands (`ls`, `tail`) |
-| Config | Env vars only | Defaults + TOML + env + flags |
+| Config | Env vars only | Defaults + user config + project config + env + flags |
 | Dev mode | Always available | Requires `LOOPER_PROMPT_MODE=dev` |
-| Review agent | Follows schedule | Always Codex |
+| Review agent | Follows schedule | Configurable (defaults to Codex) |
+| Git init | Not supported | Supported via `git_init` option |
+| Bootstrap prompt | Scans docs only | Can brainstorm from `LOOPER_PROMPT` |
 | Install | Manual `install.sh` | Makefile + Homebrew |
 | Platform | Unix-like only | Cross-platform |

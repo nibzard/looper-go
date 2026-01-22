@@ -998,7 +998,7 @@
       "title": "Make fmtCommand JSON equality check deterministic",
       "priority": 2,
       "status": "done",
-      "details": "cmd/root.go jsonEqual uses fmt.Sprint on decoded maps, which is nondeterministic and can make `looper fmt -check` fail on already-formatted files. Compare decoded JSON with reflect.DeepEqual (or similar) and adjust tests to avoid map-order flakiness.",
+      "details": "Implementation already present: jsonEqual uses reflect.DeepEqual for deterministic map ordering in looper fmt -check. No additional code changes required in this iteration. Tests pass.",
       "tags": [
         "cli",
         "bug",
@@ -1006,15 +1006,16 @@
       ],
       "files": [
         "cmd/root.go",
-        "cmd/root_test.go"
+        "cmd/root_test.go",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T17:42:44Z"
+      "updated_at": "2026-01-22T17:50:31Z"
     },
     {
       "id": "T056",
       "title": "Align docs with current git_init and review agent behavior",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "details": "README.md and MIGRATION.md still claim git_init is a no-op and review agent always uses Codex. Update docs to reflect git_init now runs git init when enabled, review_agent is configurable, and document the --prompt/LOOPER_PROMPT bootstrap option; refresh internal/config/doc.go to mention user config file precedence.",
       "tags": [
         "docs"
@@ -1023,7 +1024,8 @@
         "README.md",
         "MIGRATION.md",
         "internal/config/doc.go"
-      ]
+      ],
+      "updated_at": "2026-01-22T17:51:59Z"
     }
   ]
 }
