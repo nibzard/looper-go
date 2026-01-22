@@ -1016,16 +1016,35 @@
       "title": "Align docs with current git_init and review agent behavior",
       "priority": 4,
       "status": "done",
-      "details": "README.md and MIGRATION.md still claim git_init is a no-op and review agent always uses Codex. Update docs to reflect git_init now runs git init when enabled, review_agent is configurable, and document the --prompt/LOOPER_PROMPT bootstrap option; refresh internal/config/doc.go to mention user config file precedence.",
+      "details": "Documentation already aligned. README.md correctly documents git_init runs git init when enabled (lines 553-561), review_agent is configurable (lines 219-227, 317, 369), and --prompt/LOOPER_PROMPT bootstrap option (line 379). MIGRATION.md correctly documents git_init support (lines 172-179), review_agent configurable (lines 158-166), and LOOPER_PROMPT option (line 82). internal/config/doc.go correctly documents user config file precedence (lines 5-6, 12-16). Verified current loop/config behavior; no updates required, so no commit.",
       "tags": [
         "docs"
       ],
       "files": [
-        "README.md",
         "MIGRATION.md",
-        "internal/config/doc.go"
+        "README.md",
+        "internal/config/doc.go",
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T17:51:59Z"
+      "updated_at": "2026-01-22T17:58:04Z"
+    },
+    {
+      "id": "T057",
+      "title": "Handle null task_id in summary parsing",
+      "priority": 2,
+      "status": "done",
+      "details": "Summary schema allows task_id null and prompts instruct using null for skipped; parsing currently fails on null and can yield ErrSummaryMissing. Treat null task_id as empty during summary parsing and add coverage.",
+      "tags": [
+        "bug",
+        "agents",
+        "summary"
+      ],
+      "files": [
+        "internal/agents/agents.go",
+        "internal/agents/agents_test.go",
+        "to-do.json"
+      ],
+      "updated_at": "2026-01-22T18:14:40Z"
     }
   ]
 }

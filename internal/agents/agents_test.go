@@ -605,6 +605,15 @@ func TestValidateSummaryMinimal(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid skipped summary with null task_id",
+			summary: &Summary{
+				TaskID:  "", // null becomes empty string after JSON unmarshaling
+				Status:  "skipped",
+				Summary: "No task executed",
+			},
+			wantErr: false,
+		},
+		{
 			name: "invalid status",
 			summary: &Summary{
 				TaskID:  "T001",
@@ -1019,6 +1028,139 @@ func TestLogRawEvent(t *testing.T) {
 			}
 			if event.Tool != tt.wantTool {
 				t.Errorf("Tool = %q, want %q", event.Tool, tt.wantTool)
+			}
+		})
+	}
+}
+
+// TestParseSummaryWithNullTaskID tests that null task_id is properly handled.
+func TestParseSummaryWithNullTaskID(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		wantOK   bool
+		wantTaskID string
+		wantStatus string
+	}{
+		{
+			name:     "skipped summary with null task_id",
+			json:     `{"task_id":null,"status":"skipped","summary":"No task executed"}`,
+			wantOK:   true,
+			wantTaskID: "",
+			wantStatus: "skipped",
+		},
+		{
+			name:     "skipped summary with missing task_id",
+			json:     `{"status":"skipped","summary":"No task executed"}`,
+			wantOK:   true,
+			wantTaskID: "",
+			wantStatus: "skipped",
+		},
+		{
+			name:     "valid summary with task_id",
+			json:     `{"task_id":"T001","status":"done","summary":"Completed"}`,
+			wantOK:   true,
+			wantTaskID: "T001",
+			wantStatus: "done",
+		},
+		{
+			name:     "summary with only null task_id is not valid",
+			json:     `{"task_id":null}`,
+			wantOK:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var raw map[string]any
+			if err := json.Unmarshal([]byte(tt.json), &raw); err != nil {
+				t.Fatalf("Failed to unmarshal test JSON: %v", err)
+			}
+
+			summary, ok := parseSummaryFromRaw(raw)
+			if ok != tt.wantOK {
+				t.Errorf("parseSummaryFromRaw() ok = %v, want %v", ok, tt.wantOK)
+			}
+			if tt.wantOK {
+				if summary.TaskID != tt.wantTaskID {
+					t.Errorf("TaskID = %q, want %q", summary.TaskID, tt.wantTaskID)
+				}
+				if summary.Status != tt.wantStatus {
+					t.Errorf("Status = %q, want %q", summary.Status, tt.wantStatus)
+				}
+			}
+		})
+	}
+}
+
+// TestSummaryHasContentWithNullTaskID tests summaryHasContent edge cases.
+func TestSummaryHasContentWithNullTaskID(t *testing.T) {
+	tests := []struct {
+		name     string
+		summary  Summary
+		wantBool bool
+	}{
+		{
+			name: "null task_id with skipped status has content",
+			summary: Summary{
+				TaskID:  "", // null becomes empty string
+				Status:  "skipped",
+				Summary: "No task executed",
+			},
+			wantBool: true,
+		},
+		{
+			name: "null task_id with done status has content",
+			summary: Summary{
+				TaskID:  "",
+				Status:  "done",
+				Summary: "Completed",
+			},
+			wantBool: true,
+		},
+		{
+			name: "empty summary has no content",
+			summary: Summary{
+				TaskID: "",
+				Status: "",
+			},
+			wantBool: false,
+		},
+		{
+			name: "status alone is sufficient",
+			summary: Summary{
+				Status: "blocked",
+			},
+			wantBool: true,
+		},
+		{
+			name: "files alone is sufficient",
+			summary: Summary{
+				Files: []string{"file1.go"},
+			},
+			wantBool: true,
+		},
+		{
+			name: "blockers alone is sufficient",
+			summary: Summary{
+				Blockers: []string{"blocker1"},
+			},
+			wantBool: true,
+		},
+		{
+			name: "summary text alone is sufficient",
+			summary: Summary{
+				Summary: "Some summary",
+			},
+			wantBool: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := summaryHasContent(tt.summary)
+			if got != tt.wantBool {
+				t.Errorf("summaryHasContent() = %v, want %v", got, tt.wantBool)
 			}
 		})
 	}

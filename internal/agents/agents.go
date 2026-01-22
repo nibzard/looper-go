@@ -1153,17 +1153,15 @@ func parseSummaryFromRaw(raw map[string]any) (*Summary, bool) {
 	if raw == nil {
 		return nil, false
 	}
-	if _, ok := raw["task_id"]; ok {
-		// continue
-	} else if _, ok := raw["status"]; ok {
-		// continue
-	} else if _, ok := raw["summary"]; ok {
-		// continue
-	} else if _, ok := raw["files"]; ok {
-		// continue
-	} else if _, ok := raw["blockers"]; ok {
-		// continue
-	} else {
+	// Check if this looks like a summary by checking for known fields.
+	// task_id may be present as null, which is valid for skipped summaries.
+	_, hasTaskID := raw["task_id"]
+	_, hasStatus := raw["status"]
+	_, hasSummaryText := raw["summary"]
+	_, hasFiles := raw["files"]
+	_, hasBlockers := raw["blockers"]
+
+	if !hasTaskID && !hasStatus && !hasSummaryText && !hasFiles && !hasBlockers {
 		return nil, false
 	}
 
@@ -1182,6 +1180,14 @@ func parseSummaryFromRaw(raw map[string]any) (*Summary, bool) {
 }
 
 func summaryHasContent(summary Summary) bool {
+	// A summary is considered to have content if it has:
+	// - a task_id (non-empty), or
+	// - a valid status (including "skipped" which can have null task_id), or
+	// - a summary text, or
+	// - files, or
+	// - blockers
+	// Note: null task_id becomes empty string after JSON unmarshaling,
+	// but a summary with status "skipped" and null task_id is valid.
 	return summary.TaskID != "" ||
 		summary.Status != "" ||
 		summary.Summary != "" ||
