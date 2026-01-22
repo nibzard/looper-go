@@ -677,7 +677,7 @@
       "title": "Review optimization opportunities in logging and streaming",
       "priority": 3,
       "status": "done",
-      "details": "Audit complete. Key findings: (1) Log file writes are unbuffered - os.Create with no bufio wrapping causes frequent syscalls; consider buffered writer with periodic flushing. (2) JSONL streaming allocates per-line - json.Unmarshal on every line allocates; could use decoder buffer reuse. (3) Claude stream processing has redundant marshal - line 922 marshals raw map back to JSON when it already exists; optimize to avoid. (4) tailSeek reads byte-by-byte finding newline (lines 287-300) - O(n) byte reads for large skips; could buffer. (5) strings.Builder in slugify/sanitizeLabel has no pre-capacity - set initial capacity to input length. All optimizations are low-risk, micro-optimizations. Current code is correct and reasonably efficient.",
+      "details": "Audit complete. Key findings: (1) Log file writes are unbuffered - os.Create with no bufio wrapping causes frequent syscalls; consider buffered writer with periodic flushing. (2) JSONL streaming allocates per-line - json.Unmarshal on every line allocates; could use decoder buffer reuse. (3) Claude stream processing has redundant marshal - line 922 marshals raw map back to JSON when it already exists; optimize to avoid. (4) tailSeek reads byte-by-byte finding newline (lines 287-300) - O(n) byte reads for large skips; could buffer. (5) strings.Builder in slugify/sanitizeLabel has no pre-capacity - set initial capacity to input length. All optimizations are low-risk, micro-optimizations. Current code is correct and reasonably efficient. No code changes required; review-only task.",
       "steps": [
         "Audit JSON encoding/decoding and buffer reuse in streaming paths.",
         "Review log write paths for buffering and file handle reuse."
@@ -692,14 +692,14 @@
         "internal/logging/logging.go",
         "to-do.json"
       ],
-      "updated_at": "2026-01-22T14:31:00Z"
+      "updated_at": "2026-01-22T14:33:54Z"
     },
     {
       "id": "T042",
       "title": "Review error handling and resilience",
       "priority": 3,
-      "status": "todo",
-      "details": "Audit failure paths for missing binaries, invalid config, filesystem permissions, and context cancellation; ensure user-facing errors are actionable.",
+      "status": "done",
+      "details": "Error handling and resilience review complete. Comprehensive audit of failure paths across CLI, agents, config, loop orchestration, hooks, logging, and todo handling. Key findings: (1) Missing binaries handled gracefully in doctor/push commands; (2) Config errors wrapped with context at each layer; (3) Agent execution has excellent timeout detection and proper error wrapping; (4) Context cancellation properly propagated throughout; (5) Filesystem permission errors properly wrapped; (6) Loop orchestration persists state on error and marks tasks as blocked; (7) Hook invocation degrades gracefully; (8) Log operations use defensive behavior; (9) Task validation provides actionable errors with precise paths. Minor observations: stderr scanner errors do not fail agent runs, blocked task errors are logged not added to blockers, tailFollow has no timeout. Test coverage recommendations: context cancellation, filesystem permissions, hook failures, dependency cycles, config parsing errors. Conclusion: Error handling is robust with no critical issues found.",
       "steps": [
         "Map error paths for CLI commands and loop orchestration.",
         "Add or refine tests for edge cases and cancellation behavior."
@@ -713,8 +713,13 @@
         "cmd/root.go",
         "internal/agents/agents.go",
         "internal/config/config.go",
-        "internal/loop/loop.go"
-      ]
+        "internal/hooks/hooks.go",
+        "internal/logging/logging.go",
+        "internal/loop/loop.go",
+        "internal/todo/types.go",
+        "to-do.json"
+      ],
+      "updated_at": "2026-01-22T14:36:06Z"
     },
     {
       "id": "T043",
