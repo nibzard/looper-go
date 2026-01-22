@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -626,4 +627,250 @@ func TestDoctorCommandWithMockFiles(t *testing.T) {
 	}
 
 	t.Log("mock project structure created")
+}
+
+// TestValidateCommand tests the validate command.
+func TestValidateCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	os.Chdir(tmpDir)
+
+	cfg := &config.Config{
+		TodoFile:    "to-do.json",
+		SchemaFile:  "to-do.schema.json",
+		ProjectRoot: tmpDir,
+	}
+
+	// Create a schema file
+	schemaContent := `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "source_files", "tasks"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "source_files": {"type": "array"},
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "priority", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "priority": {"type": "integer", "minimum": 1, "maximum": 5},
+          "status": {"type": "string", "enum": ["todo", "doing", "blocked", "done"]}
+        }
+      }
+    }
+  }
+}`
+	if err := os.WriteFile("to-do.schema.json", []byte(schemaContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("valid file passes validation", func(t *testing.T) {
+		todoContent := `{
+  "schema_version": 1,
+  "source_files": ["README.md"],
+  "tasks": [
+    {"id": "T001", "title": "Test task", "priority": 1, "status": "todo"}
+  ]
+}`
+		if err := os.WriteFile("to-do.json", []byte(todoContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := validateCommand(cfg, []string{})
+		if err != nil {
+			t.Errorf("validateCommand() unexpected error = %v", err)
+		}
+	})
+
+	t.Run("invalid file fails validation", func(t *testing.T) {
+		todoContent := `{
+  "schema_version": 999,
+  "source_files": ["README.md"],
+  "tasks": []
+}`
+		if err := os.WriteFile("to-do.json", []byte(todoContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := validateCommand(cfg, []string{})
+		if err == nil {
+			t.Error("validateCommand() expected error for invalid schema_version, got nil")
+		}
+	})
+
+	t.Run("non-existent file returns error", func(t *testing.T) {
+		err := validateCommand(cfg, []string{"nonexistent.json"})
+		if err == nil {
+			t.Error("validateCommand() expected error for non-existent file, got nil")
+		}
+	})
+}
+
+// TestFmtCommand tests the fmt command.
+func TestFmtCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	os.Chdir(tmpDir)
+
+	cfg := &config.Config{
+		TodoFile:    "to-do.json",
+		SchemaFile:  "to-do.schema.json",
+		ProjectRoot: tmpDir,
+	}
+
+	// Create a well-formatted todo file
+	wellFormatted := `{
+  "schema_version": 1,
+  "source_files": [
+    "README.md"
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "First task",
+      "priority": 1,
+      "status": "todo"
+    },
+    {
+      "id": "T002",
+      "title": "Second task",
+      "priority": 2,
+      "status": "todo"
+    }
+  ]
+}
+`
+
+	t.Run("well-formatted file passes fmt check", func(t *testing.T) {
+		if err := os.WriteFile("to-do.json", []byte(wellFormatted), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := fmtCommand(cfg, []string{"-check"})
+		if err != nil {
+			t.Errorf("fmtCommand() -check unexpected error = %v", err)
+		}
+	})
+
+	t.Run("poorly formatted file is detected", func(t *testing.T) {
+		poorlyFormatted := `{"schema_version":1,"source_files":["README.md"],"tasks":[{"id":"T002","title":"Second task","priority":2,"status":"todo"},{"id":"T001","title":"First task","priority":1,"status":"todo"}]}`
+		if err := os.WriteFile("to-do.json", []byte(poorlyFormatted), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := fmtCommand(cfg, []string{"-check"})
+		if err == nil {
+			t.Error("fmtCommand() -check expected error for poorly formatted file, got nil")
+		}
+	})
+
+	t.Run("write flag formats file in place", func(t *testing.T) {
+		// Write poorly formatted file
+		poorlyFormatted := `{"schema_version":1,"source_files":["README.md"],"tasks":[{"id":"T002","title":"Second task","priority":2,"status":"todo"},{"id":"T001","title":"First task","priority":1,"status":"todo"}]}`
+		if err := os.WriteFile("to-do.json", []byte(poorlyFormatted), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Format with -write
+		err := fmtCommand(cfg, []string{"-write"})
+		if err != nil {
+			t.Errorf("fmtCommand() -write unexpected error = %v", err)
+		}
+
+		// Read back and verify it's now well formatted
+		data, err := os.ReadFile("to-do.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify tasks are sorted
+		var file todo.File
+		if err := json.Unmarshal(data, &file); err != nil {
+			t.Fatal(err)
+		}
+		if len(file.Tasks) != 2 {
+			t.Fatalf("expected 2 tasks, got %d", len(file.Tasks))
+		}
+		if file.Tasks[0].ID != "T001" {
+			t.Errorf("expected first task ID T001, got %s", file.Tasks[0].ID)
+		}
+		if file.Tasks[1].ID != "T002" {
+			t.Errorf("expected second task ID T002, got %s", file.Tasks[1].ID)
+		}
+
+		// Verify it now passes check
+		err = fmtCommand(cfg, []string{"-check"})
+		if err != nil {
+			t.Errorf("fmtCommand() -check after -write unexpected error = %v", err)
+		}
+	})
+
+	t.Run("non-existent file returns error", func(t *testing.T) {
+		err := fmtCommand(cfg, []string{"nonexistent.json"})
+		if err == nil {
+			t.Error("fmtCommand() expected error for non-existent file, got nil")
+		}
+	})
+}
+
+// TestJsonEqual tests the jsonEqual helper.
+func TestJsonEqual(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		equal bool
+	}{
+		{
+			name: "identical JSON",
+			a:    `{"key": "value"}`,
+			b:    `{"key": "value"}`,
+			equal: true,
+		},
+		{
+			name: "different whitespace",
+			a:    `{"key": "value"}`,
+			b:    `{  "key"  :  "value"  }`,
+			equal: true,
+		},
+		{
+			name: "different key order",
+			a:    `{"a": 1, "b": 2}`,
+			b:    `{"b": 2, "a": 1}`,
+			equal: true,
+		},
+		{
+			name: "different values",
+			a:    `{"key": "value1"}`,
+			b:    `{"key": "value2"}`,
+			equal: false,
+		},
+		{
+			name: "invalid JSON a",
+			a:    `{invalid json}`,
+			b:    `{"key": "value"}`,
+			equal: false,
+		},
+		{
+			name: "invalid JSON b",
+			a:    `{"key": "value"}`,
+			b:    `{invalid json}`,
+			equal: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := jsonEqual([]byte(tt.a), []byte(tt.b))
+			if got != tt.equal {
+				t.Errorf("jsonEqual() = %v, want %v", got, tt.equal)
+			}
+		})
+	}
 }

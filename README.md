@@ -112,6 +112,17 @@ looper version
 looper push
 looper push --agent claude
 looper push -y
+
+# Validate task file against schema
+looper validate
+looper validate path/to/tasks.json
+looper validate --schema custom-schema.json
+
+# Format task file with stable ordering
+looper fmt
+looper fmt -w      # Write formatted file back to disk
+looper fmt -check  # Check if file is formatted
+looper fmt -d      # Display diffs of formatting changes
 ```
 
 ## Iteration Schedules

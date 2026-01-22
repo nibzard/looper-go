@@ -86,6 +86,10 @@ func Run(ctx context.Context, args []string) error {
 		return pushCommand(ctx, cfg, remainingArgs)
 	case "init":
 		return initCommand(cfg, remainingArgs)
+	case "validate":
+		return validateCommand(cfg, remainingArgs)
+	case "fmt":
+		return fmtCommand(cfg, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -629,6 +633,8 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  ls [status] [file]  List tasks by status")
 	fmt.Fprintln(w, "  push          Run a release workflow via the agent")
 	fmt.Fprintln(w, "  init          Scaffold project files (to-do.json, to-do.schema.json, looper.toml)")
+	fmt.Fprintln(w, "  validate      Validate task file against schema")
+	fmt.Fprintln(w, "  fmt           Format task file with stable ordering and 2-space indent")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
 	fmt.Fprintln(w)
@@ -702,6 +708,18 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "        Path for to-do.schema.json (default: to-do.schema.json)")
 	fmt.Fprintln(w, "  -config string")
 	fmt.Fprintln(w, "        Path for looper.toml (default: looper.toml)")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Validate Options (use with 'validate' command):")
+	fmt.Fprintln(w, "  -schema string")
+	fmt.Fprintln(w, "        Path to schema file (default: to-do.schema.json)")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Fmt Options (use with 'fmt' command):")
+	fmt.Fprintln(w, "  -check")
+	fmt.Fprintln(w, "        Check if file is formatted without writing")
+	fmt.Fprintln(w, "  -w, -write")
+	fmt.Fprintln(w, "        Write formatted file back to disk")
+	fmt.Fprintln(w, "  -d, -diff")
+	fmt.Fprintln(w, "        Display diffs of formatting changes")
 }
 
 // printTasksByStatus prints tasks of a specific status.
@@ -1420,5 +1438,240 @@ func printInitAction(label string, action initFileAction) {
 		fmt.Printf("  Skipped (%s file already exists; use --force to overwrite)\n", strings.ToLower(label))
 	default:
 		fmt.Printf("  %s file unchanged\n", label)
+	}
+}
+
+// validateCommand validates a task file against the schema.
+func validateCommand(cfg *config.Config, args []string) error {
+	// Parse validate-specific flags
+	fs := flag.NewFlagSet("looper validate", flag.ContinueOnError)
+	schemaFlag := fs.String("schema", cfg.SchemaFile, "Path to schema file")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[1:])
+	}
+	todoPath := cfg.TodoFile
+	if len(remaining) == 1 {
+		todoPath = remaining[0]
+	}
+
+	// Resolve paths
+	if !filepath.IsAbs(todoPath) {
+		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
+	}
+	schemaPath := *schemaFlag
+	if !filepath.IsAbs(schemaPath) {
+		schemaPath = filepath.Join(cfg.ProjectRoot, schemaPath)
+	}
+
+	// Check if todo file exists
+	if _, err := os.Stat(todoPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("todo file not found: %s", todoPath)
+		}
+		return fmt.Errorf("accessing todo file: %w", err)
+	}
+
+	// Load the todo file
+	todoFile, err := todo.Load(todoPath)
+	if err != nil {
+		return fmt.Errorf("loading todo file: %w", err)
+	}
+
+	fmt.Printf("Validating: %s\n", todoPath)
+	fmt.Println()
+
+	// Also validate dependencies
+	if depErr := todoFile.ValidateDependencies(); depErr != nil {
+		switch depErr.(type) {
+		case *todo.DependencyCycleError, *todo.MissingDependencyError:
+			fmt.Printf("  ❌ Dependency validation failed:\n")
+			fmt.Printf("     %v\n", depErr)
+			return depErr
+		default:
+			return fmt.Errorf("validating dependencies: %w", depErr)
+		}
+	}
+
+	// Validate against schema
+	result := todoFile.Validate(todo.ValidationOptions{SchemaPath: schemaPath})
+
+	// Print warnings
+	for _, w := range result.Warnings {
+		fmt.Printf("  ⚠️  %s\n", w)
+	}
+
+	if result.Valid {
+		fmt.Println("  ✅ Valid")
+		return nil
+	}
+
+	fmt.Println("  ❌ Validation failed:")
+	for _, e := range result.Errors {
+		fmt.Printf("     - %v\n", e)
+	}
+	return fmt.Errorf("validation failed")
+}
+
+// fmtCommand formats a task file with stable ordering and 2-space indentation.
+func fmtCommand(cfg *config.Config, args []string) error {
+	// Parse fmt-specific flags
+	fs := flag.NewFlagSet("looper fmt", flag.ContinueOnError)
+	check := fs.Bool("check", false, "Check if file is formatted without writing")
+	write := fs.Bool("w", false, "Write formatted file back to disk")
+	diff := fs.Bool("d", false, "Display diffs of formatting changes")
+	fs.BoolVar(write, "write", false, "Write formatted file back to disk")
+	fs.BoolVar(diff, "diff", false, "Display diffs of formatting changes")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) > 1 {
+		return fmt.Errorf("unexpected arguments: %v", remaining[1:])
+	}
+	todoPath := cfg.TodoFile
+	if len(remaining) == 1 {
+		todoPath = remaining[0]
+	}
+
+	// Resolve path
+	if !filepath.IsAbs(todoPath) {
+		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
+	}
+
+	// Check if todo file exists
+	if _, err := os.Stat(todoPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("todo file not found: %s", todoPath)
+		}
+		return fmt.Errorf("accessing todo file: %w", err)
+	}
+
+	// Read the original file
+	originalData, err := os.ReadFile(todoPath)
+	if err != nil {
+		return fmt.Errorf("reading todo file: %w", err)
+	}
+
+	// Load the todo file
+	todoFile, err := todo.Load(todoPath)
+	if err != nil {
+		return fmt.Errorf("loading todo file: %w", err)
+	}
+
+	// Normalize tasks (sort by priority, then by ID)
+	sort.Slice(todoFile.Tasks, func(i, j int) bool {
+		if todoFile.Tasks[i].Priority != todoFile.Tasks[j].Priority {
+			return todoFile.Tasks[i].Priority < todoFile.Tasks[j].Priority
+		}
+		return todo.CompareIDs(todoFile.Tasks[i].ID, todoFile.Tasks[j].ID)
+	})
+
+	// Marshal with stable formatting
+	formattedData, err := json.MarshalIndent(todoFile, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling todo file: %w", err)
+	}
+	formattedData = append(formattedData, '\n')
+
+	// Check if formatting would change the file
+	needsFormat := !jsonEqual(originalData, formattedData)
+
+	if *check {
+		if needsFormat {
+			fmt.Printf("%s: needs formatting\n", todoPath)
+			return fmt.Errorf("file is not formatted")
+		}
+		fmt.Printf("%s: formatted\n", todoPath)
+		return nil
+	}
+
+	if *diff {
+		if needsFormat {
+			printDiff(todoPath, originalData, formattedData)
+		} else {
+			fmt.Printf("%s: already formatted\n", todoPath)
+		}
+		return nil
+	}
+
+	if *write {
+		if needsFormat {
+			if err := os.WriteFile(todoPath, formattedData, 0644); err != nil {
+				return fmt.Errorf("writing todo file: %w", err)
+			}
+			fmt.Printf("%s: formatted\n", todoPath)
+		} else {
+			fmt.Printf("%s: already formatted\n", todoPath)
+		}
+		return nil
+	}
+
+	// Default: show if file needs formatting
+	if needsFormat {
+		fmt.Printf("%s: needs formatting\n", todoPath)
+		fmt.Println("Use -w to write formatted file, or -d to see diffs")
+		return fmt.Errorf("file is not formatted")
+	}
+	fmt.Printf("%s: formatted\n", todoPath)
+	return nil
+}
+
+// jsonEqual compares two JSON byte slices for semantic equality.
+func jsonEqual(a, b []byte) bool {
+	var va, vb interface{}
+	if err := json.Unmarshal(a, &va); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &vb); err != nil {
+		return false
+	}
+	return fmt.Sprint(va) == fmt.Sprint(vb)
+}
+
+// printDiff prints a unified diff between two byte slices.
+func printDiff(path string, original, formatted []byte) {
+	fmt.Printf("--- %s\n", path)
+	fmt.Printf("+++ %s\n", path)
+
+	origLines := strings.Split(string(original), "\n")
+	newLines := strings.Split(string(formatted), "\n")
+
+	maxLines := len(origLines)
+	if len(newLines) > maxLines {
+		maxLines = len(newLines)
+	}
+
+	changes := false
+	for i := 0; i < maxLines; i++ {
+		origLine := ""
+		newLine := ""
+		if i < len(origLines) {
+			origLine = origLines[i]
+		}
+		if i < len(newLines) {
+			newLine = newLines[i]
+		}
+
+		if origLine != newLine {
+			changes = true
+			if origLine != "" {
+				fmt.Printf("-%s\n", origLine)
+			}
+			if newLine != "" {
+				fmt.Printf("+%s\n", newLine)
+			}
+		}
+	}
+
+	if !changes {
+		fmt.Printf("%s: no changes\n", path)
 	}
 }
