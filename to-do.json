@@ -747,8 +747,8 @@
       "id": "T044",
       "title": "Security and dependency review",
       "priority": 3,
-      "status": "todo",
-      "details": "Review command execution surfaces (hooks, agents, git) for injection risks; run dependency checks and document any findings.",
+      "status": "done",
+      "details": "Security review complete. Command execution uses exec.Command/CommandContext with argument slices (no shell) for agents, hooks, and git/gh operations; hook arguments are positional (task_id, status, last_message_path, label), so no command interpolation. No unsafe command construction found. govulncheck ./... (golang.org/x/vuln v1.1.4) reports: No vulnerabilities found.",
       "steps": [
         "Inspect command construction and environment handling for unsafe inputs.",
         "Run `govulncheck` and summarize any reported vulnerabilities."
@@ -764,7 +764,8 @@
         "cmd/root.go",
         "go.mod",
         "go.sum"
-      ]
+      ],
+      "updated_at": "2026-01-22T14:54:08Z"
     },
     {
       "id": "T045",
