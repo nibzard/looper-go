@@ -367,6 +367,9 @@ type Config struct {
 	// Model is the model to use (optional).
 	Model string
 
+	// Reasoning is the reasoning effort for codex (e.g., "low", "medium", "high").
+	Reasoning string
+
 	// Args are additional arguments to pass to the binary.
 	Args []string
 
@@ -451,6 +454,9 @@ func (a *codexAgent) Run(ctx context.Context, prompt string, logWriter LogWriter
 	args := []string{"exec", "--json"}
 	if cfg.Model != "" {
 		args = append(args, "-m", cfg.Model)
+	}
+	if cfg.Reasoning != "" {
+		args = append(args, "-c", "model_reasoning_effort="+cfg.Reasoning)
 	}
 	args = append(args, cfg.Args...)
 	if cfg.LastMessagePath != "" {

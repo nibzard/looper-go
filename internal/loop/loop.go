@@ -323,9 +323,10 @@ func bootstrapTodo(workDir, todoPath, schemaPath string, promptStore *prompts.St
 	// Create bootstrap agent using the configured bootstrap agent
 	bootstrapAgentType := agents.AgentType(cfg.GetBootstrapAgent())
 	agentCfg := agents.Config{
-		Binary: cfg.GetAgentBinary(string(bootstrapAgentType)),
-		Model:  cfg.GetAgentModel(string(bootstrapAgentType)),
-		WorkDir: workDir,
+		Binary:    cfg.GetAgentBinary(string(bootstrapAgentType)),
+		Model:     cfg.GetAgentModel(string(bootstrapAgentType)),
+		Reasoning: cfg.GetAgentReasoning(string(bootstrapAgentType)),
+		WorkDir:   workDir,
 	}
 	agent, err := agents.NewAgent(bootstrapAgentType, agentCfg)
 	if err != nil {
@@ -389,9 +390,10 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 	// Create repair agent using the configured repair agent
 	repairAgentType := agents.AgentType(cfg.RepairAgent)
 	agentCfg := agents.Config{
-		Binary: cfg.GetAgentBinary(string(repairAgentType)),
-		Model:  cfg.GetAgentModel(string(repairAgentType)),
-		WorkDir: workDir,
+		Binary:    cfg.GetAgentBinary(string(repairAgentType)),
+		Model:     cfg.GetAgentModel(string(repairAgentType)),
+		Reasoning: cfg.GetAgentReasoning(string(repairAgentType)),
+		WorkDir:   workDir,
 	}
 	agent, err := agents.NewAgent(repairAgentType, agentCfg)
 	if err != nil {
@@ -528,6 +530,7 @@ func (l *Loop) runIteration(ctx context.Context, iter int, task *todo.Task) erro
 	agentCfg := agents.Config{
 		Binary:          l.cfg.GetAgentBinary(agentType),
 		Model:           l.cfg.GetAgentModel(agentType),
+		Reasoning:       l.cfg.GetAgentReasoning(agentType),
 		WorkDir:         l.workDir,
 		LastMessagePath: l.lastMessagePath(label),
 	}
@@ -620,6 +623,7 @@ func (l *Loop) runReview(ctx context.Context, iter int) error {
 	agentCfg := agents.Config{
 		Binary:          l.cfg.GetAgentBinary(reviewAgentType),
 		Model:           l.cfg.GetAgentModel(reviewAgentType),
+		Reasoning:       l.cfg.GetAgentReasoning(reviewAgentType),
 		WorkDir:         l.workDir,
 		LastMessagePath: l.lastMessagePath(label),
 	}

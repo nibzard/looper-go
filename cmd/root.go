@@ -1172,6 +1172,7 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	agentConfig := agents.Config{
 		Binary:          cfg.GetAgentBinary(agentName),
 		Model:           cfg.GetAgentModel(agentName),
+		Reasoning:       cfg.GetAgentReasoning(agentName),
 		WorkDir:         workDir,
 		Args:            nil,
 		LastMessagePath: runLogger.LastMessagePath(label),

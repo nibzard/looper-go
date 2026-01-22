@@ -474,6 +474,7 @@
         "architecture"
       ],
       "files": [
+        "README.md",
         "cmd/root.go",
         "internal/agents/agents.go",
         "internal/agents/doc.go",
@@ -481,15 +482,15 @@
         "internal/config/config_test.go",
         "internal/config/example.go",
         "internal/loop/loop_test.go",
-        "README.md"
+        "to-do.json"
       ],
-      "updated_at": "2026-01-22T13:28:43Z"
+      "updated_at": "2026-01-22T13:30:16Z"
     },
     {
       "id": "T032",
       "title": "Add codex reasoning (and extra args) to agent config",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "Shell looper supports CODEX_REASONING_EFFORT and passes -c model_reasoning_effort=... to codex; the Go config only supports binary/model. Add a codex reasoning field (and optionally generic args) in TOML/env/flags and pass it to the codex runner without impacting Claude.",
       "steps": [
         "Extend agent config with a reasoning/extra-args option for codex.",
@@ -506,7 +507,8 @@
         "cmd/root.go",
         "internal/config/example.go",
         "README.md"
-      ]
+      ],
+      "updated_at": "2026-01-22T13:35:15Z"
     },
     {
       "id": "T033",

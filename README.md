@@ -191,6 +191,7 @@ rr_agents = ["claude", "codex"]  # any registered agent types
 [agents.codex]
 binary = "codex"
 model = ""
+# reasoning = "medium"  # Optional: low, medium, or high reasoning effort
 
 [agents.claude]
 binary = "claude"
@@ -239,12 +240,13 @@ Looper reads the config file from the current working directory (not the todo fi
 - `LOOPER_PRINT_PROMPT` - Print rendered prompts (1/0, dev only)
 - `CODEX_BIN` / `CLAUDE_BIN` - Agent binary paths (on Windows, use `codex.exe` / `claude.exe`)
 - `CODEX_MODEL` / `CLAUDE_MODEL` - Model selection
+- `CODEX_REASONING` - Codex reasoning effort (e.g., "low", "medium", "high")
 
 ### CLI Flags
 
 Global flags (place before the subcommand):
 - `--todo`, `--schema`, `--log-dir`
-- `--codex-bin`, `--claude-bin`, `--codex-model`, `--claude-model`
+- `--codex-bin`, `--claude-bin`, `--codex-model`, `--claude-model`, `--codex-reasoning`
 
 Run flags (use with `run`):
 - `--max-iterations`, `--schedule`, `--odd-agent`, `--even-agent`, `--rr-agents`

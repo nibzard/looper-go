@@ -46,6 +46,7 @@ loop_delay_seconds = 0
 [agents.codex]
 binary = "codex"
 model = ""
+# reasoning = "medium"  # Optional: low, medium, or high reasoning effort
 
 [agents.claude]
 binary = "claude"

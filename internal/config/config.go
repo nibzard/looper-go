@@ -159,13 +159,21 @@ func decodeAgentConfig(raw map[string]interface{}) (Agent, error) {
 		}
 		agent.Model = model
 	}
+	if v, ok := raw["reasoning"]; ok {
+		reasoning, ok := v.(string)
+		if !ok {
+			return agent, fmt.Errorf("reasoning must be a string")
+		}
+		agent.Reasoning = reasoning
+	}
 	return agent, nil
 }
 
 // Agent holds configuration for a single agent type.
 type Agent struct {
-	Binary string `toml:"binary"`
-	Model  string `toml:"model"`
+	Binary    string `toml:"binary"`
+	Model     string `toml:"model"`
+	Reasoning string `toml:"reasoning"` // Reasoning effort for codex (e.g., "low", "medium", "high")
 	// Additional flags can be added here as needed
 }
 
@@ -390,6 +398,11 @@ func loadFromEnv(cfg *Config) {
 		agent.Model = v
 		cfg.Agents.SetAgent("claude", agent)
 	}
+	if v := os.Getenv("CODEX_REASONING"); v != "" {
+		agent := cfg.Agents.GetAgent("codex")
+		agent.Reasoning = v
+		cfg.Agents.SetAgent("codex", agent)
+	}
 }
 
 // boolFromString parses a boolean from a string.
@@ -493,10 +506,12 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	claudeBinary := cfg.GetAgentBinary("claude")
 	codexModel := cfg.GetAgentModel("codex")
 	claudeModel := cfg.GetAgentModel("claude")
+	codexReasoning := cfg.GetAgentReasoning("codex")
 	fs.StringVar(&codexBinary, "codex-bin", codexBinary, "Codex binary")
 	fs.StringVar(&claudeBinary, "claude-bin", claudeBinary, "Claude binary")
 	fs.StringVar(&codexModel, "codex-model", codexModel, "Codex model")
 	fs.StringVar(&claudeModel, "claude-model", claudeModel, "Claude model")
+	fs.StringVar(&codexReasoning, "codex-reasoning", codexReasoning, "Codex reasoning effort (e.g., low, medium, high)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -504,7 +519,7 @@ func parseFlags(cfg *Config, fs *flag.FlagSet, args []string) error {
 	if rrAgentsStr != "" {
 		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
 	}
-	cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel})
+	cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning})
 	cfg.Agents.SetAgent("claude", Agent{Binary: claudeBinary, Model: claudeModel})
 	return nil
 }
@@ -624,6 +639,16 @@ func (c *Config) GetAgentModel(agentType string) string {
 		return ""
 	}
 	return c.Agents.GetAgent(agentType).Model
+}
+
+// GetAgentReasoning returns the reasoning effort for the given agent type.
+// It checks both custom agents and built-in agents.
+func (c *Config) GetAgentReasoning(agentType string) string {
+	agentType = normalizeAgent(agentType)
+	if agentType == "" {
+		return ""
+	}
+	return c.Agents.GetAgent(agentType).Reasoning
 }
 
 // devModeEnabled returns true if dev mode is enabled via LOOPER_PROMPT_MODE=dev.
