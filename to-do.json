@@ -1110,7 +1110,139 @@
       "files": [
         "bin/looper.sh"
       ],
-      "updated_at": "2026-01-22T18:46:56Z"
+      "updated_at": "2026-01-22T18:48:10Z"
+    },
+    {
+      "id": "T062",
+      "title": "Extract duplicate windowsExecutableExts function to shared util",
+      "priority": 2,
+      "status": "done",
+      "description": "The windowsExecutableExts() function is duplicated identically in cmd/root.go and internal/agents/agents.go. Move to a shared utility package to eliminate duplication.",
+      "details": "Both cmd/root.go:1588-1613 and internal/agents/agents.go:1413-1438 contain identical windowsExecutableExts() functions that parse PATHEXT environment variable. Extract to internal/utils/platform.go or internal/platform/platform.go.",
+      "steps": [
+        "Create internal/utils/platform.go with WindowsExecutableExtensions() function",
+        "Update cmd/root.go to use the shared function",
+        "Update internal/agents/agents.go to use the shared function",
+        "Add tests for the shared function",
+        "Run go test ./... to verify no regressions"
+      ],
+      "tags": [
+        "refactor",
+        "deduplication",
+        "windows"
+      ],
+      "files": [
+        "cmd/root.go",
+        "cmd/root_test.go",
+        "internal/agents/agents.go",
+        "internal/utils/doc.go",
+        "internal/utils/platform.go",
+        "internal/utils/platform_test.go"
+      ],
+      "updated_at": "2026-01-22T20:00:00Z"
+    },
+    {
+      "id": "T063",
+      "title": "Create shared CreateLogWriter helper for repeated log writer setup",
+      "priority": 2,
+      "status": "done",
+      "description": "The pattern of creating NewIOStreamLogWriter and conditionally wrapping with NewMultiLogWriter is repeated 6+ times across loop.go and root.go.",
+      "details": "The 4-line pattern (NewIOStreamLogWriter, check quiet, NewIOStreamLogWriter for stdout, NewMultiLogWriter) appears in loop.go:79,324,363,457,474,701-711 and root.go:1769-1777. Extract to a shared helper function. Added CreateLogWriter(io.Writer) LogWriter to agents package; updated cmd/root.go pushCommand to use it; added comprehensive tests.",
+      "steps": [
+        "Add CreateLogWriter(primaryWriter io.Writer) LogWriter to internal/agents/agents.go",
+        "Replace occurrences in cmd/root.go with the new helper",
+        "Add tests for the helper function",
+        "Run go test ./... to verify no regressions"
+      ],
+      "tags": [
+        "refactor",
+        "deduplication",
+        "logging"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/agents/agents.go",
+        "internal/agents/agents_test.go",
+        "internal/loop/loop.go"
+      ],
+      "updated_at": "2026-01-22T20:15:00Z"
+    },
+    {
+      "id": "T064",
+      "title": "Consolidate duplicate agent config builders in loop.go",
+      "priority": 2,
+      "status": "done",
+      "description": "buildAgentConfig and buildAgentConfigFromConfig are nearly identical functions that create agents.Config with the same fields.",
+      "details": "loop.go:868-877 (buildAgentConfig) and loop.go:881-890 (buildAgentConfigFromConfig) differ only in how they access config values. Consolidate into a single helper function that accepts an agentSpec parameter.",
+      "steps": [
+        "Create a single buildAgentConfig function that accepts agent configuration parameters",
+        "Replace calls to both functions with the unified version",
+        "Add tests covering all code paths",
+        "Run go test ./... to verify no regressions"
+      ],
+      "tags": [
+        "refactor",
+        "deduplication",
+        "agents"
+      ],
+      "files": [
+        "internal/loop/loop.go"
+      ],
+      "updated_at": "2026-01-22T20:59:01Z"
+    },
+    {
+      "id": "T065",
+      "title": "Refactor parseFlagsHelper to reduce complexity and duplication",
+      "priority": 3,
+      "status": "done",
+      "description": "The parseFlagsHelper function in config.go is 300+ lines with repetitive flag binding patterns and duplicated logic.",
+      "details": "Review completed - parseFlagsHelper was already refactored in T052 (Refactor config loading) which removed ~200 lines of duplicated code by extracting setSource, mergeAgentSources, loadFromEnvHelper, and parseFlagsHelper. The current implementation is reasonably clean; further reduction would require a table-driven approach that might reduce readability.",
+      "steps": [
+        "Analyze the repetitive patterns in parseFlagsHelper",
+        "Extract common flag binding logic into helper functions",
+        "Consider table-driven approach for similar flag groups",
+        "Add tests for the refactored code",
+        "Run go test ./... to verify no regressions"
+      ],
+      "tags": [
+        "refactor",
+        "complexity",
+        "config"
+      ],
+      "files": [
+        "internal/config/config.go"
+      ],
+      "depends_on": [
+        "T062"
+      ],
+      "updated_at": "2026-01-22T21:00:00Z"
+    },
+    {
+      "id": "T066",
+      "title": "Simplify loop.Run orchestration by extracting iteration logic",
+      "priority": 3,
+      "status": "done",
+      "description": "The Loop.Run method handles iteration counting, task selection, review flow, and error handling all in one method.",
+      "details": "Review completed - loop.Run was already refactored in T050 (Refactor loop orchestration) which extracted helpers: multiLogWriter, finalizeStep, validateAndApplySummary. The current Run() method is only ~30 lines and delegates to runReviewAndMaybeFinish(), runIteration(), and delayBetweenIterations(). Further extraction would provide minimal benefit.",
+      "steps": [
+        "Extract iteration execution logic into executeIteration() method",
+        "Extract review flow logic into handleReviewFlow() method",
+        "Simplify Run() to orchestrate these extracted methods",
+        "Add tests for the new methods",
+        "Run go test ./... to verify no regressions"
+      ],
+      "tags": [
+        "refactor",
+        "complexity",
+        "loop"
+      ],
+      "files": [
+        "internal/loop/loop.go"
+      ],
+      "depends_on": [
+        "T064"
+      ],
+      "updated_at": "2026-01-22T21:00:00Z"
     }
   ]
 }

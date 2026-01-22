@@ -699,16 +699,16 @@ func reviewLabel(iter int) string {
 
 // multiLogWriter returns a log writer that writes to both the log file and stdout.
 func (l *Loop) multiLogWriter() agents.LogWriter {
-	logWriter := l.logWriter
-	if logWriter == nil {
-		logWriter = agents.NullLogWriter{}
+	w := l.logWriter
+	if w == nil {
+		w = agents.NullLogWriter{}
 	}
 	if os.Getenv("LOOPER_QUIET") != "" {
-		return logWriter
+		return w
 	}
 	stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
 	stdoutWriter.SetIndent("  ")
-	return agents.NewMultiLogWriter(logWriter, stdoutWriter)
+	return agents.NewMultiLogWriter(w, stdoutWriter)
 }
 
 // renderIterationPrompt renders the iteration prompt for a task.
@@ -760,9 +760,9 @@ func (l *Loop) printPromptIfDevMode(iter int, label string, prompt string) {
 
 // runAgent runs an agent with the given parameters.
 func (l *Loop) runAgent(ctx context.Context, agentType, prompt, label string, logWriter agents.LogWriter) (*agents.Summary, error) {
-	cfg := l.buildAgentConfig(agentType)
-	cfg.LastMessagePath = l.lastMessagePath(label)
-	agent, err := agents.NewAgent(agents.AgentType(agentType), cfg)
+	agentCfg := buildAgentConfigFromConfig(l.cfg, agentType, l.workDir)
+	agentCfg.LastMessagePath = l.lastMessagePath(label)
+	agent, err := agents.NewAgent(agents.AgentType(agentType), agentCfg)
 	if err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
@@ -864,20 +864,8 @@ func (l *Loop) markTaskBlocked(taskID string) error {
 	return nil
 }
 
-// buildAgentConfig creates an agent configuration for the given agent type.
-func (l *Loop) buildAgentConfig(agentType string) agents.Config {
-	return agents.Config{
-		Binary:          l.cfg.GetAgentBinary(agentType),
-		Model:           l.cfg.GetAgentModel(agentType),
-		Reasoning:       l.cfg.GetAgentReasoning(agentType),
-		Args:            l.cfg.GetAgentArgs(agentType),
-		WorkDir:         l.workDir,
-		LastMessagePath: "", // Set by caller when needed
-	}
-}
-
 // buildAgentConfigFromConfig creates an agent configuration from a config object.
-// This is a standalone helper used by bootstrap and repair flows.
+// Used by runAgent, bootstrap, and repair flows.
 func buildAgentConfigFromConfig(cfg *config.Config, agentType, workDir string) agents.Config {
 	return agents.Config{
 		Binary:          cfg.GetAgentBinary(agentType),
@@ -885,7 +873,7 @@ func buildAgentConfigFromConfig(cfg *config.Config, agentType, workDir string) a
 		Reasoning:       cfg.GetAgentReasoning(agentType),
 		Args:            cfg.GetAgentArgs(agentType),
 		WorkDir:         workDir,
-		LastMessagePath: "", // Not used in bootstrap/repair flows
+		LastMessagePath: "", // Set by caller when needed
 	}
 }
 
