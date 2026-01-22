@@ -878,3 +878,85 @@ func TestFindAgentBinaryWithCustomType(t *testing.T) {
 		}
 	})
 }
+
+// TestStreamStderr tests the shared streamStderr helper.
+func TestStreamStderr(t *testing.T) {
+	tests := []struct {
+		name       string
+		stderr     string
+		wantEvents int
+	}{
+		{
+			name:       "single error line",
+			stderr:     "error: something went wrong",
+			wantEvents: 1,
+		},
+		{
+			name:       "multiple error lines",
+			stderr:     "error: line 1\nerror: line 2\nerror: line 3",
+			wantEvents: 3,
+		},
+		{
+			name:       "blank lines are ignored",
+			stderr:     "error: line 1\n  \nerror: line 2",
+			wantEvents: 2,
+		},
+		{
+			name:       "empty input",
+			stderr:     "",
+			wantEvents: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			var buf bytes.Buffer
+			logWriter := NewIOStreamLogWriter(&buf)
+			errs := make(chan error, 10)
+
+			go streamStderr(ctx, strings.NewReader(tt.stderr), logWriter, errs)
+			time.Sleep(10 * time.Millisecond) // Give goroutine time to finish
+
+			// Count logged events
+			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+			eventCount := 0
+			for _, line := range lines {
+				if line == "" {
+					continue
+				}
+				var event LogEvent
+				if err := json.Unmarshal([]byte(line), &event); err == nil && event.Type == "error" {
+					eventCount++
+				}
+			}
+
+			if eventCount != tt.wantEvents {
+				t.Errorf("got %d error events, want %d", eventCount, tt.wantEvents)
+			}
+		})
+	}
+}
+
+// TestNewScanner tests the newScanner helper.
+func TestNewScanner(t *testing.T) {
+	input := "line1\nline2\nline3\n"
+	scanner := newScanner(strings.NewReader(input))
+
+	lines := []string{}
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scanner error: %v", err)
+	}
+
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3", len(lines))
+	}
+
+	if lines[0] != "line1" || lines[1] != "line2" || lines[2] != "line3" {
+		t.Errorf("unexpected lines: %v", lines)
+	}
+}

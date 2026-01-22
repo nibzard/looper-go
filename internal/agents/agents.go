@@ -67,6 +67,7 @@ func RegisteredAgentTypes() []string {
 }
 
 const maxScanTokenSize = 1024 * 1024
+const scanBufferSize = 64 * 1024
 
 // Summary is the expected output from an agent run.
 type Summary struct {
@@ -580,9 +581,42 @@ type agentSpec struct {
 
 // agentStreamResult holds streaming outputs.
 type agentStreamResult struct {
-	summaries     <-chan *Summary
-	errs          <-chan error
-	lastMessage   <-chan string
+	summaries   <-chan *Summary
+	errs        <-chan error
+	lastMessage <-chan string
+}
+
+// streamStderr streams stderr lines to the log writer as error events.
+// This is shared between codex and Claude agents.
+func streamStderr(ctx context.Context, stderr io.Reader, logWriter LogWriter, errs chan<- error) {
+	scanner := bufio.NewScanner(stderr)
+	scanner.Buffer(make([]byte, 0, scanBufferSize), maxScanTokenSize)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return
+		}
+		line := scanner.Text()
+		if strings.TrimSpace(line) != "" {
+			_ = logWriter.Write(LogEvent{
+				Type:      "error",
+				Timestamp: time.Now().UTC(),
+				Content:   line,
+			})
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		select {
+		case errs <- fmt.Errorf("stderr scanner error: %w", err):
+		default:
+		}
+	}
+}
+
+// newScanner creates a buffered scanner with consistent settings.
+func newScanner(r io.Reader) *bufio.Scanner {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, scanBufferSize), maxScanTokenSize)
+	return scanner
 }
 
 // codexAgent implements Agent for Codex.
@@ -655,8 +689,7 @@ func (a *codexAgent) streamOutput(
 	// Stream stdout (JSON lines)
 	go func() {
 		defer wg.Done()
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
+		scanner := newScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if err := a.processLine(ctx, line, logWriter, summaries); err != nil {
@@ -677,24 +710,7 @@ func (a *codexAgent) streamOutput(
 	// Stream stderr (plain text errors)
 	go func() {
 		defer wg.Done()
-		scanner := bufio.NewScanner(stderr)
-		scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.TrimSpace(line) != "" {
-				_ = logWriter.Write(LogEvent{
-					Type:      "error",
-					Timestamp: time.Now().UTC(),
-					Content:   line,
-				})
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			select {
-			case errs <- fmt.Errorf("stderr scanner error: %w", err):
-			default:
-			}
-		}
+		streamStderr(ctx, stderr, logWriter, errs)
 	}()
 
 	go func() {
@@ -841,24 +857,7 @@ func (a *claudeAgent) streamOutput(
 	// Stream stderr (plain text errors)
 	go func() {
 		defer wg.Done()
-		scanner := bufio.NewScanner(stderr)
-		scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.TrimSpace(line) != "" {
-				_ = logWriter.Write(LogEvent{
-					Type:      "error",
-					Timestamp: time.Now().UTC(),
-					Content:   line,
-				})
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			select {
-			case errs <- fmt.Errorf("stderr scanner error: %w", err):
-			default:
-			}
-		}
+		streamStderr(ctx, stderr, logWriter, errs)
 	}()
 
 	go func() {
