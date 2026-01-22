@@ -794,7 +794,7 @@
       "id": "T047",
       "title": "Enforce depends_on ordering with cycle detection",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "details": "Prevent selection of tasks whose dependencies are incomplete; detect cycles and surface clear, actionable errors.",
       "steps": [
         "Add dependency validation with cycle detection and missing-task checks.",
@@ -810,7 +810,8 @@
         "internal/todo/types.go",
         "internal/todo/types_test.go",
         "internal/loop/loop.go"
-      ]
+      ],
+      "updated_at": "2026-01-22T12:30:13Z"
     },
     {
       "id": "T048",
