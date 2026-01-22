@@ -801,13 +801,13 @@
       "depends_on": [
         "T039"
       ],
-      "updated_at": "2026-01-22T16:22:10Z"
+      "updated_at": "2026-01-22T16:22:42Z"
     },
     {
       "id": "T051",
       "title": "Refactor agent runners for simplicity and elegance",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "Simplify agent execution paths and reduce complexity while preserving behavior and log output.",
       "steps": [
         "Identify duplicated logic between Codex and Claude runners.",
@@ -820,12 +820,12 @@
         "agents"
       ],
       "files": [
-        "internal/agents/agents.go",
-        "internal/agents/agents_test.go"
+        "internal/agents/agents.go"
       ],
       "depends_on": [
         "T039"
-      ]
+      ],
+      "updated_at": "2026-01-22T16:25:01Z"
     },
     {
       "id": "T052",
