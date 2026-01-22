@@ -1173,7 +1173,7 @@
       "priority": 2,
       "status": "done",
       "description": "buildAgentConfig and buildAgentConfigFromConfig are nearly identical functions that create agents.Config with the same fields.",
-      "details": "loop.go:868-877 (buildAgentConfig) and loop.go:881-890 (buildAgentConfigFromConfig) differ only in how they access config values. Consolidate into a single helper function that accepts an agentSpec parameter.",
+      "details": "Already completed in commit 7c6dc61. The Loop.buildAgentConfig() method was removed and runAgent() now uses the standalone buildAgentConfigFromConfig() function. No additional commit needed - refactor already present in HEAD.",
       "steps": [
         "Create a single buildAgentConfig function that accepts agent configuration parameters",
         "Replace calls to both functions with the unified version",
@@ -1188,7 +1188,7 @@
       "files": [
         "internal/loop/loop.go"
       ],
-      "updated_at": "2026-01-22T20:59:01Z"
+      "updated_at": "2026-01-22T21:00:59Z"
     },
     {
       "id": "T065",

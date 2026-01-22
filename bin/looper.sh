@@ -817,6 +817,8 @@ write_schema_if_missing() {
         "properties": {
           "id": { "type": "string" },
           "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "reference": { "type": "string" },
           "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
           "status": { "type": "string", "enum": ["todo", "doing", "blocked", "done"] },
           "details": { "type": "string" },
@@ -1651,6 +1653,7 @@ Fix "$TODO_FILE" to match the schema in "$SCHEMA_FILE".
 Rules:
 - Preserve existing tasks and their intent.
 - Ensure source_files exists; if missing, add relevant source docs (PROJECT.md, PROJECT_SPEC.md, SPECS.md, SPECIFICATION.md, README.md, DESIGN.md, IDEA.md). Use relative paths and [] if none.
+- Ensure tasks have description and reference fields where appropriate.
 - Do not change code or other files.
 - Use jq if helpful.
 - Keep JSON formatted with 2-space indentation.
@@ -1694,6 +1697,10 @@ Rules:
 - Add as many actionable tasks that are needed to fully implement the project.
 - Assign each task priority (1 is highest).
 - Set all task statuses to "todo".
+- For each task, populate:
+  - title: concise, actionable summary
+  - description: detailed explanation of what the task involves
+  - reference: relevant file paths, URLs, or documentation links
 - Do not modify code or other files.
 - Use jq if helpful.
 - Do not ask for confirmation.

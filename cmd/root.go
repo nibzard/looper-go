@@ -25,6 +25,7 @@ import (
 	"github.com/nibzard/looper-go/internal/prompts"
 	"github.com/nibzard/looper-go/internal/todo"
 	"github.com/nibzard/looper-go/internal/ui"
+	"github.com/nibzard/looper-go/internal/utils"
 )
 
 // Version is set via ldflags at build time.
@@ -1586,30 +1587,7 @@ func isExecutablePath(path string, info os.FileInfo) bool {
 }
 
 func isWindowsExecutable(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	if ext == "" {
-		return false
-	}
-	return windowsExecutableExts()[ext]
-}
-
-func windowsExecutableExts() map[string]bool {
-	exts := map[string]bool{}
-	pathext := os.Getenv("PATHEXT")
-	if pathext == "" {
-		pathext = ".COM;.EXE;.BAT;.CMD"
-	}
-	for _, ext := range strings.Split(pathext, ";") {
-		ext = strings.TrimSpace(ext)
-		if ext == "" {
-			continue
-		}
-		if !strings.HasPrefix(ext, ".") {
-			ext = "." + ext
-		}
-		exts[strings.ToLower(ext)] = true
-	}
-	return exts
+	return utils.IsWindowsExecutable(path)
 }
 
 func resolvePromptDir(cfg *config.Config) string {
@@ -1766,16 +1744,9 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		return fmt.Errorf("creating run logger: %w", err)
 	}
 	defer runLogger.Close()
-	logWriter := agents.NewIOStreamLogWriter(runLogger.Writer())
 	label := "push"
 
-	// Also output to stdout unless LOOPER_QUIET is set
-	var multiLogWriter agents.LogWriter = logWriter
-	if os.Getenv("LOOPER_QUIET") == "" {
-		stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
-		stdoutWriter.SetIndent("  ")
-		multiLogWriter = agents.NewMultiLogWriter(logWriter, stdoutWriter)
-	}
+	logWriter := agents.CreateLogWriter(runLogger.Writer())
 
 	// Set up agent
 	agentName := normalizeAgent(*agentFlag)
@@ -1812,7 +1783,7 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	fmt.Println("\n=== Running Release Workflow ===")
 
 	// Run the agent
-	summary, err := agent.Run(ctx, prompt, multiLogWriter)
+	summary, err := agent.Run(ctx, prompt, logWriter)
 	if err != nil && !errors.Is(err, agents.ErrSummaryMissing) {
 		return fmt.Errorf("running agent: %w", err)
 	}

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/nibzard/looper-go/internal/utils"
 )
 
 // AgentType represents the type of agent.
@@ -1411,28 +1412,18 @@ func ValidateBinary(path string) error {
 }
 
 func isWindowsExecutable(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	if ext == "" {
-		return false
-	}
-	return windowsExecutableExts()[ext]
+	return utils.IsWindowsExecutable(path)
 }
 
-func windowsExecutableExts() map[string]bool {
-	exts := map[string]bool{}
-	pathext := os.Getenv("PATHEXT")
-	if pathext == "" {
-		pathext = ".COM;.EXE;.BAT;.CMD"
+// CreateLogWriter creates a log writer from the given writer. If LOOPER_QUIET
+// is not set, it also creates a stdout writer and returns a MultiLogWriter
+// that writes to both the primary writer and stdout with indentation.
+func CreateLogWriter(writer io.Writer) LogWriter {
+	logWriter := NewIOStreamLogWriter(writer)
+	if os.Getenv("LOOPER_QUIET") != "" {
+		return logWriter
 	}
-	for _, ext := range strings.Split(pathext, ";") {
-		ext = strings.TrimSpace(ext)
-		if ext == "" {
-			continue
-		}
-		if !strings.HasPrefix(ext, ".") {
-			ext = "." + ext
-		}
-		exts[strings.ToLower(ext)] = true
-	}
-	return exts
+	stdoutWriter := NewIOStreamLogWriter(os.Stdout)
+	stdoutWriter.SetIndent("  ")
+	return NewMultiLogWriter(logWriter, stdoutWriter)
 }

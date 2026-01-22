@@ -16,6 +16,7 @@ import (
 	"github.com/nibzard/looper-go/internal/logging"
 	"github.com/nibzard/looper-go/internal/prompts"
 	"github.com/nibzard/looper-go/internal/todo"
+	"github.com/nibzard/looper-go/internal/utils"
 )
 
 // TestRun tests the main Run function.
@@ -470,13 +471,13 @@ func TestIsWindowsExecutable(t *testing.T) {
 	}
 }
 
-// TestWindowsExecutableExts tests the windowsExecutableExts helper.
+// TestWindowsExecutableExts tests the WindowsExecutableExtensions helper.
 func TestWindowsExecutableExts(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("skipping Windows-specific test on non-Windows platform")
 	}
 
-	exts := windowsExecutableExts()
+	exts := utils.WindowsExecutableExtensions()
 	if len(exts) == 0 {
 		t.Error("expected non-empty extensions map")
 	}

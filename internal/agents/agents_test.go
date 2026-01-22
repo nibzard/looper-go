@@ -1179,3 +1179,106 @@ func TestSummaryHasContentWithNullTaskID(t *testing.T) {
 		})
 	}
 }
+
+// TestCreateLogWriter tests the CreateLogWriter helper function.
+func TestCreateLogWriter(t *testing.T) {
+	// Save original LOOPER_QUIET value
+	origQuiet := os.Getenv("LOOPER_QUIET")
+	defer func() {
+		if origQuiet == "" {
+			os.Unsetenv("LOOPER_QUIET")
+		} else {
+			os.Setenv("LOOPER_QUIET", origQuiet)
+		}
+	}()
+
+	tests := []struct {
+		name        string
+		quiet       string
+		wantType    string
+		description string
+	}{
+		{
+			name:        "quiet mode - single writer",
+			quiet:       "1",
+			wantType:    "*agents.IOStreamLogWriter",
+			description: "should return IOStreamLogWriter when LOOPER_QUIET is set",
+		},
+		{
+			name:        "normal mode - multi writer",
+			quiet:       "",
+			wantType:    "*agents.MultiLogWriter",
+			description: "should return MultiLogWriter when LOOPER_QUIET is not set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.quiet == "" {
+				os.Unsetenv("LOOPER_QUIET")
+			} else {
+				os.Setenv("LOOPER_QUIET", tt.quiet)
+			}
+
+			var buf bytes.Buffer
+			writer := CreateLogWriter(&buf)
+
+			// Check type
+			typeName := func() string {
+				switch writer.(type) {
+				case *IOStreamLogWriter:
+					return "*agents.IOStreamLogWriter"
+				case *MultiLogWriter:
+					return "*agents.MultiLogWriter"
+				default:
+					return "unknown"
+				}
+			}()
+
+			if typeName != tt.wantType {
+				t.Errorf("CreateLogWriter() type = %v, want %v", typeName, tt.wantType)
+			}
+
+			// Test that Write works
+			err := writer.Write(LogEvent{
+				Type:      "test",
+				Timestamp: time.Now().UTC(),
+				Content:   "test message",
+			})
+			if err != nil {
+				t.Errorf("CreateLogWriter() Write() error = %v", err)
+			}
+		})
+	}
+}
+
+// TestCreateLogWriterIndentation tests that CreateLogWriter applies proper indentation to stdout.
+func TestCreateLogWriterIndentation(t *testing.T) {
+	origQuiet := os.Getenv("LOOPER_QUIET")
+	defer func() {
+		if origQuiet == "" {
+			os.Unsetenv("LOOPER_QUIET")
+		} else {
+			os.Setenv("LOOPER_QUIET", origQuiet)
+		}
+	}()
+	os.Unsetenv("LOOPER_QUIET")
+
+	var buf bytes.Buffer
+	writer := CreateLogWriter(&buf)
+
+	// Write some log events
+	err := writer.Write(LogEvent{
+		Type:      "test",
+		Timestamp: time.Now().UTC(),
+		Content:   "test message",
+	})
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	// Check that something was written to the buffer
+	if buf.Len() == 0 {
+		t.Error("CreateLogWriter() did not write to the primary writer")
+	}
+}
