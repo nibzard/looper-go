@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -508,9 +509,14 @@ func TestClaudeProcessStreamJSONSummaryFromDelta(t *testing.T) {
 	}, "\n")
 
 	summaries := make(chan *Summary, 1)
-	err := agent.processStreamJSON(context.Background(), strings.NewReader(stream), NullLogWriter{}, summaries)
+	lastMsg, err := agent.processStreamJSON(context.Background(), strings.NewReader(stream), NullLogWriter{}, summaries)
 	if err != nil {
 		t.Fatalf("processStreamJSON() error = %v", err)
+	}
+
+	// Verify we got a last message (the accumulated text)
+	if lastMsg == "" {
+		t.Error("processStreamJSON() returned empty last message")
 	}
 
 	select {

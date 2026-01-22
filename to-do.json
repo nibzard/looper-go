@@ -330,7 +330,7 @@
         "internal/loop/loop.go",
         "internal/loop/loop_test.go"
       ],
-      "updated_at": "2026-01-21T13:27:12Z"
+      "updated_at": "2026-01-21T13:30:18Z"
     },
     {
       "id": "T026",
@@ -569,6 +569,388 @@
         "to-do.json"
       ],
       "updated_at": "2026-01-21T13:02:37Z"
+    },
+    {
+      "id": "T036",
+      "title": "Update Claude stream JSON test for new return signature",
+      "priority": 1,
+      "status": "done",
+      "details": "processStreamJSON now returns (lastMessage, error); adjust TestClaudeProcessStreamJSONSummaryFromDelta to capture or ignore the last message while keeping summary assertions.",
+      "tags": [
+        "tests",
+        "agents"
+      ],
+      "files": [
+        "internal/agents/agents_test.go"
+      ],
+      "updated_at": "2026-01-22T12:19:10ZZ"
+    },
+    {
+      "id": "T037",
+      "title": "Import errors package for SummaryValidationError test",
+      "priority": 1,
+      "status": "todo",
+      "details": "agents_test.go uses errors.As in summary validation tests without importing errors; add the missing import to fix compilation.",
+      "tags": [
+        "tests",
+        "agents"
+      ],
+      "files": [
+        "internal/agents/agents_test.go"
+      ]
+    },
+    {
+      "id": "T038",
+      "title": "Restore trailing newline in to-do.json",
+      "priority": 4,
+      "status": "done",
+      "details": "Ensure the task file ends with a newline to avoid diff noise and editor warnings.",
+      "tags": [
+        "maintenance"
+      ],
+      "files": [
+        "to-do.json"
+      ],
+      "updated_at": "2026-01-22T12:02:51Z"
+    },
+    {
+      "id": "T039",
+      "title": "Review code elegance and maintainability",
+      "priority": 3,
+      "status": "todo",
+      "details": "Assess package boundaries, naming consistency, duplication, and overall readability; capture refactor candidates with minimal behavior changes.",
+      "steps": [
+        "Scan core packages for large functions and overlapping responsibilities.",
+        "Identify refactor opportunities that simplify control flow or reduce coupling."
+      ],
+      "tags": [
+        "review",
+        "architecture",
+        "elegance"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/agents/agents.go",
+        "internal/loop/loop.go",
+        "internal/config/config.go"
+      ]
+    },
+    {
+      "id": "T040",
+      "title": "Profile performance and add benchmarks",
+      "priority": 3,
+      "status": "todo",
+      "details": "Identify CPU and allocation hotspots; add focused benchmarks for hot paths (prompt rendering, task selection, summary apply).",
+      "steps": [
+        "Add targeted benchmarks for hot paths and run `go test -bench ./...`.",
+        "Capture hotspots with pprof and summarize top offenders."
+      ],
+      "tags": [
+        "performance",
+        "benchmarking"
+      ],
+      "files": [
+        "internal/prompts/prompts.go",
+        "internal/todo/types.go",
+        "internal/loop/loop.go"
+      ]
+    },
+    {
+      "id": "T041",
+      "title": "Review optimization opportunities in logging and streaming",
+      "priority": 3,
+      "status": "todo",
+      "details": "Inspect JSONL logging and stream decoding for unnecessary allocations, sync overhead, or excessive flushing; propose low-risk optimizations.",
+      "steps": [
+        "Audit JSON encoding/decoding and buffer reuse in streaming paths.",
+        "Review log write paths for buffering and file handle reuse."
+      ],
+      "tags": [
+        "optimization",
+        "logging",
+        "performance"
+      ],
+      "files": [
+        "internal/agents/agents.go",
+        "internal/logging/logging.go"
+      ]
+    },
+    {
+      "id": "T042",
+      "title": "Review error handling and resilience",
+      "priority": 3,
+      "status": "todo",
+      "details": "Audit failure paths for missing binaries, invalid config, filesystem permissions, and context cancellation; ensure user-facing errors are actionable.",
+      "steps": [
+        "Map error paths for CLI commands and loop orchestration.",
+        "Add or refine tests for edge cases and cancellation behavior."
+      ],
+      "tags": [
+        "review",
+        "resilience",
+        "errors"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/agents/agents.go",
+        "internal/config/config.go",
+        "internal/loop/loop.go"
+      ]
+    },
+    {
+      "id": "T043",
+      "title": "Evaluate testing gaps and expand coverage",
+      "priority": 3,
+      "status": "todo",
+      "details": "Review existing tests for missing scenarios; add unit/integration tests for CLI commands, config discovery, and hooks.",
+      "steps": [
+        "Audit test coverage for CLI commands and configuration edge cases.",
+        "Add integration tests for hooks, logging, and summary application."
+      ],
+      "tags": [
+        "tests",
+        "coverage",
+        "review"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/config/config_test.go",
+        "internal/hooks/hooks.go",
+        "internal/logging/logging.go"
+      ]
+    },
+    {
+      "id": "T044",
+      "title": "Security and dependency review",
+      "priority": 3,
+      "status": "todo",
+      "details": "Review command execution surfaces (hooks, agents, git) for injection risks; run dependency checks and document any findings.",
+      "steps": [
+        "Inspect command construction and environment handling for unsafe inputs.",
+        "Run `govulncheck` and summarize any reported vulnerabilities."
+      ],
+      "tags": [
+        "security",
+        "review",
+        "dependencies"
+      ],
+      "files": [
+        "internal/agents/agents.go",
+        "internal/hooks/hooks.go",
+        "cmd/root.go",
+        "go.mod",
+        "go.sum"
+      ]
+    },
+    {
+      "id": "T045",
+      "title": "Add `looper init` to scaffold project files",
+      "priority": 3,
+      "status": "todo",
+      "details": "Create a command that bootstraps `to-do.json`, `to-do.schema.json`, and a starter `looper.toml`, with safe defaults and optional --force behavior.",
+      "steps": [
+        "Implement an init subcommand that writes starter files when missing.",
+        "Add overwrite safeguards and clear messaging for existing files.",
+        "Update README with usage and examples."
+      ],
+      "tags": [
+        "cli",
+        "bootstrap",
+        "ux"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/todo/types.go",
+        "to-do.schema.json",
+        "README.md"
+      ]
+    },
+    {
+      "id": "T046",
+      "title": "Add `looper validate` and `looper fmt` for task files",
+      "priority": 3,
+      "status": "todo",
+      "details": "Provide commands to validate task files against the schema and to normalize formatting with stable ordering and 2-space indentation.",
+      "steps": [
+        "Add validate and fmt subcommands with helpful error output.",
+        "Reuse existing validation and stable JSON formatting logic.",
+        "Add tests and update README."
+      ],
+      "tags": [
+        "cli",
+        "validation",
+        "ux"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/todo/types.go",
+        "internal/todo/types_test.go",
+        "to-do.schema.json",
+        "README.md"
+      ]
+    },
+    {
+      "id": "T047",
+      "title": "Enforce depends_on ordering with cycle detection",
+      "priority": 2,
+      "status": "todo",
+      "details": "Prevent selection of tasks whose dependencies are incomplete; detect cycles and surface clear, actionable errors.",
+      "steps": [
+        "Add dependency validation with cycle detection and missing-task checks.",
+        "Update task selection to respect depends_on completion.",
+        "Add tests for dependency ordering and cycle errors."
+      ],
+      "tags": [
+        "todo",
+        "validation",
+        "selection"
+      ],
+      "files": [
+        "internal/todo/types.go",
+        "internal/todo/types_test.go",
+        "internal/loop/loop.go"
+      ]
+    },
+    {
+      "id": "T048",
+      "title": "Add `looper config` to show effective configuration",
+      "priority": 3,
+      "status": "todo",
+      "details": "Expose a command that prints the resolved configuration and the source of each value (defaults, config file, env, flags).",
+      "steps": [
+        "Add a config subcommand that prints effective values.",
+        "Track and display per-field source precedence.",
+        "Document usage in README."
+      ],
+      "tags": [
+        "cli",
+        "config",
+        "ux"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/config/config.go",
+        "README.md"
+      ]
+    },
+    {
+      "id": "T049",
+      "title": "Add log retention and cleanup command",
+      "priority": 4,
+      "status": "todo",
+      "details": "Provide a cleanup command to remove old log runs by age or count, with dry-run support and clear summaries.",
+      "steps": [
+        "Add a clean subcommand with filters (age, count) and dry-run.",
+        "Implement safe deletion with clear output and error handling.",
+        "Document usage in README."
+      ],
+      "tags": [
+        "cli",
+        "logging",
+        "maintenance"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/logging/logging.go",
+        "README.md"
+      ]
+    },
+    {
+      "id": "T050",
+      "title": "Refactor loop orchestration for simplicity and elegance",
+      "priority": 3,
+      "status": "todo",
+      "details": "Apply the most valuable refactors to simplify control flow and reduce cognitive load without changing behavior.",
+      "steps": [
+        "Identify the top complexity hotspots in loop orchestration.",
+        "Extract small helpers and reduce branching depth.",
+        "Ensure existing tests still pass and add regressions if needed."
+      ],
+      "tags": [
+        "refactor",
+        "elegance",
+        "architecture"
+      ],
+      "files": [
+        "internal/loop/loop.go",
+        "internal/loop/loop_test.go"
+      ],
+      "depends_on": [
+        "T039"
+      ]
+    },
+    {
+      "id": "T051",
+      "title": "Refactor agent runners for simplicity and elegance",
+      "priority": 3,
+      "status": "todo",
+      "details": "Simplify agent execution paths and reduce complexity while preserving behavior and log output.",
+      "steps": [
+        "Identify duplicated logic between Codex and Claude runners.",
+        "Extract shared helpers and clarify error handling.",
+        "Ensure tests still pass and add targeted regressions."
+      ],
+      "tags": [
+        "refactor",
+        "elegance",
+        "agents"
+      ],
+      "files": [
+        "internal/agents/agents.go",
+        "internal/agents/agents_test.go"
+      ],
+      "depends_on": [
+        "T039"
+      ]
+    },
+    {
+      "id": "T052",
+      "title": "Refactor config loading for simplicity and elegance",
+      "priority": 3,
+      "status": "todo",
+      "details": "Reduce complexity in configuration parsing/merging and make precedence clearer without changing external behavior.",
+      "steps": [
+        "Map current config merge logic and identify unnecessary branching.",
+        "Extract small helpers and document precedence rules in code.",
+        "Keep tests green; add edge-case coverage if needed."
+      ],
+      "tags": [
+        "refactor",
+        "elegance",
+        "config"
+      ],
+      "files": [
+        "internal/config/config.go",
+        "internal/config/config_test.go"
+      ],
+      "depends_on": [
+        "T039"
+      ]
+    },
+    {
+      "id": "T053",
+      "title": "Audit for bugs, placeholders, and mock implementations",
+      "priority": 2,
+      "status": "todo",
+      "details": "Search for TODO/FIXME markers, stubbed logic, and placeholder behavior; document findings and prioritize fixes.",
+      "steps": [
+        "Scan the codebase for TODO/FIXME/placeholder patterns and comments.",
+        "Review tests for skipped or mocked behavior that hides defects.",
+        "Capture a list of suspected bugs with reproduction notes."
+      ],
+      "tags": [
+        "review",
+        "bugs",
+        "quality"
+      ],
+      "files": [
+        "cmd/root.go",
+        "internal/agents/agents.go",
+        "internal/config/config.go",
+        "internal/loop/loop.go",
+        "internal/logging/logging.go",
+        "internal/hooks/hooks.go"
+      ]
     }
   ]
 }
