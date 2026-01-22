@@ -1060,7 +1060,7 @@
       "files": [
         ".gitignore"
       ],
-      "updated_at": "2026-01-22T18:43:15Z"
+      "updated_at": "2026-01-22T18:45:46Z"
     },
     {
       "id": "T059",
@@ -1100,7 +1100,7 @@
       "id": "T061",
       "title": "Sync legacy looper.sh schema/prompt with current to-do schema fields",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "details": "bin/looper.sh writes a schema that lacks description/reference and its bootstrap instructions omit those fields. Update the embedded schema and bootstrap prompt text to match to-do.schema.json/Go prompts, or clearly mark the shell script as deprecated.",
       "tags": [
         "shell",
@@ -1109,7 +1109,8 @@
       ],
       "files": [
         "bin/looper.sh"
-      ]
+      ],
+      "updated_at": "2026-01-22T18:46:56Z"
     }
   ]
 }
