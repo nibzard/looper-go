@@ -485,30 +485,57 @@ func loadConfigFileWithSources(cfg *Config, path string, sources map[string]Conf
 	for agentName, agent := range tempCfg.Agents {
 		switch normalizeAgent(agentName) {
 		case "codex":
-			if agent.Binary != "" && agent.Binary != DefaultAgentBinaries()["codex"] {
-				sources["codex_binary"] = source
+			if agent.Binary != "" {
+				if agent.Binary != DefaultAgentBinaries()["codex"] {
+					sources["codex_binary"] = source
+				}
+				cfg.Agents.SetAgent("codex", agent)
+			} else {
+				if cfg.Agents.GetAgent("codex").Binary == "" {
+					cfg.Agents.SetAgent("codex", Agent{Binary: DefaultAgentBinaries()["codex"]})
+				}
 			}
 			if agent.Model != "" {
 				sources["codex_model"] = source
+				codexAgent := cfg.Agents.GetAgent("codex")
+				codexAgent.Model = agent.Model
+				cfg.Agents.SetAgent("codex", codexAgent)
 			}
 			if agent.Reasoning != "" {
 				sources["codex_reasoning"] = source
+				codexAgent := cfg.Agents.GetAgent("codex")
+				codexAgent.Reasoning = agent.Reasoning
+				cfg.Agents.SetAgent("codex", codexAgent)
 			}
 			if len(agent.Args) > 0 {
 				sources["codex_args"] = source
+				codexAgent := cfg.Agents.GetAgent("codex")
+				codexAgent.Args = agent.Args
+				cfg.Agents.SetAgent("codex", codexAgent)
 			}
-			cfg.Agents.SetAgent("codex", agent)
 		case "claude":
-			if agent.Binary != "" && agent.Binary != DefaultAgentBinaries()["claude"] {
-				sources["claude_binary"] = source
+			if agent.Binary != "" {
+				if agent.Binary != DefaultAgentBinaries()["claude"] {
+					sources["claude_binary"] = source
+				}
+				cfg.Agents.SetAgent("claude", agent)
+			} else {
+				if cfg.Agents.GetAgent("claude").Binary == "" {
+					cfg.Agents.SetAgent("claude", Agent{Binary: DefaultAgentBinaries()["claude"]})
+				}
 			}
 			if agent.Model != "" {
 				sources["claude_model"] = source
+				claudeAgent := cfg.Agents.GetAgent("claude")
+				claudeAgent.Model = agent.Model
+				cfg.Agents.SetAgent("claude", claudeAgent)
 			}
 			if len(agent.Args) > 0 {
 				sources["claude_args"] = source
+				claudeAgent := cfg.Agents.GetAgent("claude")
+				claudeAgent.Args = agent.Args
+				cfg.Agents.SetAgent("claude", claudeAgent)
 			}
-			cfg.Agents.SetAgent("claude", agent)
 		}
 	}
 
@@ -842,31 +869,44 @@ func parseFlagsWithSources(cfg *Config, fs *flag.FlagSet, args []string, sources
 		cfg.LoopDelaySeconds = loopDelay
 		sources["loop_delay_seconds"] = SourceFlag
 	}
-	codexArgs := splitAndTrim(codexArgsStr, ",")
-	claudeArgs := splitAndTrim(claudeArgsStr, ",")
-	if flagSet["codex_binary"] {
-		sources["codex_binary"] = SourceFlag
+
+	// Handle agent flags - only update values when explicitly set
+	if flagSet["codex_binary"] || flagSet["codex_model"] || flagSet["codex_reasoning"] || flagSet["codex_args"] {
+		codexAgent := cfg.Agents.GetAgent("codex")
+		if flagSet["codex_binary"] {
+			codexAgent.Binary = codexBinary
+			sources["codex_binary"] = SourceFlag
+		}
+		if flagSet["codex_model"] {
+			codexAgent.Model = codexModel
+			sources["codex_model"] = SourceFlag
+		}
+		if flagSet["codex_reasoning"] {
+			codexAgent.Reasoning = codexReasoning
+			sources["codex_reasoning"] = SourceFlag
+		}
+		if flagSet["codex_args"] {
+			codexAgent.Args = splitAndTrim(codexArgsStr, ",")
+			sources["codex_args"] = SourceFlag
+		}
+		cfg.Agents.SetAgent("codex", codexAgent)
 	}
-	if flagSet["codex_model"] {
-		sources["codex_model"] = SourceFlag
+	if flagSet["claude_binary"] || flagSet["claude_model"] || flagSet["claude_args"] {
+		claudeAgent := cfg.Agents.GetAgent("claude")
+		if flagSet["claude_binary"] {
+			claudeAgent.Binary = claudeBinary
+			sources["claude_binary"] = SourceFlag
+		}
+		if flagSet["claude_model"] {
+			claudeAgent.Model = claudeModel
+			sources["claude_model"] = SourceFlag
+		}
+		if flagSet["claude_args"] {
+			claudeAgent.Args = splitAndTrim(claudeArgsStr, ",")
+			sources["claude_args"] = SourceFlag
+		}
+		cfg.Agents.SetAgent("claude", claudeAgent)
 	}
-	if flagSet["codex_reasoning"] {
-		sources["codex_reasoning"] = SourceFlag
-	}
-	if flagSet["codex_args"] {
-		sources["codex_args"] = SourceFlag
-	}
-	if flagSet["claude_binary"] {
-		sources["claude_binary"] = SourceFlag
-	}
-	if flagSet["claude_model"] {
-		sources["claude_model"] = SourceFlag
-	}
-	if flagSet["claude_args"] {
-		sources["claude_args"] = SourceFlag
-	}
-	cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning, Args: codexArgs})
-	cfg.Agents.SetAgent("claude", Agent{Binary: claudeBinary, Model: claudeModel, Args: claudeArgs})
 
 	return nil
 }
