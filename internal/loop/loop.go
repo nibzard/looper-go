@@ -391,44 +391,55 @@ func (l *Loop) Run(ctx context.Context) error {
 		defer l.runLogger.Close()
 	}
 	for i := 1; i <= l.cfg.MaxIterations; i++ {
-		// Check context
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		// Select task
 		task := l.todoFile.SelectTask()
 		if task == nil {
-			// No tasks found - run review pass
-			if err := l.runReview(ctx, i); err != nil {
-				return fmt.Errorf("review pass: %w", err)
+			done, err := l.runReviewAndMaybeFinish(ctx, i)
+			if err != nil {
+				return err
 			}
-			// Check if any tasks were added
-			task = l.todoFile.SelectTask()
-			if task == nil {
-				// Still no tasks - add project-done marker
-				l.addProjectDoneMarker()
+			if done {
 				break
 			}
 			continue
 		}
 
-		// Run iteration
 		if err := l.runIteration(ctx, i, task); err != nil {
 			return fmt.Errorf("iteration %d: %w", i, err)
 		}
 
-		// Delay between iterations
-		if l.cfg.LoopDelaySeconds > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(time.Duration(l.cfg.LoopDelaySeconds) * time.Second):
-			}
+		if err := l.delayBetweenIterations(ctx); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+func (l *Loop) runReviewAndMaybeFinish(ctx context.Context, iter int) (bool, error) {
+	if err := l.runReview(ctx, iter); err != nil {
+		return false, fmt.Errorf("review pass: %w", err)
+	}
+	if l.todoFile.SelectTask() != nil {
+		return false, nil
+	}
+	l.addProjectDoneMarker()
+	return true, nil
+}
+
+func (l *Loop) delayBetweenIterations(ctx context.Context) error {
+	if l.cfg.LoopDelaySeconds <= 0 {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(time.Duration(l.cfg.LoopDelaySeconds) * time.Second):
+		return nil
+	}
 }
 
 // runIteration executes a single iteration for a task.

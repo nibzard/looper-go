@@ -796,13 +796,12 @@
       ],
       "files": [
         "internal/loop/loop.go",
-        "internal/loop/loop_test.go",
         "to-do.json"
       ],
       "depends_on": [
         "T039"
       ],
-      "updated_at": "2026-01-22T16:18:26Z"
+      "updated_at": "2026-01-22T16:22:10Z"
     },
     {
       "id": "T051",
