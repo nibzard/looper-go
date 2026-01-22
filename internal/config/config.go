@@ -665,32 +665,13 @@ func parseFlagsWithSources(cfg *Config, fs *flag.FlagSet, args []string, sources
 	fs.StringVar(&todoFile, "todo", cfg.TodoFile, "")
 	fs.StringVar(&schemaFile, "schema", cfg.SchemaFile, "")
 	fs.StringVar(&logDir, "log-dir", cfg.LogDir, "")
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "todo" {
-			flagSet["todo_file"] = true
-		}
-		if f.Name == "schema" {
-			flagSet["schema_file"] = true
-		}
-		if f.Name == "log-dir" {
-			flagSet["log_dir"] = true
-		}
-	})
 
 	// Dev-only flags (only work when LOOPER_PROMPT_MODE=dev)
+	var promptDir string
+	var printPrompt bool
 	if devModeEnabled() {
-		var promptDir string
-		var printPrompt bool
 		fs.StringVar(&promptDir, "prompt-dir", cfg.PromptDir, "")
 		fs.BoolVar(&printPrompt, "print-prompt", cfg.PrintPrompt, "")
-		fs.Visit(func(f *flag.Flag) {
-			if f.Name == "prompt-dir" {
-				cfg.PromptDir = promptDir
-			}
-			if f.Name == "print-prompt" {
-				cfg.PrintPrompt = printPrompt
-			}
-		})
 	}
 
 	// Loop settings
@@ -703,24 +684,6 @@ func parseFlagsWithSources(cfg *Config, fs *flag.FlagSet, args []string, sources
 	fs.StringVar(&bootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "")
 	fs.StringVar(&oddAgent, "odd-agent", cfg.OddAgent, "")
 	fs.StringVar(&evenAgent, "even-agent", cfg.EvenAgent, "")
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "max-iterations":
-			flagSet["max_iterations"] = true
-		case "schedule":
-			flagSet["schedule"] = true
-		case "repair-agent":
-			flagSet["repair_agent"] = true
-		case "review-agent":
-			flagSet["review_agent"] = true
-		case "bootstrap-agent":
-			flagSet["bootstrap_agent"] = true
-		case "odd-agent":
-			flagSet["odd_agent"] = true
-		case "even-agent":
-			flagSet["even_agent"] = true
-		}
-	})
 
 	// Round-robin agents
 	var rrAgentsStr string
@@ -728,47 +691,22 @@ func parseFlagsWithSources(cfg *Config, fs *flag.FlagSet, args []string, sources
 		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
 	}
 	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "")
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "rr-agents" {
-			flagSet["rr_agents"] = true
-		}
-	})
 
 	// Output
 	var applySummary bool
 	fs.BoolVar(&applySummary, "apply-summary", cfg.ApplySummary, "")
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "apply-summary" {
-			flagSet["apply_summary"] = true
-		}
-	})
 
 	// Git
 	var gitInit bool
 	fs.BoolVar(&gitInit, "git-init", cfg.GitInit, "")
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "git-init" {
-			flagSet["git_init"] = true
-		}
-	})
 
 	// Hooks
 	var hook string
 	fs.StringVar(&hook, "hook", cfg.HookCommand, "")
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "hook" {
-			flagSet["hook_command"] = true
-		}
-	})
 
 	// Delay
 	var loopDelay int
 	fs.IntVar(&loopDelay, "loop-delay", cfg.LoopDelaySeconds, "")
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "loop-delay" {
-			flagSet["loop_delay_seconds"] = true
-		}
-	})
 
 	// Agents
 	codexBinary := cfg.GetAgentBinary("codex")
@@ -785,8 +723,47 @@ func parseFlagsWithSources(cfg *Config, fs *flag.FlagSet, args []string, sources
 	fs.StringVar(&codexReasoning, "codex-reasoning", codexReasoning, "")
 	fs.StringVar(&codexArgsStr, "codex-args", codexArgsStr, "")
 	fs.StringVar(&claudeArgsStr, "claude-args", claudeArgsStr, "")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
+		case "todo":
+			flagSet["todo_file"] = true
+		case "schema":
+			flagSet["schema_file"] = true
+		case "log-dir":
+			flagSet["log_dir"] = true
+		case "prompt-dir":
+			cfg.PromptDir = promptDir
+		case "print-prompt":
+			cfg.PrintPrompt = printPrompt
+		case "max-iterations":
+			flagSet["max_iterations"] = true
+		case "schedule":
+			flagSet["schedule"] = true
+		case "repair-agent":
+			flagSet["repair_agent"] = true
+		case "review-agent":
+			flagSet["review_agent"] = true
+		case "bootstrap-agent":
+			flagSet["bootstrap_agent"] = true
+		case "odd-agent":
+			flagSet["odd_agent"] = true
+		case "even-agent":
+			flagSet["even_agent"] = true
+		case "rr-agents":
+			flagSet["rr_agents"] = true
+		case "apply-summary":
+			flagSet["apply_summary"] = true
+		case "git-init":
+			flagSet["git_init"] = true
+		case "hook":
+			flagSet["hook_command"] = true
+		case "loop-delay":
+			flagSet["loop_delay_seconds"] = true
 		case "codex-bin":
 			flagSet["codex_binary"] = true
 		case "claude-bin":
@@ -803,10 +780,6 @@ func parseFlagsWithSources(cfg *Config, fs *flag.FlagSet, args []string, sources
 			flagSet["claude_args"] = true
 		}
 	})
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
 
 	// Update config from parsed values
 	if flagSet["todo_file"] {

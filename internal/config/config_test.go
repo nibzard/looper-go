@@ -129,6 +129,53 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadWithSourcesFlags(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWd)
+	})
+
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("APPDATA", "")
+	t.Setenv("LOOPER_PROMPT_MODE", "")
+	t.Setenv("LOOPER_TODO", "")
+	t.Setenv("LOOPER_MAX_ITERATIONS", "")
+	t.Setenv("LOOPER_ITER_SCHEDULE", "")
+	t.Setenv("LOOPER_SCHEDULE", "")
+
+	fs := flag.NewFlagSet("looper", flag.ContinueOnError)
+	cws, err := LoadWithSources(fs, []string{"--todo", "custom.json", "--max-iterations", "123", "--schedule", "claude"})
+	if err != nil {
+		t.Fatalf("LoadWithSources: %v", err)
+	}
+
+	wantTodo := filepath.Join(tmpDir, "custom.json")
+	if cws.Config.TodoFile != wantTodo {
+		t.Errorf("TodoFile: got %q, want %q", cws.Config.TodoFile, wantTodo)
+	}
+	if cws.Config.MaxIterations != 123 {
+		t.Errorf("MaxIterations: got %d, want 123", cws.Config.MaxIterations)
+	}
+	if cws.Config.Schedule != "claude" {
+		t.Errorf("Schedule: got %q, want claude", cws.Config.Schedule)
+	}
+	if cws.Sources["todo_file"] != SourceFlag {
+		t.Errorf("Source todo_file: got %q, want %q", cws.Sources["todo_file"], SourceFlag)
+	}
+	if cws.Sources["max_iterations"] != SourceFlag {
+		t.Errorf("Source max_iterations: got %q, want %q", cws.Sources["max_iterations"], SourceFlag)
+	}
+	if cws.Sources["schedule"] != SourceFlag {
+		t.Errorf("Source schedule: got %q, want %q", cws.Sources["schedule"], SourceFlag)
+	}
+}
+
 func TestLoadFromEnvAgents(t *testing.T) {
 	t.Setenv("CODEX_REASONING", "low")
 	t.Setenv("CODEX_REASONING_EFFORT", "high")

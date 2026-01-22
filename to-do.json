@@ -773,9 +773,10 @@
       "files": [
         "cmd/root.go",
         "internal/config/config.go",
+        "internal/config/config_test.go",
         "README.md"
       ],
-      "updated_at": 1769095706.444302
+      "updated_at": "2026-01-22T15:39:32Z"
     },
     {
       "id": "T050",

@@ -91,7 +91,7 @@ func Run(ctx context.Context, args []string) error {
 	case "fmt":
 		return fmtCommand(cfg, remainingArgs)
 	case "config":
-		return configCommand(cfg, remainingArgs)
+		return configCommand(cfg, args, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -1680,7 +1680,7 @@ func printDiff(path string, original, formatted []byte) {
 }
 
 // configCommand shows the effective configuration with source information.
-func configCommand(cfg *config.Config, args []string) error {
+func configCommand(cfg *config.Config, allArgs []string, args []string) error {
 	// Parse config-specific flags
 	fs := flag.NewFlagSet("looper config", flag.ContinueOnError)
 	jsonOutput := fs.Bool("json", false, "Output in JSON format")
@@ -1696,7 +1696,7 @@ func configCommand(cfg *config.Config, args []string) error {
 	// Reload config with source tracking
 	// We need to create a new flag set to parse original args
 	configFS := flag.NewFlagSet("looper", flag.ContinueOnError)
-	configWithSources, err := config.LoadWithSources(configFS, []string{})
+	configWithSources, err := config.LoadWithSources(configFS, allArgs)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
