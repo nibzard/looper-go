@@ -330,11 +330,13 @@ binary = "codex"
 model = ""
 # reasoning = "medium"  # Optional: low, medium, or high reasoning effort
 # args = ["--flag", "value"]  # Optional extra args to pass to codex
+# parser = "codex_parser.py"  # Optional: parser for agent output
 
 [agents.claude]
 binary = "claude"
 model = ""
 # args = ["--flag", "value"]  # Optional extra args to pass to claude
+# parser = "builtin:claude"  # Optional: parser for agent output
 
 # Custom agents can be registered and configured
 # To add a custom agent, register it via init() in your code
@@ -342,6 +344,7 @@ model = ""
 # [agents.opencode]
 # binary = "opencode"
 # model = "custom-model"
+# parser = "opencode_parser.py"
 
 # Output
 apply_summary = true
@@ -588,16 +591,20 @@ make smoke    # Run smoke test
 
 ## Architecture
 
-Looper is written in Go with a clean, testable core:
+Looper is written in Go with a clean, modular architecture:
 
 - `cmd/looper` - CLI entrypoint
-- `internal/config` - Configuration loading
+- `internal/config` - Multi-source configuration loading (TOML, env, flags)
 - `internal/prompts` - Prompt store and rendering
-- `internal/todo` - Task file parsing and validation
+- `internal/todo` - Task file types and validation
 - `internal/loop` - Orchestration state machine
-- `internal/agents` - Agent registry and runners
-- `internal/logging` - JSONL logging and tailing
+- `internal/agents` - Modular agent system with registry pattern
+- `internal/parsers` - Plugin-based parser system for agent output
+- `internal/logging` - JSONL logging with charmbracelet/log console output
 - `internal/hooks` - Hook invocation
+- `internal/utils` - Shared utilities (platform, scheduling)
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation.
 
 ### Agent Registry
 
@@ -618,6 +625,30 @@ agents.RegisterAgent(AgentTypeOpenCode, func(cfg agents.Config) (agents.Agent, e
 ```
 
 Once registered, the agent type can be used in schedules, step agents (repair/review/bootstrap), and configuration files. The `doctor` command will automatically validate and show registered agent types.
+
+### Parser Configuration
+
+Agents can use custom parsers for extracting summaries from their output. Parsers are configured in `looper.toml`:
+
+```toml
+[agents.claude]
+binary = "claude"
+parser = "builtin:claude"  # Use built-in Go parser
+
+[agents.codex]
+binary = "codex"
+parser = "codex_parser.py"  # Use bundled Python parser
+
+[agents.custom]
+binary = "custom-agent"
+parser = "~/.looper/parsers/custom.py"  # Use custom parser
+```
+
+Parser search paths:
+1. Absolute path (if starts with `/` or `~/`)
+2. `./looper-parsers/` (project-level)
+3. `~/.looper/parsers/` (user-level)
+4. Bundled parsers (`claude_parser.py`, `codex_parser.py`, `opencode_parser.py`)
 
 ## Migration from Shell Version
 

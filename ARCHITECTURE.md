@@ -118,40 +118,74 @@ looper-go/
 │   └── root.go              # Command router, flag parsing
 │
 ├── internal/
+│   ├── agents/              # Agent system
+│   │   ├── agents.go        # Core agent implementation
+│   │   ├── claude.go        # Claude-specific agent
+│   │   ├── codex.go         # Codex-specific agent
+│   │   ├── factory.go       # Agent factory pattern
+│   │   ├── generic.go       # Generic agent implementation
+│   │   ├── log_writer.go    # Log writer implementations
+│   │   ├── parsing.go       # Summary parsing logic
+│   │   ├── registry.go      # Agent registry
+│   │   ├── runner.go        # Agent runner
+│   │   ├── streaming.go     # Streaming output handling
+│   │   ├── types.go         # Type definitions
+│   │   ├── validation.go    # Summary validation
+│   │   ├── console_log_writer.go  # Console log writer
+│   │   └── agents_test.go
+│   │
 │   ├── config/              # Configuration loading
 │   │   ├── config.go        # Main config structs
-│   │   └── loader.go        # Hierarchical loading logic
-│   │
-│   ├── agents/              # Agent system
-│   │   ├── agents.go        # Registry, interfaces, runners
-│   │   └── agents_test.go
+│   │   ├── env.go           # Environment variable loading
+│   │   ├── flags.go         # CLI flag parsing
+│   │   ├── getters.go       # Configuration getters
+│   │   ├── load.go          # Configuration loading
+│   │   ├── merge.go         # Configuration merging
+│   │   ├── paths.go         # Path resolution
+│   │   ├── sources.go       # Configuration sources
+│   │   ├── types.go         # Type definitions
+│   │   ├── dev.go           # Dev mode configuration
+│   │   ├── example.go       # Example configuration
+│   │   └── config_test.go
 │   │
 │   ├── loop/                # Core orchestration
 │   │   ├── loop.go          # Main loop state machine
-│   │   ├── select.go        # Task selection algorithm
 │   │   └── loop_test.go
 │   │
 │   ├── todo/                # Task file handling
-│   │   ├── todo.go          # Parsing, validation, updates
-│   │   ├── schema.go        # JSON schema handling
-│   │   └── todo_test.go
+│   │   ├── types.go         # Task types and validation
+│   │   ├── types_test.go
+│   │   └── types_bench_test.go
 │   │
 │   ├── prompts/             # Prompt templates
 │   │   ├── prompts.go       # Template rendering
-│   │   └── schema.go        # Prompt schema validation
+│   │   ├── prompts_test.go
+│   │   └── prompts_bench_test.go
+│   │
+│   ├── parsers/             # Parser plugin system
+│   │   ├── interface.go     # Parser interface and registry
+│   │   ├── external.go      # External parser support (Python/JS)
+│   │   └── bundled/         # Bundled parsers
+│   │       ├── claude_parser.py
+│   │       ├── codex_parser.py
+│   │       └── opencode_parser.py
 │   │
 │   ├── logging/             # JSONL logging
-│   │   ├── logging.go       # Logger, log writers
-│   │   └── tail.go          # Log tailing utility
+│   │   ├── logging.go       # Logger with charmbracelet/log
+│   │   └── logging_test.go
 │   │
 │   ├── hooks/               # Post-iteration hooks
-│   │   └── hooks.go         # Hook execution
+│   │   ├── hooks.go         # Hook execution
+│   │   └── hooks_test.go
 │   │
 │   ├── utils/               # Shared utilities
-│   │   ├── doc.go
-│   │   └── platform.go      # Platform detection
+│   │   ├── common.go        # Common utility functions
+│   │   ├── schedule.go      # Schedule-related utilities
+│   │   ├── platform.go      # Platform detection
+│   │   └── platform_test.go
 │   │
 │   └── ui/                  # Terminal interfaces (optional)
+│       └── tui.go
 │
 ├── prompts/                 # Bundled prompt templates
 │   ├── bootstrap.md
@@ -160,11 +194,8 @@ looper-go/
 │   ├── review.md
 │   └── push.md
 │
-├── bin/
-│   └── looper.sh            # Legacy shell script (for reference)
-│
 ├── to-do.json               # Task file (runtime)
-├── run.schema.json          # Task file schema
+├── to-do.schema.json        # Task file schema
 ├── go.mod
 ├── go.sum
 ├── Makefile
@@ -249,22 +280,42 @@ graph TD
 | Priority | Source | Location | Format |
 |----------|--------|----------|--------|
 | 1 (lowest) | Defaults | Compiled-in | Go structs |
-| 2 | User config | `~/.config/looper/config.json` | JSON |
-| 3 | Project config | `.looper/config.json` | JSON |
+| 2 | User config | `~/.looper/looper.toml` (or OS-specific) | TOML |
+| 3 | Project config | `./looper.toml` or `./.looper.toml` | TOML |
 | 4 | Environment | `LOOPER_*` variables | Env vars |
 | 5 (highest) | CLI args | Command line | Flags |
+
+### Config Package Structure
+
+The config package (`internal/config/`) is organized into focused modules:
+
+| File | Purpose |
+|------|---------|
+| `types.go` | Core type definitions (`Config`, `Agent`, etc.) |
+| `config.go` | Main config initialization and defaults |
+| `sources.go` | Configuration source detection and loading |
+| `load.go` | Config loading orchestration |
+| `merge.go` | Hierarchical config merging logic |
+| `env.go` | Environment variable parsing |
+| `flags.go` | CLI flag parsing and binding |
+| `getters.go` | Configuration getter methods |
+| `paths.go` | Path resolution and expansion |
+| `dev.go` | Dev-mode specific configuration |
+| `example.go` | Example configuration for documentation |
 
 ### Agent Configuration Structure
 
 ```go
-type AgentConfig struct {
-    Binary    string       // Path to agent binary
-    Model     string       // Model name/ID
-    Args      []string     // Additional arguments
+type Agent struct {
+    Binary    string        // Path to agent binary
+    Model     string        // Model name/ID
+    Args      []string      // Additional arguments
+    Reasoning string        // Reasoning effort (codex)
     Timeout   time.Duration // Execution timeout
-    WorkDir   string       // Working directory
-    LastMsg   string       // Path to last message file
+    Parser    ParserConfig  // Parser configuration (optional)
 }
+
+type Agents map[string]Agent
 ```
 
 ### Scheduling Strategies
@@ -400,24 +451,50 @@ graph TD
     L --> Q[Schema Validation]
 ```
 
+### Agents Package Structure
+
+The agents package (`internal/agents/`) is organized into focused modules:
+
+| File | Purpose |
+|------|---------|
+| `types.go` | Core type definitions (`Agent`, `Summary`, `LogWriter`, etc.) |
+| `registry.go` | Agent registry for dynamic agent registration |
+| `factory.go` | Agent factory for creating agent instances |
+| `generic.go` | Generic agent implementation |
+| `claude.go` | Claude-specific agent implementation |
+| `codex.go` | Codex-specific agent implementation |
+| `runner.go` | Agent execution runner |
+| `streaming.go` | Streaming output handling |
+| `parsing.go` | Summary extraction from agent output |
+| `validation.go` | Summary validation logic |
+| `log_writer.go` | JSONL log writer implementation |
+| `console_log_writer.go` | Console log writer with charmbracelet/log |
+
 ### Agent Registry
 
-The agent system uses a registry pattern:
+The agent system uses a registry pattern for extensibility:
 
 ```go
+// AgentType identifies an agent type
+type AgentType string
+
+const (
+    AgentTypeCodex  AgentType = "codex"
+    AgentTypeClaude AgentType = "claude"
+)
+
+// Agent is the interface for running AI agents
 type Agent interface {
     Run(ctx context.Context, prompt string) (*Summary, error)
 }
 
-var registry = map[string]Agent{
-    "codex":  &CodexAgent{},
-    "claude": &ClaudeAgent{},
-}
-
-func RegisterAgent(name string, agent Agent) {
-    registry[name] = agent
+// RegisterAgent registers a new agent type
+func RegisterAgent(name AgentType, factory Factory) {
+    registry[name] = factory
 }
 ```
+
+Built-in agents (`codex`, `claude`) are registered at initialization. Additional agent types can be registered programmatically.
 
 ### Agent Execution Flow
 
@@ -581,7 +658,24 @@ graph TD
     L --> O[LogCommand]
     L --> P[LogError]
     L --> Q[LogSummary]
+
+    A --> R[Console Output]
+    R --> S[charmbracelet/log]
 ```
+
+### Log Writers
+
+The logging system supports multiple output destinations:
+
+| Writer | Purpose | Implementation |
+|---------|---------|----------------|
+| JSONL Log Writer | Persistent audit trail | `internal/agents/log_writer.go` |
+| Console Log Writer | Real-time terminal output | `internal/agents/console_log_writer.go` |
+
+The console log writer uses `charmbracelet/log` for enhanced terminal output with:
+- Structured logging levels
+- Colored and formatted output
+- Progress tracking for long-running operations
 
 ### JSONL Log Format
 
@@ -608,6 +702,84 @@ looper-logs/
 └── last
     └── -> symlink to latest run
 ```
+
+---
+
+## Parser System
+
+### Parser Architecture
+
+The parser system provides a plugin-based architecture for parsing agent output:
+
+```mermaid
+graph TD
+    A[Agent Output] --> B{Parser Type}
+
+    B --> C[Built-in Go]
+    B --> D[Python Script]
+    B --> E[JavaScript Script]
+
+    C --> F[Native Go Parsing]
+    D --> G[Python subprocess]
+    E --> H[Node subprocess]
+
+    F --> I[Summary]
+    G --> I
+    H --> I
+```
+
+### Parser Registry
+
+Parsers are registered by type and can be configured per-agent:
+
+```go
+// Parser extracts a summary from raw agent output
+type Parser interface {
+    Parse(ctx context.Context, output string) (*Summary, error)
+}
+
+// Registry holds registered parser types
+var Registry = map[string]ParserFactory{
+    "python":  newPythonParser,
+    "js":      newJSParser,
+    "builtin": func(config string) (Parser, error) { ... },
+}
+```
+
+### Parser Configuration
+
+Parser configuration is specified in `looper.toml` per-agent:
+
+```toml
+[agents.claude]
+binary = "claude"
+parser = "builtin:claude"  # Use built-in Go parser
+
+[agents.codex]
+binary = "codex"
+parser = "codex_parser.py"  # Use bundled Python parser
+
+[agents.custom]
+binary = "custom-agent"
+parser = "~/.looper/parsers/custom.py"  # Use custom parser
+```
+
+### Parser Search Paths
+
+Parsers are searched in the following order:
+
+1. Absolute path (if starts with `/` or `~/`)
+2. `./looper-parsers/` (project-level)
+3. `~/.looper/parsers/` (user-level)
+4. Bundled parsers (`claude_parser.py`, `codex_parser.py`, `opencode_parser.py`)
+
+### Bundled Parsers
+
+| Parser | Purpose |
+|--------|---------|
+| `claude_parser.py` | Parse Claude CLI stream-json output |
+| `codex_parser.py` | Parse Codex CLI --json output |
+| `opencode_parser.py` | Parse OpenCode agent output |
 
 ---
 
@@ -728,8 +900,11 @@ sequenceDiagram
 3. **Deterministic Selection**: Clear task ordering, no ambiguity
 4. **Repairable**: Can recover from invalid states via agent repair
 5. **Auditable**: Full log of all operations for debugging
-6. **Extensible**: Agent registry allows adding new agent types
-7. **Hierarchical Config**: Flexible configuration from multiple sources
+6. **Extensible Agents**: Registry-based agent system allows adding new agent types
+7. **Extensible Parsers**: Plugin-based parser system for custom output parsing
+8. **Hierarchical Config**: Flexible configuration from multiple sources (defaults → user → project → env → CLI)
+9. **Modular Packages**: Single-responsibility packages for config, agents, parsers, logging, etc.
+10. **Enhanced Console Output**: charmbracelet/log integration for structured, colored terminal output
 
 ---
 
@@ -737,11 +912,13 @@ sequenceDiagram
 
 | Component | How to Extend |
 |-----------|---------------|
-| Agents | Implement `Agent` interface and register |
-| Prompts | Add custom templates or use `--prompt-file` |
-| Hooks | Add commands to `hooks.post_iteration` array |
-| Schedulers | Add new strategy to config loader |
-| Log Parsers | Process JSONL files with custom tools |
+| Agents | Implement `Agent` interface, create factory, and register via `agents.RegisterAgent()` |
+| Parsers | Add Python/JavaScript scripts to `./looper-parsers/` or `~/.looper/parsers/` |
+| Prompts | Add custom templates or use `--prompt-dir` for development |
+| Hooks | Add commands to `hook_command` config or use `--hook` flag |
+| Schedulers | Use built-in `odd-even`, `round-robin`, or specify any registered agent |
+| Log Writers | Implement `LogWriter` interface for custom output destinations |
+| Config Sources | Config loaded from defaults → user → project → env → CLI |
 
 ---
 
