@@ -359,7 +359,7 @@ func repairTodoFile(workDir, todoPath, schemaPath string, promptStore *prompts.S
 		return nil, fmt.Errorf("render repair prompt: %w", err)
 	}
 
-	repairAgentType := cfg.RepairAgent
+	repairAgentType := cfg.GetRepairAgent()
 	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
 
 	_, err = runAgentWithConfig(ctx, cfg, repairAgentType, prompt, "", workDir, logWriter)
@@ -697,7 +697,7 @@ func reviewLabel(iter int) string {
 	return fmt.Sprintf("review-%d", iter)
 }
 
-// multiLogWriter returns a log writer that writes to both the log file and stdout.
+// multiLogWriter returns a log writer that writes to both the log file and console.
 func (l *Loop) multiLogWriter() agents.LogWriter {
 	w := l.logWriter
 	if w == nil {
@@ -706,9 +706,18 @@ func (l *Loop) multiLogWriter() agents.LogWriter {
 	if os.Getenv("LOOPER_QUIET") != "" {
 		return w
 	}
-	stdoutWriter := agents.NewIOStreamLogWriter(os.Stdout)
-	stdoutWriter.SetIndent("  ")
-	return agents.NewMultiLogWriter(w, stdoutWriter)
+
+	// Create console logger with config options
+	consoleOpts := agents.ConsoleLogOptions{
+		Level:           agents.ParseLogLevel(l.cfg.LogLevel),
+		Formatter:       agents.ParseLogFormatter(l.cfg.LogFormat),
+		ReportTimestamp: l.cfg.LogTimestamps,
+		ReportCaller:    l.cfg.LogCaller,
+		Prefix:          "looper",
+	}
+	consoleWriter := agents.NewConsoleLogWriter(consoleOpts)
+
+	return agents.NewMultiLogWriter(w, consoleWriter)
 }
 
 // renderIterationPrompt renders the iteration prompt for a task.
@@ -872,6 +881,8 @@ func buildAgentConfigFromConfig(cfg *config.Config, agentType, workDir string) a
 		Model:           cfg.GetAgentModel(agentType),
 		Reasoning:       cfg.GetAgentReasoning(agentType),
 		Args:            cfg.GetAgentArgs(agentType),
+		PromptFormat:    cfg.GetAgentPromptFormat(agentType),
+		Parser:          cfg.GetAgentParser(agentType),
 		WorkDir:         workDir,
 		LastMessagePath: "", // Set by caller when needed
 	}

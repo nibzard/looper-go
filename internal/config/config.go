@@ -60,16 +60,10 @@ type Config struct {
 	UserPrompt string `toml:"-"` // User-provided prompt to drive bootstrap
 
 	// Loop settings
-	MaxIterations  int    `toml:"max_iterations"`
-	Schedule       string `toml:"schedule"`        // codex, claude, odd-even, round-robin
-	RepairAgent    string `toml:"repair_agent"`    // codex or claude
-	ReviewAgent    string `toml:"review_agent"`    // codex or claude (default: codex)
-	BootstrapAgent string `toml:"bootstrap_agent"` // codex or claude (default: codex)
+	MaxIterations int `toml:"max_iterations"`
 
-	// Scheduling options for odd-even and round-robin
-	OddAgent  string   `toml:"odd_agent"`  // agent for odd iterations (default: codex)
-	EvenAgent string   `toml:"even_agent"` // agent for even iterations (default: claude)
-	RRAgents  []string `toml:"rr_agents"`  // agent list for round-robin (default: claude,codex)
+	// Roles maps role names to agent names (iter, review, repair, bootstrap)
+	Roles RolesConfig `toml:"roles"`
 
 	// Agents
 	Agents AgentConfig `toml:"agents"`
@@ -86,8 +80,57 @@ type Config struct {
 	// Delay between iterations
 	LoopDelaySeconds int `toml:"loop_delay_seconds"`
 
+	// Logging configuration
+	LogLevel      string `toml:"log_level"`
+	LogFormat     string `toml:"log_format"`
+	LogTimestamps bool   `toml:"log_timestamps"`
+	LogCaller     bool   `toml:"log_caller"`
+
 	// Project root (computed)
 	ProjectRoot string `toml:"-"`
+}
+
+// RolesConfig maps role names to agent names.
+type RolesConfig map[string]string
+
+// IterSchedule returns the agent for a given iteration number.
+// Looks up roles["iter"] or returns empty string if not configured.
+func (c *Config) IterSchedule(iter int) string {
+	return c.Roles.GetAgent("iter")
+}
+
+// GetReviewAgent returns the agent to use for the review pass.
+// Looks up roles["review"] or returns empty string if not configured.
+func (c *Config) GetReviewAgent() string {
+	return c.Roles.GetAgent("review")
+}
+
+// GetBootstrapAgent returns the agent to use for bootstrap operations.
+// Looks up roles["bootstrap"] or returns empty string if not configured.
+func (c *Config) GetBootstrapAgent() string {
+	return c.Roles.GetAgent("bootstrap")
+}
+
+// GetRepairAgent returns the agent to use for repair operations.
+// Looks up roles["repair"] or returns empty string if not configured.
+func (c *Config) GetRepairAgent() string {
+	return c.Roles.GetAgent("repair")
+}
+
+// GetAgent returns the agent name for a given role.
+func (rc RolesConfig) GetAgent(role string) string {
+	if rc == nil {
+		return ""
+	}
+	return normalizeAgent(rc[role])
+}
+
+// SetAgent sets the agent name for a given role.
+func (rc *RolesConfig) SetAgent(role string, agent string) {
+	if *rc == nil {
+		*rc = make(RolesConfig)
+	}
+	(*rc)[role] = agent
 }
 
 // AgentConfig holds agent-specific configuration.
@@ -190,6 +233,20 @@ func decodeAgentConfig(raw map[string]interface{}) (Agent, error) {
 		}
 		agent.Args = args
 	}
+	if v, ok := raw["prompt_format"]; ok {
+		promptFormat, ok := v.(string)
+		if !ok {
+			return agent, fmt.Errorf("prompt_format must be a string")
+		}
+		agent.PromptFormat = PromptFormat(promptFormat)
+	}
+	if v, ok := raw["parser"]; ok {
+		parser, ok := v.(string)
+		if !ok {
+			return agent, fmt.Errorf("parser must be a string")
+		}
+		agent.Parser = parser
+	}
 	return agent, nil
 }
 
@@ -226,70 +283,25 @@ func filterEmptyArgs(args []string) []string {
 	return filtered
 }
 
+// PromptFormat specifies how the prompt is passed to the agent.
+type PromptFormat string
+
+const (
+	// PromptFormatStdin passes the prompt via stdin.
+	PromptFormatStdin PromptFormat = "stdin"
+	// PromptFormatArg passes the prompt as a command-line argument.
+	PromptFormatArg PromptFormat = "arg"
+)
+
 // Agent holds configuration for a single agent type.
 type Agent struct {
-	Binary    string   `toml:"binary"`
-	Model     string   `toml:"model"`
-	Reasoning string   `toml:"reasoning"` // Reasoning effort for codex (e.g., "low", "medium", "high")
-	Args      []string `toml:"args"`      // Extra arguments passed to the agent binary
+	Binary      string       `toml:"binary"`
+	Model       string       `toml:"model"`
+	Reasoning   string       `toml:"reasoning"` // Reasoning effort for codex (e.g., "low", "medium", "high")
+	Args        []string     `toml:"args"`      // Extra arguments passed to the agent binary
+	PromptFormat PromptFormat `toml:"prompt_format"` // How to pass the prompt: "stdin" or "arg"
+	Parser      string       `toml:"parser"`   // Parser script path (e.g., "claude_parser.py", "~/.looper/parsers/custom.js", "builtin:claude")
 	// Additional flags can be added here as needed
-}
-
-// IterSchedule returns the agent for a given iteration number.
-func (c *Config) IterSchedule(iter int) string {
-	schedule := normalizeSchedule(c.Schedule)
-	switch schedule {
-	case "odd-even":
-		if iter%2 == 1 {
-			// Odd iteration (1, 3, 5, ...)
-			if agent := normalizeAgent(c.OddAgent); agent != "" {
-				return agent
-			}
-			return "codex"
-		}
-		// Even iteration (2, 4, 6, ...)
-		if agent := normalizeAgent(c.EvenAgent); agent != "" {
-			return agent
-		}
-		return "claude"
-	case "round-robin":
-		agents := normalizeAgentList(c.RRAgents)
-		if len(agents) == 0 {
-			// Default: claude, codex
-			agents = []string{"claude", "codex"}
-		}
-		if len(agents) == 0 {
-			return "codex"
-		}
-		// iter is 1-indexed, convert to 0-indexed for array access
-		idx := (iter - 1) % len(agents)
-		return agents[idx]
-	default:
-		if schedule != "" {
-			return schedule
-		}
-		return "codex"
-	}
-}
-
-// GetReviewAgent returns the agent to use for the review pass.
-// It returns the configured review_agent or defaults to "codex" if empty.
-func (c *Config) GetReviewAgent() string {
-	agent := normalizeAgent(c.ReviewAgent)
-	if agent != "" {
-		return agent
-	}
-	return "codex"
-}
-
-// GetBootstrapAgent returns the agent to use for bootstrap operations.
-// It returns the configured bootstrap_agent or defaults to "codex" if empty.
-func (c *Config) GetBootstrapAgent() string {
-	agent := normalizeAgent(c.BootstrapAgent)
-	if agent != "" {
-		return agent
-	}
-	return "codex"
 }
 
 // Load loads configuration from multiple sources in priority order:
@@ -390,13 +402,7 @@ func configFields() []string {
 		"schema_file",
 		"log_dir",
 		"max_iterations",
-		"schedule",
-		"repair_agent",
-		"review_agent",
-		"bootstrap_agent",
-		"odd_agent",
-		"even_agent",
-		"rr_agents",
+		"roles",
 		"apply_summary",
 		"git_init",
 		"hook_command",
@@ -431,27 +437,6 @@ func loadConfigFileWithSources(cfg *Config, path string, sources map[string]Conf
 	}
 	if tempCfg.MaxIterations != 0 && tempCfg.MaxIterations != DefaultMaxIterations {
 		setSource(cfg, &cfg.MaxIterations, tempCfg.MaxIterations, sources, "max_iterations", source)
-	}
-	if tempCfg.Schedule != "" && tempCfg.Schedule != "codex" {
-		setSource(cfg, &cfg.Schedule, tempCfg.Schedule, sources, "schedule", source)
-	}
-	if tempCfg.RepairAgent != "" && tempCfg.RepairAgent != "codex" {
-		setSource(cfg, &cfg.RepairAgent, tempCfg.RepairAgent, sources, "repair_agent", source)
-	}
-	if tempCfg.ReviewAgent != "" {
-		setSource(cfg, &cfg.ReviewAgent, tempCfg.ReviewAgent, sources, "review_agent", source)
-	}
-	if tempCfg.BootstrapAgent != "" {
-		setSource(cfg, &cfg.BootstrapAgent, tempCfg.BootstrapAgent, sources, "bootstrap_agent", source)
-	}
-	if tempCfg.OddAgent != "" {
-		setSource(cfg, &cfg.OddAgent, tempCfg.OddAgent, sources, "odd_agent", source)
-	}
-	if tempCfg.EvenAgent != "" {
-		setSource(cfg, &cfg.EvenAgent, tempCfg.EvenAgent, sources, "even_agent", source)
-	}
-	if tempCfg.RRAgents != nil {
-		setSource(cfg, &cfg.RRAgents, tempCfg.RRAgents, sources, "rr_agents", source)
 	}
 	if tempCfg.ApplySummary != DefaultApplySummary {
 		setSource(cfg, &cfg.ApplySummary, tempCfg.ApplySummary, sources, "apply_summary", source)
@@ -588,37 +573,6 @@ func loadFromEnvHelper(cfg *Config, sources map[string]ConfigSource, source Conf
 			setEnvInt("max_iterations", i)
 		}
 	}
-	if v := os.Getenv("LOOPER_ITER_SCHEDULE"); v != "" {
-		cfg.Schedule = v
-		setEnv("schedule", v)
-	} else if v := os.Getenv("LOOPER_SCHEDULE"); v != "" {
-		cfg.Schedule = v
-		setEnv("schedule", v)
-	}
-	if v := os.Getenv("LOOPER_REPAIR_AGENT"); v != "" {
-		cfg.RepairAgent = v
-		setEnv("repair_agent", v)
-	}
-	if v := os.Getenv("LOOPER_REVIEW_AGENT"); v != "" {
-		cfg.ReviewAgent = v
-		setEnv("review_agent", v)
-	}
-	if v := os.Getenv("LOOPER_BOOTSTRAP_AGENT"); v != "" {
-		cfg.BootstrapAgent = v
-		setEnv("bootstrap_agent", v)
-	}
-	if v := os.Getenv("LOOPER_ITER_ODD_AGENT"); v != "" {
-		cfg.OddAgent = v
-		setEnv("odd_agent", v)
-	}
-	if v := os.Getenv("LOOPER_ITER_EVEN_AGENT"); v != "" {
-		cfg.EvenAgent = v
-		setEnv("even_agent", v)
-	}
-	if v := os.Getenv("LOOPER_ITER_RR_AGENTS"); v != "" {
-		cfg.RRAgents = splitAndTrim(v, ",")
-		setEnv("rr_agents", v)
-	}
 	if v := os.Getenv("LOOPER_APPLY_SUMMARY"); v != "" {
 		cfg.ApplySummary = boolFromString(v)
 		setEnvBool("apply_summary", cfg.ApplySummary)
@@ -686,6 +640,24 @@ func loadFromEnvHelper(cfg *Config, sources map[string]ConfigSource, source Conf
 		cfg.Agents.SetAgent("claude", agent)
 		setAgentArgs("claude", "claude_args", agent.Args)
 	}
+
+	// Logging configuration
+	if v := os.Getenv("LOOPER_LOG_LEVEL"); v != "" {
+		cfg.LogLevel = v
+		setEnv("log_level", v)
+	}
+	if v := os.Getenv("LOOPER_LOG_FORMAT"); v != "" {
+		cfg.LogFormat = v
+		setEnv("log_format", v)
+	}
+	if v := os.Getenv("LOOPER_LOG_TIMESTAMPS"); v != "" {
+		cfg.LogTimestamps = boolFromString(v)
+		setEnvBool("log_timestamps", cfg.LogTimestamps)
+	}
+	if v := os.Getenv("LOOPER_LOG_CALLER"); v != "" {
+		cfg.LogCaller = boolFromString(v)
+		setEnvBool("log_caller", cfg.LogCaller)
+	}
 }
 
 // parseFlagsWithSources parses CLI flags and updates source tracking.
@@ -720,20 +692,38 @@ func setDefaults(cfg *Config) {
 	cfg.SchemaFile = "to-do.schema.json"
 	cfg.LogDir = DefaultLogDir
 	cfg.MaxIterations = DefaultMaxIterations
-	cfg.Schedule = "codex"
-	cfg.RepairAgent = "codex"
-	cfg.ReviewAgent = ""    // Empty means use default (codex)
-	cfg.BootstrapAgent = "" // Empty means use default (codex)
-	cfg.OddAgent = ""       // Empty means use default (codex)
-	cfg.EvenAgent = ""      // Empty means use default (claude)
-	cfg.RRAgents = nil      // nil means use default (claude,codex)
 	cfg.ApplySummary = DefaultApplySummary
 	cfg.GitInit = true
 	cfg.LoopDelaySeconds = 0
 
-	// Default agent binaries
-	cfg.Agents.SetAgent("codex", Agent{Binary: DefaultAgentBinaries()["codex"]})
-	cfg.Agents.SetAgent("claude", Agent{Binary: DefaultAgentBinaries()["claude"]})
+	// Logging defaults
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = "info"
+	}
+	if cfg.LogFormat == "" {
+		cfg.LogFormat = "text"
+	}
+
+	// Set default roles
+	if cfg.Roles == nil {
+		cfg.Roles = make(RolesConfig)
+	}
+	cfg.Roles["iter"] = "claude"
+	cfg.Roles["review"] = "claude"
+	cfg.Roles["repair"] = "claude"
+	cfg.Roles["bootstrap"] = "claude"
+
+	// Default agent binaries with parsers
+	cfg.Agents.SetAgent("codex", Agent{
+		Binary: DefaultAgentBinaries()["codex"],
+		PromptFormat: PromptFormatStdin,
+		Parser: "codex_parser.py",
+	})
+	cfg.Agents.SetAgent("claude", Agent{
+		Binary: DefaultAgentBinaries()["claude"],
+		PromptFormat: PromptFormatArg,
+		Parser: "claude_parser.py",
+	})
 }
 
 // findProjectConfigFile looks for a config file in the current directory.
@@ -934,45 +924,12 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 
 	// Loop settings
 	var maxIter int
-	var schedule, repairAgent, reviewAgent, bootstrapAgent, oddAgent, evenAgent string
 	if sources == nil {
 		fs.IntVar(&cfg.MaxIterations, "max-iterations", cfg.MaxIterations, "Maximum iterations")
-		fs.StringVar(&cfg.Schedule, "schedule", cfg.Schedule, "Iteration schedule (agent name|odd-even|round-robin)")
-		fs.StringVar(&cfg.RepairAgent, "repair-agent", cfg.RepairAgent, "Agent for repair operations")
-		fs.StringVar(&cfg.ReviewAgent, "review-agent", cfg.ReviewAgent, "Agent for review pass")
-		fs.StringVar(&cfg.BootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations")
-		fs.StringVar(&cfg.OddAgent, "odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule")
-		fs.StringVar(&cfg.EvenAgent, "even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule")
 	} else {
 		fs.IntVar(&maxIter, "max-iterations", cfg.MaxIterations, "")
-		fs.StringVar(&schedule, "schedule", cfg.Schedule, "")
-		fs.StringVar(&repairAgent, "repair-agent", cfg.RepairAgent, "")
-		fs.StringVar(&reviewAgent, "review-agent", cfg.ReviewAgent, "")
-		fs.StringVar(&bootstrapAgent, "bootstrap-agent", cfg.BootstrapAgent, "")
-		fs.StringVar(&oddAgent, "odd-agent", cfg.OddAgent, "")
-		fs.StringVar(&evenAgent, "even-agent", cfg.EvenAgent, "")
-		bindings = append(bindings,
-			flagBinding{name: "max-iterations", target: &maxIter},
-			flagBinding{name: "schedule", target: &schedule},
-			flagBinding{name: "repair-agent", target: &repairAgent},
-			flagBinding{name: "review-agent", target: &reviewAgent},
-			flagBinding{name: "bootstrap-agent", target: &bootstrapAgent},
-			flagBinding{name: "odd-agent", target: &oddAgent},
-			flagBinding{name: "even-agent", target: &evenAgent},
-		)
+		bindings = append(bindings, flagBinding{name: "max-iterations", target: &maxIter})
 	}
-
-	// Round-robin agents
-	var rrAgentsStr string
-	if cfg.RRAgents != nil {
-		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
-	}
-	rrUsage := "Comma-separated agent list for round-robin schedule"
-	if sources != nil {
-		rrUsage = ""
-	}
-	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, rrUsage)
-	bindings = append(bindings, flagBinding{name: "rr-agents", target: &rrAgentsStr})
 
 	// Output
 	var applySummary bool
@@ -1008,6 +965,27 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 	} else {
 		fs.IntVar(&loopDelay, "loop-delay", cfg.LoopDelaySeconds, "")
 		bindings = append(bindings, flagBinding{name: "loop-delay", target: &loopDelay})
+	}
+
+	// Logging
+	var logLevel, logFormat string
+	var logTimestamps, logCaller bool
+	if sources == nil {
+		fs.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "Log level (debug, info, warn, error)")
+		fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "Log format (text, json, logfmt)")
+		fs.BoolVar(&cfg.LogTimestamps, "log-timestamps", cfg.LogTimestamps, "Show timestamps in logs")
+		fs.BoolVar(&cfg.LogCaller, "log-caller", cfg.LogCaller, "Show caller location in logs")
+	} else {
+		fs.StringVar(&logLevel, "log-level", cfg.LogLevel, "")
+		fs.StringVar(&logFormat, "log-format", cfg.LogFormat, "")
+		fs.BoolVar(&logTimestamps, "log-timestamps", cfg.LogTimestamps, "")
+		fs.BoolVar(&logCaller, "log-caller", cfg.LogCaller, "")
+		bindings = append(bindings,
+			flagBinding{name: "log-level", target: &logLevel},
+			flagBinding{name: "log-format", target: &logFormat},
+			flagBinding{name: "log-timestamps", target: &logTimestamps},
+			flagBinding{name: "log-caller", target: &logCaller},
+		)
 	}
 
 	// Agents
@@ -1050,28 +1028,25 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 
 	// Map flag names to source field names
 	flagToSource := map[string]string{
-		"todo":           "todo_file",
-		"schema":         "schema_file",
-		"log-dir":        "log_dir",
-		"max-iterations": "max_iterations",
-		"schedule":       "schedule",
-		"repair-agent":   "repair_agent",
-		"review-agent":   "review_agent",
-		"bootstrap-agent": "bootstrap_agent",
-		"odd-agent":      "odd_agent",
-		"even-agent":     "even_agent",
-		"rr-agents":      "rr_agents",
-		"apply-summary":  "apply_summary",
-		"git-init":       "git_init",
-		"hook":           "hook_command",
-		"loop-delay":     "loop_delay_seconds",
-		"codex-bin":      "codex_binary",
-		"claude-bin":     "claude_binary",
-		"codex-model":    "codex_model",
-		"claude-model":   "claude_model",
+		"todo":            "todo_file",
+		"schema":          "schema_file",
+		"log-dir":         "log_dir",
+		"max-iterations":  "max_iterations",
+		"apply-summary":   "apply_summary",
+		"git-init":        "git_init",
+		"hook":            "hook_command",
+		"loop-delay":      "loop_delay_seconds",
+		"log-level":       "log_level",
+		"log-format":      "log_format",
+		"log-timestamps":  "log_timestamps",
+		"log-caller":      "log_caller",
+		"codex-bin":       "codex_binary",
+		"claude-bin":      "claude_binary",
+		"codex-model":     "codex_model",
+		"claude-model":    "claude_model",
 		"codex-reasoning": "codex_reasoning",
-		"codex-args":     "codex_args",
-		"claude-args":    "claude_args",
+		"codex-args":      "codex_args",
+		"claude-args":     "claude_args",
 	}
 
 	// Track which flags were set and apply to config
@@ -1088,9 +1063,6 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 	// Apply flag values to config
 	if sources == nil {
 		// Direct binding already applied
-		if rrAgentsStr != "" {
-			cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
-		}
 		codexArgs := splitAndTrim(codexArgsStr, ",")
 		claudeArgs := splitAndTrim(claudeArgsStr, ",")
 		cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning, Args: codexArgs})
@@ -1115,27 +1087,6 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 		if flagSet["max-iterations"] {
 			cfg.MaxIterations = maxIter
 		}
-		if flagSet["schedule"] {
-			cfg.Schedule = schedule
-		}
-		if flagSet["repair-agent"] {
-			cfg.RepairAgent = repairAgent
-		}
-		if flagSet["review-agent"] {
-			cfg.ReviewAgent = reviewAgent
-		}
-		if flagSet["bootstrap-agent"] {
-			cfg.BootstrapAgent = bootstrapAgent
-		}
-		if flagSet["odd-agent"] {
-			cfg.OddAgent = oddAgent
-		}
-		if flagSet["even-agent"] {
-			cfg.EvenAgent = evenAgent
-		}
-		if flagSet["rr-agents"] {
-			cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
-		}
 		if flagSet["apply-summary"] {
 			cfg.ApplySummary = applySummary
 		}
@@ -1147,6 +1098,18 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 		}
 		if flagSet["loop-delay"] {
 			cfg.LoopDelaySeconds = loopDelay
+		}
+		if flagSet["log-level"] {
+			cfg.LogLevel = logLevel
+		}
+		if flagSet["log-format"] {
+			cfg.LogFormat = logFormat
+		}
+		if flagSet["log-timestamps"] {
+			cfg.LogTimestamps = logTimestamps
+		}
+		if flagSet["log-caller"] {
+			cfg.LogCaller = logCaller
 		}
 
 		// Agent flags - only update values when explicitly set
@@ -1324,6 +1287,36 @@ func (c *Config) GetAgentArgs(agentType string) []string {
 	copied := make([]string, len(args))
 	copy(copied, args)
 	return copied
+}
+
+// GetAgentPromptFormat returns the prompt format for the given agent type.
+// It checks both custom agents and built-in agents.
+// Returns "stdin" if not configured (the traditional format for codex/claude).
+func (c *Config) GetAgentPromptFormat(agentType string) PromptFormat {
+	agentType = normalizeAgent(agentType)
+	if agentType == "" {
+		return PromptFormatStdin
+	}
+	agent := c.Agents.GetAgent(agentType)
+	if agent.PromptFormat == "" {
+		// Default: codex uses stdin, claude uses arg
+		if agentType == "claude" {
+			return PromptFormatArg
+		}
+		return PromptFormatStdin
+	}
+	return agent.PromptFormat
+}
+
+// GetAgentParser returns the parser script path for the given agent type.
+// It checks both custom agents and built-in agents.
+// Returns empty string if not configured (use built-in Go parsing).
+func (c *Config) GetAgentParser(agentType string) string {
+	agentType = normalizeAgent(agentType)
+	if agentType == "" {
+		return ""
+	}
+	return c.Agents.GetAgent(agentType).Parser
 }
 
 // devModeEnabled returns true if dev mode is enabled via LOOPER_PROMPT_MODE=dev.
