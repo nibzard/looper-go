@@ -858,7 +858,7 @@ func (a *claudeAgent) Run(ctx context.Context, prompt string, logWriter LogWrite
 	spec := agentSpec{
 		name: "claude",
 		buildArgs: func(cfg Config, prompt string) []string {
-			args := []string{"--output-format", "stream-json"}
+			args := []string{"--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"}
 			if cfg.Model != "" {
 				args = append(args, "--model", cfg.Model)
 			}
@@ -902,6 +902,7 @@ func (a *claudeAgent) processStreamJSON(
 
 	var lastMessageBuf bytes.Buffer
 	sawFullMessage := false
+	var lastAssistantContent string // Track last assistant_message content
 
 	for {
 		if ctx.Err() != nil {
@@ -924,6 +925,38 @@ func (a *claudeAgent) processStreamJSON(
 			return "", err
 		}
 
+		// Check for assistant_message events with plain text content
+		// These often contain the final summary JSON
+		if msgType, ok := raw["type"].(string); ok && msgType == "assistant_message" {
+			if content, ok := raw["content"].(string); ok && content != "" {
+				// First, try to unescape the content if it's a JSON-encoded string
+				// (e.g., "{\"task_id\":...}" -> {"task_id":...})
+				var unescapedContent string
+				if err := json.Unmarshal([]byte(content), &unescapedContent); err == nil {
+					content = unescapedContent
+				}
+
+				// Try to extract JSON from the content (handles markdown code blocks)
+				if jsonStr := extractJSON(content); jsonStr != "" {
+					// Check if it's actually a summary by validating fields
+					var rawObj map[string]any
+					if err := json.Unmarshal([]byte(jsonStr), &rawObj); err == nil {
+						if _, hasTaskID := rawObj["task_id"]; hasTaskID {
+							if _, hasStatus := rawObj["status"]; hasStatus {
+								// This is a valid summary JSON - save it
+								lastAssistantContent = jsonStr
+							}
+						}
+					}
+				}
+				// Always accumulate non-JSON content if we haven't seen a full message
+				if lastAssistantContent == "" && !sawFullMessage {
+					lastMessageBuf.WriteString(content)
+				}
+			}
+		}
+
+		// Look for full message events from the stream
 		if !sawFullMessage {
 			if full := extractClaudeFullMessage(raw); full != "" {
 				lastMessageBuf.Reset()
@@ -935,8 +968,35 @@ func (a *claudeAgent) processStreamJSON(
 		}
 	}
 
+	// Prefer the assistant_message content if it was captured
+	if lastAssistantContent != "" {
+		if summary, ok := parseSummaryFromText(lastAssistantContent); ok {
+			_ = logWriter.Write(LogEvent{
+				Type:      "debug",
+				Timestamp: time.Now().UTC(),
+				Content:   fmt.Sprintf("Parsed summary from assistant_message: %+v", summary),
+			})
+			if err := recordSummary(ctx, logWriter, summaries, summary); err != nil {
+				return "", err
+			}
+			return lastAssistantContent, nil
+		}
+	}
+
+	// Fall back to accumulated message content
 	if lastMessageBuf.Len() > 0 {
-		if summary, ok := parseSummaryFromText(lastMessageBuf.String()); ok {
+		content := lastMessageBuf.String()
+		_ = logWriter.Write(LogEvent{
+			Type:      "debug",
+			Timestamp: time.Now().UTC(),
+			Content:   fmt.Sprintf("Parsing summary from accumulated content (len=%d)", len(content)),
+		})
+		if summary, ok := parseSummaryFromText(content); ok {
+			_ = logWriter.Write(LogEvent{
+				Type:      "debug",
+				Timestamp: time.Now().UTC(),
+				Content:   fmt.Sprintf("Successfully parsed summary: %+v", summary),
+			})
 			if err := recordSummary(ctx, logWriter, summaries, summary); err != nil {
 				return "", err
 			}
@@ -946,10 +1006,26 @@ func (a *claudeAgent) processStreamJSON(
 	return lastMessageBuf.String(), nil
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // extractJSON extracts a JSON object from a string.
 // It handles markdown code blocks with json language tags.
 func extractJSON(s string) string {
 	s = strings.TrimSpace(s)
+
+	// Try to unescape if the string contains escaped characters
+	// (e.g., when content comes from JSON with escaped newlines)
+	if strings.Contains(s, "\\n") || strings.Contains(s, "\\\"") {
+		var unescaped string
+		if err := json.Unmarshal([]byte(s), &unescaped); err == nil {
+			s = unescaped
+		}
+	}
 
 	// Check for markdown code block
 	if strings.HasPrefix(s, "```json") {
@@ -1081,6 +1157,14 @@ func extractClaudeEventText(raw map[string]any) string {
 	if delta := extractClaudeStreamDelta(raw); delta != "" {
 		return delta
 	}
+	// Check for content field directly (from assistant_message events in stream-json)
+	if content, ok := raw["content"].(string); ok && content != "" {
+		return content
+	}
+	// Also check for result field (from --print mode result events)
+	if result, ok := raw["result"].(string); ok && result != "" {
+		return result
+	}
 	return ""
 }
 
@@ -1091,6 +1175,13 @@ func parseSummaryFromText(text string) (*Summary, bool) {
 	}
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(summaryJSON), &raw); err != nil {
+		// Try unescaping if it might be an escaped JSON string
+		if strings.HasPrefix(summaryJSON, "\"") && strings.HasSuffix(summaryJSON, "\"") {
+			var unescaped string
+			if err := json.Unmarshal([]byte(summaryJSON), &unescaped); err == nil {
+				return parseSummaryFromText(unescaped)
+			}
+		}
 		return nil, false
 	}
 	return parseSummaryFromRaw(raw)

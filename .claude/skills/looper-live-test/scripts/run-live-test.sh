@@ -52,11 +52,6 @@ LOOPER_BIN=$(resolve_looper_bin)
 
 mkdir -p "$PROJECT_DIR"
 
-# Copy prompts directory if it exists
-if [ -d "./prompts" ]; then
-    cp -r ./prompts "$PROJECT_DIR/prompts"
-fi
-
 cat > "$PROJECT_DIR/PROJECT.md" <<'EOF'
 # Smoke Test Project
 

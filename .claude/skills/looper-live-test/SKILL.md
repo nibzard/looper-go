@@ -12,7 +12,7 @@ Run a real looper-go iteration in a fresh temp directory to validate task select
 ## Workflow
 
 1. Locate the `looper` binary. Prefer `looper` on PATH; otherwise set `LOOPER_BIN` to a specific path (for example `~/looper-go/bin/looper` or `go run github.com/nibzard/looper-go/cmd/looper`).
-2. Run the helper script: `~/.codex/skills/looper-live-test/scripts/run-live-test.sh`
+2. Run the helper script: `~/.claude/skills/looper-live-test/scripts/run-live-test.sh`
 3. Watch the output until it finishes; note the `Task:` line and `Summary:` line.
 4. Inspect the temp project directory printed by the script; check `to-do.json` and any created files.
 5. Report: selected task line, summary line, files created, and any errors or unexpected behavior. Mention the temp dir path.
