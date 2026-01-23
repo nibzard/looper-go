@@ -124,7 +124,6 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("looper run", flag.ContinueOnError)
 	devMode := config.PromptDevModeEnabled()
 	maxIter := fs.Int("max-iterations", cfg.MaxIterations, "Maximum iterations")
-	schedule := fs.String("schedule", cfg.Schedule, "Iteration schedule (agent name|odd-even|round-robin)")
 	uiMode := fs.String("ui", "", "UI mode (tui for terminal UI)")
 	promptArg := fs.String("prompt", "", "User prompt to drive bootstrap (skips markdown scanning)")
 	var promptDir *string
@@ -136,16 +135,6 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		promptDir = fs.String("prompt-dir", "", "")
 		printPrompt = fs.Bool("print-prompt", false, "")
 	}
-	oddAgent := fs.String("odd-agent", cfg.OddAgent, "Agent for odd iterations in odd-even schedule (any registered agent)")
-	evenAgent := fs.String("even-agent", cfg.EvenAgent, "Agent for even iterations in odd-even schedule (any registered agent)")
-	var rrAgentsStr string
-	if cfg.RRAgents != nil {
-		rrAgentsStr = strings.Join(cfg.RRAgents, ",")
-	}
-	fs.StringVar(&rrAgentsStr, "rr-agents", rrAgentsStr, "Comma-separated agent list for round-robin schedule (e.g., claude,codex)")
-	repairAgent := fs.String("repair-agent", cfg.RepairAgent, "Agent for repair operations (any registered agent)")
-	reviewAgent := fs.String("review-agent", cfg.ReviewAgent, "Agent for review pass (any registered agent)")
-	bootstrapAgent := fs.String("bootstrap-agent", cfg.BootstrapAgent, "Agent for bootstrap operations (any registered agent)")
 	applySummary := fs.Bool("apply-summary", cfg.ApplySummary, "Apply summaries to task file")
 	gitInit := fs.Bool("git-init", cfg.GitInit, "Initialize git repo if missing")
 	hook := fs.String("hook", cfg.HookCommand, "Hook command to run after each iteration")
@@ -170,7 +159,6 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 
 	// Update config with parsed values
 	cfg.MaxIterations = *maxIter
-	cfg.Schedule = *schedule
 	if devMode {
 		cfg.PromptDir = *promptDir
 		cfg.PrintPrompt = *printPrompt
@@ -178,14 +166,6 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		cfg.PromptDir = ""
 		cfg.PrintPrompt = false
 	}
-	cfg.OddAgent = *oddAgent
-	cfg.EvenAgent = *evenAgent
-	if rrAgentsStr != "" {
-		cfg.RRAgents = splitAndTrim(rrAgentsStr, ",")
-	}
-	cfg.RepairAgent = *repairAgent
-	cfg.ReviewAgent = *reviewAgent
-	cfg.BootstrapAgent = *bootstrapAgent
 	cfg.ApplySummary = *applySummary
 	cfg.GitInit = *gitInit
 	cfg.HookCommand = *hook
@@ -280,79 +260,32 @@ func doctorCommand(cfg *config.Config, args []string) error {
 
 	// Check config
 	configOK := true
-	normalizedSchedule, scheduleOK := normalizeSchedule(cfg.Schedule)
-	repairAgent := normalizeAgent(cfg.RepairAgent)
-	reviewAgent := normalizeAgent(cfg.ReviewAgent)
-	bootstrapAgent := normalizeAgent(cfg.BootstrapAgent)
 
 	fmt.Println("Config:")
-	if scheduleOK {
-		fmt.Printf("  ✅ Schedule: %s\n", normalizedSchedule)
-	} else {
-		fmt.Printf("  ❌ Schedule: %s (expected registered agent name or odd-even|round-robin)\n", cfg.Schedule)
-		configOK = false
-	}
-	if repairAgent == "" {
-		fmt.Println("  ❌ Repair agent: empty (expected any registered agent)")
-		configOK = false
-	} else if !isValidAgent(repairAgent) {
-		fmt.Printf("  ❌ Repair agent: %s (not a registered agent type)\n", repairAgent)
-		configOK = false
-	} else {
-		fmt.Printf("  ✅ Repair agent: %s\n", repairAgent)
-	}
-	if reviewAgent == "" {
-		fmt.Println("  ✅ Review agent: (default: codex)")
-	} else if !isValidAgent(reviewAgent) {
-		fmt.Printf("  ❌ Review agent: %s (not a registered agent type)\n", reviewAgent)
-		configOK = false
-	} else {
-		fmt.Printf("  ✅ Review agent: %s\n", reviewAgent)
-	}
-	if bootstrapAgent == "" {
-		fmt.Println("  ✅ Bootstrap agent: (default: codex)")
-	} else if !isValidAgent(bootstrapAgent) {
-		fmt.Printf("  ❌ Bootstrap agent: %s (not a registered agent type)\n", bootstrapAgent)
-		configOK = false
-	} else {
-		fmt.Printf("  ✅ Bootstrap agent: %s\n", bootstrapAgent)
+	fmt.Println("  Roles:")
+
+	// Check required roles
+	requiredRoles := []struct {
+		name   string
+		role   string
+		defaultValue string
+	}{
+		{"Iteration", "iter", "claude"},
+		{"Review", "review", "claude"},
+		{"Repair", "repair", "claude"},
+		{"Bootstrap", "bootstrap", "claude"},
 	}
 
-	switch normalizedSchedule {
-	case "odd-even":
-		oddAgent, oddOK, oddDefault := normalizeAgentOrDefault(cfg.OddAgent, "codex")
-		if oddOK {
-			if oddDefault {
-				fmt.Printf("  ✅ Odd agent: %s (default)\n", oddAgent)
-			} else {
-				fmt.Printf("  ✅ Odd agent: %s\n", oddAgent)
-			}
-		} else {
-			fmt.Printf("  ❌ Odd agent: %s (not a registered agent type)\n", cfg.OddAgent)
-			configOK = false
+	for _, req := range requiredRoles {
+		agent := cfg.Roles.GetAgent(req.role)
+		if agent == "" {
+			agent = req.defaultValue
 		}
-
-		evenAgent, evenOK, evenDefault := normalizeAgentOrDefault(cfg.EvenAgent, "claude")
-		if evenOK {
-			if evenDefault {
-				fmt.Printf("  ✅ Even agent: %s (default)\n", evenAgent)
-			} else {
-				fmt.Printf("  ✅ Even agent: %s\n", evenAgent)
-			}
-		} else {
-			fmt.Printf("  ❌ Even agent: %s (not a registered agent type)\n", cfg.EvenAgent)
+		if !isValidAgent(agent) {
+			fmt.Printf("  ❌ %s role: %s (not a registered agent type)\n", req.name, agent)
 			configOK = false
-		}
-	case "round-robin":
-		rrAgents := normalizeAgentList(cfg.RRAgents)
-		invalidAgents := invalidAgentList(cfg.RRAgents)
-		if len(invalidAgents) > 0 {
-			fmt.Printf("  ❌ Round-robin agents: invalid values: %s\n", strings.Join(invalidAgents, ", "))
-			configOK = false
-		} else if len(rrAgents) == 0 {
-			fmt.Println("  ✅ Round-robin agents: claude,codex (default)")
 		} else {
-			fmt.Printf("  ✅ Round-robin agents: %s\n", strings.Join(rrAgents, ","))
+			fmt.Printf("  ✅ %s role: %s\n", req.name, agent)
 		}
 	}
 
@@ -362,7 +295,7 @@ func doctorCommand(cfg *config.Config, args []string) error {
 	fmt.Println()
 
 	fmt.Println("Dependencies:")
-	for _, agent := range requiredAgents(cfg, normalizedSchedule, scheduleOK) {
+	for _, agent := range requiredAgentsFromRoles(cfg) {
 		if !checkBinary(agent, cfg.GetAgentBinary(agent), true) {
 			allOK = false
 		}
@@ -1371,19 +1304,6 @@ func printTask(t todo.Task, verbose bool) {
 	}
 }
 
-// splitAndTrim splits a string by sep and trims whitespace from each part.
-func splitAndTrim(s, sep string) []string {
-	parts := strings.Split(s, sep)
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
-}
-
 // sortTasks sorts tasks deterministically by priority (ascending) then ID (ascending).
 // ID comparison is numeric-aware: T2 sorts before T10.
 func sortTasks(tasks []todo.Task) {
@@ -1413,26 +1333,8 @@ func normalizeSchedule(input string) (string, bool) {
 	}
 }
 
-func normalizeAgent(input string) string {
-	return strings.ToLower(strings.TrimSpace(input))
-}
-
-func normalizeAgentList(agents []string) []string {
-	if len(agents) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(agents))
-	for _, agent := range agents {
-		normalized := normalizeAgent(agent)
-		if normalized != "" {
-			result = append(result, normalized)
-		}
-	}
-	return result
-}
-
 func normalizeAgentOrDefault(agent, defaultAgent string) (string, bool, bool) {
-	normalized := normalizeAgent(agent)
+	normalized := utils.NormalizeAgentName(agent)
 	if normalized == "" {
 		return defaultAgent, true, true
 	}
@@ -1449,7 +1351,7 @@ func isValidAgent(agent string) bool {
 func invalidAgentList(agents []string) []string {
 	var invalid []string
 	for _, agent := range agents {
-		normalized := normalizeAgent(agent)
+		normalized := utils.NormalizeAgentName(agent)
 		if normalized == "" {
 			continue
 		}
@@ -1460,10 +1362,10 @@ func invalidAgentList(agents []string) []string {
 	return invalid
 }
 
-func requiredAgents(cfg *config.Config, schedule string, scheduleOK bool) []string {
+func requiredAgentsFromRoles(cfg *config.Config) []string {
 	required := make(map[string]struct{})
 	add := func(agent string) {
-		normalized := normalizeAgent(agent)
+		normalized := utils.NormalizeAgentName(agent)
 		if normalized == "" {
 			return
 		}
@@ -1473,37 +1375,11 @@ func requiredAgents(cfg *config.Config, schedule string, scheduleOK bool) []stri
 		required[normalized] = struct{}{}
 	}
 
-	repairAgent := normalizeAgent(cfg.RepairAgent)
-	if repairAgent == "" {
-		repairAgent = "codex"
-	}
-	add(repairAgent)
-	add(cfg.GetReviewAgent())
-	add(cfg.GetBootstrapAgent())
-
-	if scheduleOK {
-		switch schedule {
-		case "odd-even":
-			oddAgent, oddOK, _ := normalizeAgentOrDefault(cfg.OddAgent, "codex")
-			if oddOK {
-				add(oddAgent)
-			}
-			evenAgent, evenOK, _ := normalizeAgentOrDefault(cfg.EvenAgent, "claude")
-			if evenOK {
-				add(evenAgent)
-			}
-		case "round-robin":
-			agents := normalizeAgentList(cfg.RRAgents)
-			if len(agents) == 0 {
-				agents = []string{"claude", "codex"}
-			}
-			for _, agent := range agents {
-				add(agent)
-			}
-		default:
-			add(schedule)
-		}
-	}
+	// Add agents from all roles
+	add(cfg.Roles.GetAgent("iter"))
+	add(cfg.Roles.GetAgent("review"))
+	add(cfg.Roles.GetAgent("repair"))
+	add(cfg.Roles.GetAgent("bootstrap"))
 
 	result := make([]string, 0, len(required))
 	for agent := range required {
@@ -1749,7 +1625,7 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	logWriter := agents.CreateLogWriter(runLogger.Writer())
 
 	// Set up agent
-	agentName := normalizeAgent(*agentFlag)
+	agentName := utils.NormalizeAgentName(*agentFlag)
 	if agentName == "" {
 		return fmt.Errorf("invalid agent type: %s", *agentFlag)
 	}
@@ -2288,24 +2164,15 @@ func printConfigTable(cws *config.ConfigWithSources) error {
 	// Loop settings section
 	fmt.Println("Loop Settings:")
 	printConfigItem("Max iterations", fmt.Sprintf("%d", cfg.MaxIterations), cws.Sources["max_iterations"])
-	printConfigItem("Schedule", cfg.Schedule, cws.Sources["schedule"])
-	printConfigItem("Repair agent", cfg.RepairAgent, cws.Sources["repair_agent"])
-
-	printConfigItem("Review agent", cfg.GetReviewAgent(), cws.Sources["review_agent"])
-	printConfigItem("Bootstrap agent", cfg.GetBootstrapAgent(), cws.Sources["bootstrap_agent"])
 	fmt.Println()
 
-	// Schedule options
-	if cfg.Schedule == "odd-even" || cfg.Schedule == "round-robin" {
-		fmt.Println("Schedule Options:")
-		if cfg.Schedule == "odd-even" {
-			printConfigItem("Odd agent", effectiveOddAgent(cfg), cws.Sources["odd_agent"])
-			printConfigItem("Even agent", effectiveEvenAgent(cfg), cws.Sources["even_agent"])
-		} else if cfg.Schedule == "round-robin" {
-			printConfigItem("Round-robin agents", strings.Join(effectiveRRAgents(cfg), ","), cws.Sources["rr_agents"])
-		}
-		fmt.Println()
-	}
+	// Roles section
+	fmt.Println("Roles:")
+	printConfigItem("Iteration", cfg.Roles.GetAgent("iter"), cws.Sources["roles"])
+	printConfigItem("Review", cfg.Roles.GetAgent("review"), cws.Sources["roles"])
+	printConfigItem("Repair", cfg.Roles.GetAgent("repair"), cws.Sources["roles"])
+	printConfigItem("Bootstrap", cfg.Roles.GetAgent("bootstrap"), cws.Sources["roles"])
+	fmt.Println()
 
 	// Agents section
 	fmt.Println("Agents:")
@@ -2345,27 +2212,6 @@ func printConfigItem(label, value string, source config.ConfigSource) {
 	fmt.Printf("  %-20s %s [%s]\n", label+":", value, source)
 }
 
-func effectiveOddAgent(cfg *config.Config) string {
-	if agent := normalizeAgent(cfg.OddAgent); agent != "" {
-		return agent
-	}
-	return "codex"
-}
-
-func effectiveEvenAgent(cfg *config.Config) string {
-	if agent := normalizeAgent(cfg.EvenAgent); agent != "" {
-		return agent
-	}
-	return "claude"
-}
-
-func effectiveRRAgents(cfg *config.Config) []string {
-	if agents := normalizeAgentList(cfg.RRAgents); len(agents) > 0 {
-		return agents
-	}
-	return []string{"claude", "codex"}
-}
-
 // printAgentConfig prints agent configuration.
 func printAgentConfig(name string, agent config.Agent, cws *config.ConfigWithSources, binaryField, modelField, reasoningField, argsField string) {
 	binary := agent.Binary
@@ -2398,11 +2244,13 @@ func printConfigJSON(cws *config.ConfigWithSources) error {
 			"log_dir":     map[string]interface{}{"value": cfg.LogDir, "source": cws.Sources["log_dir"]},
 		},
 		"loop_settings": map[string]interface{}{
-			"max_iterations":  map[string]interface{}{"value": cfg.MaxIterations, "source": cws.Sources["max_iterations"]},
-			"schedule":        map[string]interface{}{"value": cfg.Schedule, "source": cws.Sources["schedule"]},
-			"repair_agent":    map[string]interface{}{"value": cfg.RepairAgent, "source": cws.Sources["repair_agent"]},
-			"review_agent":    map[string]interface{}{"value": cfg.GetReviewAgent(), "source": cws.Sources["review_agent"]},
-			"bootstrap_agent": map[string]interface{}{"value": cfg.GetBootstrapAgent(), "source": cws.Sources["bootstrap_agent"]},
+			"max_iterations": map[string]interface{}{"value": cfg.MaxIterations, "source": cws.Sources["max_iterations"]},
+		},
+		"roles": map[string]interface{}{
+			"iter":      map[string]interface{}{"value": cfg.Roles.GetAgent("iter"), "source": cws.Sources["roles"]},
+			"review":    map[string]interface{}{"value": cfg.Roles.GetAgent("review"), "source": cws.Sources["roles"]},
+			"repair":    map[string]interface{}{"value": cfg.Roles.GetAgent("repair"), "source": cws.Sources["roles"]},
+			"bootstrap": map[string]interface{}{"value": cfg.Roles.GetAgent("bootstrap"), "source": cws.Sources["roles"]},
 		},
 		"agents": map[string]interface{}{
 			"codex": map[string]interface{}{
@@ -2437,16 +2285,18 @@ func printConfigJSON(cws *config.ConfigWithSources) error {
 		}
 	}
 
-	// Handle schedule options
-	if cfg.Schedule == "odd-even" {
-		output["schedule_options"] = map[string]interface{}{
-			"odd_agent":  map[string]interface{}{"value": effectiveOddAgent(cfg), "source": cws.Sources["odd_agent"]},
-			"even_agent": map[string]interface{}{"value": effectiveEvenAgent(cfg), "source": cws.Sources["even_agent"]},
+	// Output role-based agent configuration
+	roles := make(map[string]interface{})
+	for _, roleName := range []string{"iter", "review", "repair", "bootstrap"} {
+		if agentName := cfg.Roles.GetAgent(roleName); agentName != "" {
+			roles[roleName] = map[string]interface{}{
+				"value":  agentName,
+				"source": "default",
+			}
 		}
-	} else if cfg.Schedule == "round-robin" {
-		output["schedule_options"] = map[string]interface{}{
-			"rr_agents": map[string]interface{}{"value": effectiveRRAgents(cfg), "source": cws.Sources["rr_agents"]},
-		}
+	}
+	if len(roles) > 0 {
+		output["roles"] = roles
 	}
 
 	enc := json.NewEncoder(os.Stdout)

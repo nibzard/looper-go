@@ -244,14 +244,14 @@ func TestSplitAndTrim(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := splitAndTrim(tt.input, tt.sep)
+			got := utils.SplitAndTrim(tt.input, tt.sep)
 			if len(got) != len(tt.expected) {
-				t.Errorf("splitAndTrim() length = %d, want %d", len(got), len(tt.expected))
+				t.Errorf("utils.SplitAndTrim() length = %d, want %d", len(got), len(tt.expected))
 				return
 			}
 			for i := range got {
 				if got[i] != tt.expected[i] {
-					t.Errorf("splitAndTrim()[%d] = %q, want %q", i, got[i], tt.expected[i])
+					t.Errorf("utils.SplitAndTrim()[%d] = %q, want %q", i, got[i], tt.expected[i])
 				}
 			}
 		})
@@ -318,9 +318,9 @@ func TestNormalizeAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := normalizeAgent(tt.input)
+			got := utils.NormalizeAgentName(tt.input)
 			if got != tt.expected {
-				t.Errorf("normalizeAgent(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("utils.NormalizeAgentName(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}
@@ -372,14 +372,14 @@ func TestNormalizeAgentList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeAgentList(tt.input)
+			got := utils.NormalizeAgentList(tt.input)
 			if len(got) != len(tt.expected) {
-				t.Errorf("normalizeAgentList() length = %d, want %d", len(got), len(tt.expected))
+				t.Errorf("utils.NormalizeAgentList() length = %d, want %d", len(got), len(tt.expected))
 				return
 			}
 			for i := range got {
 				if got[i] != tt.expected[i] {
-					t.Errorf("normalizeAgentList()[%d] = %q, want %q", i, got[i], tt.expected[i])
+					t.Errorf("utils.NormalizeAgentList()[%d] = %q, want %q", i, got[i], tt.expected[i])
 				}
 			}
 		})

@@ -20,8 +20,12 @@ func TestDefaults(t *testing.T) {
 	if cfg.MaxIterations != DefaultMaxIterations {
 		t.Errorf("MaxIterations: got %d, want %d", cfg.MaxIterations, DefaultMaxIterations)
 	}
-	if cfg.Schedule != "codex" {
-		t.Errorf("Schedule: got %q, want codex", cfg.Schedule)
+	// Check default role agents
+	if cfg.Roles.GetAgent("iter") != "claude" {
+		t.Errorf("Roles.iter: got %q, want claude", cfg.Roles.GetAgent("iter"))
+	}
+	if cfg.Roles.GetAgent("review") != "claude" {
+		t.Errorf("Roles.review: got %q, want claude", cfg.Roles.GetAgent("review"))
 	}
 	if cfg.ApplySummary != true {
 		t.Errorf("ApplySummary: got %v, want true", cfg.ApplySummary)
@@ -30,27 +34,25 @@ func TestDefaults(t *testing.T) {
 
 func TestIterSchedule(t *testing.T) {
 	tests := []struct {
-		name     string
-		schedule string
-		iter     int
-		want     string
+		name      string
+		iterAgent string
+		iter      int
+		want      string
 	}{
+		{"claude always", "claude", 1, "claude"},
+		{"claude iter 2", "claude", 2, "claude"},
 		{"codex always", "codex", 1, "codex"},
 		{"codex iter 2", "codex", 2, "codex"},
-		{"claude always", "claude", 1, "claude"},
-		{"odd-even odd", "odd-even", 1, "codex"},
-		{"odd-even even", "odd-even", 2, "claude"},
-		{"odd-even odd 3", "odd-even", 3, "codex"},
-		{"odd-even alias", "odd_even", 2, "claude"},
-		{"round-robin 1", "round-robin", 1, "claude"},
-		{"round-robin 2", "round-robin", 2, "codex"},
-		{"round-robin alias", "round_robin", 1, "claude"},
-		{"custom agent schedule", "opencode", 1, "opencode"},
+		{"custom agent", "opencode", 1, "opencode"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &Config{Schedule: tt.schedule}
+			cfg := &Config{}
+			if cfg.Roles == nil {
+				cfg.Roles = make(RolesConfig)
+			}
+			(&cfg.Roles).SetAgent("iter", tt.iterAgent)
 			got := cfg.IterSchedule(tt.iter)
 			if got != tt.want {
 				t.Errorf("IterSchedule(%d): got %q, want %q", tt.iter, got, tt.want)
@@ -61,20 +63,22 @@ func TestIterSchedule(t *testing.T) {
 
 func TestReviewAgent(t *testing.T) {
 	cfg := &Config{}
-	if got := cfg.GetReviewAgent(); got != "codex" {
-		t.Errorf("GetReviewAgent: got %q, want codex", got)
+	setDefaults(cfg)
+	if got := cfg.GetReviewAgent(); got != "claude" {
+		t.Errorf("GetReviewAgent: got %q, want claude", got)
 	}
 }
 
 func TestBootstrapAgent(t *testing.T) {
 	cfg := &Config{}
-	if got := cfg.GetBootstrapAgent(); got != "codex" {
-		t.Errorf("GetBootstrapAgent: got %q, want codex", got)
-	}
-
-	cfg.BootstrapAgent = "claude"
+	setDefaults(cfg)
 	if got := cfg.GetBootstrapAgent(); got != "claude" {
 		t.Errorf("GetBootstrapAgent: got %q, want claude", got)
+	}
+
+	(&cfg.Roles).SetAgent("bootstrap", "codex")
+	if got := cfg.GetBootstrapAgent(); got != "codex" {
+		t.Errorf("GetBootstrapAgent: got %q, want codex", got)
 	}
 }
 
@@ -82,8 +86,6 @@ func TestLoadFromEnv(t *testing.T) {
 	// Save original env
 	origTodo := os.Getenv("LOOPER_TODO")
 	origMaxIter := os.Getenv("LOOPER_MAX_ITERATIONS")
-	origIterSchedule := os.Getenv("LOOPER_ITER_SCHEDULE")
-	origSchedule := os.Getenv("LOOPER_SCHEDULE")
 
 	defer func() {
 		if origTodo != "" {
@@ -96,23 +98,11 @@ func TestLoadFromEnv(t *testing.T) {
 		} else {
 			os.Unsetenv("LOOPER_MAX_ITERATIONS")
 		}
-		if origIterSchedule != "" {
-			os.Setenv("LOOPER_ITER_SCHEDULE", origIterSchedule)
-		} else {
-			os.Unsetenv("LOOPER_ITER_SCHEDULE")
-		}
-		if origSchedule != "" {
-			os.Setenv("LOOPER_SCHEDULE", origSchedule)
-		} else {
-			os.Unsetenv("LOOPER_SCHEDULE")
-		}
 	}()
 
 	// Set test env vars
 	os.Setenv("LOOPER_TODO", "custom-todo.json")
 	os.Setenv("LOOPER_MAX_ITERATIONS", "100")
-	os.Setenv("LOOPER_ITER_SCHEDULE", "claude")
-	os.Setenv("LOOPER_SCHEDULE", "codex")
 
 	cfg := &Config{}
 	setDefaults(cfg)
@@ -123,9 +113,6 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.MaxIterations != 100 {
 		t.Errorf("MaxIterations: got %d, want 100", cfg.MaxIterations)
-	}
-	if cfg.Schedule != "claude" {
-		t.Errorf("Schedule: got %q, want claude", cfg.Schedule)
 	}
 }
 
@@ -146,11 +133,9 @@ func TestLoadWithSourcesFlags(t *testing.T) {
 	t.Setenv("LOOPER_PROMPT_MODE", "")
 	t.Setenv("LOOPER_TODO", "")
 	t.Setenv("LOOPER_MAX_ITERATIONS", "")
-	t.Setenv("LOOPER_ITER_SCHEDULE", "")
-	t.Setenv("LOOPER_SCHEDULE", "")
 
 	fs := flag.NewFlagSet("looper", flag.ContinueOnError)
-	cws, err := LoadWithSources(fs, []string{"--todo", "custom.json", "--max-iterations", "123", "--schedule", "claude"})
+	cws, err := LoadWithSources(fs, []string{"--todo", "custom.json", "--max-iterations", "123"})
 	if err != nil {
 		t.Fatalf("LoadWithSources: %v", err)
 	}
@@ -162,17 +147,11 @@ func TestLoadWithSourcesFlags(t *testing.T) {
 	if cws.Config.MaxIterations != 123 {
 		t.Errorf("MaxIterations: got %d, want 123", cws.Config.MaxIterations)
 	}
-	if cws.Config.Schedule != "claude" {
-		t.Errorf("Schedule: got %q, want claude", cws.Config.Schedule)
-	}
 	if cws.Sources["todo_file"] != SourceFlag {
 		t.Errorf("Source todo_file: got %q, want %q", cws.Sources["todo_file"], SourceFlag)
 	}
 	if cws.Sources["max_iterations"] != SourceFlag {
 		t.Errorf("Source max_iterations: got %q, want %q", cws.Sources["max_iterations"], SourceFlag)
-	}
-	if cws.Sources["schedule"] != SourceFlag {
-		t.Errorf("Source schedule: got %q, want %q", cws.Sources["schedule"], SourceFlag)
 	}
 }
 
@@ -206,7 +185,6 @@ func TestLoadConfigFile(t *testing.T) {
 
 	content := []byte(`todo_file = "custom.json"
 max_iterations = 25
-schedule = "claude"
 `)
 	if err := os.WriteFile(configFile, content, 0644); err != nil {
 		t.Fatal(err)
@@ -222,9 +200,6 @@ schedule = "claude"
 	}
 	if cfg.MaxIterations != 25 {
 		t.Errorf("MaxIterations: got %d, want 25", cfg.MaxIterations)
-	}
-	if cfg.Schedule != "claude" {
-		t.Errorf("Schedule: got %q, want claude", cfg.Schedule)
 	}
 }
 
@@ -286,8 +261,6 @@ func TestParseFlags(t *testing.T) {
 	args := []string{
 		"--todo", "flag-todo.json",
 		"--max-iterations", "75",
-		"--schedule", "odd-even",
-		"--rr-agents", "claude,codex",
 		"--codex-reasoning", "high",
 		"--codex-args", "arg1,arg2",
 		"--claude-args", "arg3,arg4",
@@ -302,12 +275,6 @@ func TestParseFlags(t *testing.T) {
 	}
 	if cfg.MaxIterations != 75 {
 		t.Errorf("MaxIterations: got %d, want 75", cfg.MaxIterations)
-	}
-	if cfg.Schedule != "odd-even" {
-		t.Errorf("Schedule: got %q, want odd-even", cfg.Schedule)
-	}
-	if len(cfg.RRAgents) != 2 || cfg.RRAgents[0] != "claude" || cfg.RRAgents[1] != "codex" {
-		t.Errorf("RRAgents: got %v, want [claude codex]", cfg.RRAgents)
 	}
 	codexAgent := cfg.Agents.GetAgent("codex")
 	if codexAgent.Reasoning != "high" {
@@ -707,7 +674,6 @@ func TestConfigMergeOrder(t *testing.T) {
 	userCfgFile := filepath.Join(userCfgDir, "looper.toml")
 	userCfgContent := []byte(`# User config
 max_iterations = 100
-schedule = "claude"
 `)
 	if err := os.WriteFile(userCfgFile, userCfgContent, 0644); err != nil {
 		t.Fatal(err)
@@ -737,9 +703,9 @@ todo_file = "project-tasks.json"
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// User config sets schedule to claude
-	if cfg.Schedule != "claude" {
-		t.Errorf("Schedule from user config: got %q, want claude", cfg.Schedule)
+	// User config sets default iter role to claude
+	if cfg.Roles.GetAgent("iter") != "claude" {
+		t.Errorf("Roles.iter from user config: got %q, want claude", cfg.Roles.GetAgent("iter"))
 	}
 
 	// Project config overrides max_iterations

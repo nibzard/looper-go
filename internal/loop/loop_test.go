@@ -2,16 +2,62 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/nibzard/looper-go/internal/agents"
 	"github.com/nibzard/looper-go/internal/config"
 	"github.com/nibzard/looper-go/internal/prompts"
 	"github.com/nibzard/looper-go/internal/todo"
 )
+
+func init() {
+	// Register a test agent type that uses simple output format
+	// This allows tests to avoid the complexity of Claude's stream-json format
+	agents.RegisterAgent(agents.AgentType("test-stub"), func(cfg agents.Config) (agents.Agent, error) {
+		return &testStubAgent{
+			binary: cfg.Binary,
+		}, nil
+	})
+}
+
+// testStubAgent is a simple test agent that runs a shell script and parses JSON output.
+type testStubAgent struct {
+	binary string
+}
+
+func (a *testStubAgent) Run(ctx context.Context, prompt string, logWriter agents.LogWriter) (*agents.Summary, error) {
+	// Run the stub binary and capture its output
+	cmd := exec.CommandContext(ctx, a.binary)
+	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Dir = "" // Use current directory
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the JSON output directly
+	var summary agents.Summary
+	if err := json.Unmarshal(output, &summary); err != nil {
+		return nil, err
+	}
+
+	// Handle files and blockers arrays
+	if summary.Files == nil {
+		summary.Files = []string{}
+	}
+	if summary.Blockers == nil {
+		summary.Blockers = []string{}
+	}
+
+	return &summary, nil
+}
 
 // TestApplySummary tests applying a summary to a task.
 func TestApplySummary(t *testing.T) {
@@ -811,18 +857,16 @@ Now: {{.Now}}
 		t.Fatalf("Failed to write iteration prompt: %v", err)
 	}
 
-	stubPath := filepath.Join(tmpDir, "stub-codex.sh")
+	stubPath := filepath.Join(tmpDir, "stub-test.sh")
 	stubScript := `#!/bin/sh
+# Read all input to get the prompt
 prompt=$(cat)
-status="blocked"
-summary="missing prompt"
-case "$prompt" in
-  *"Task: T001"*)
-    status="done"
-    summary="completed"
-    ;;
-esac
-printf '{"task_id":"T001","status":"%s","summary":"%s"}\n' "$status" "$summary"
+# Check for any T001 reference in the prompt
+if echo "$prompt" | grep -q "T001"; then
+  printf '{"task_id":"T001","status":"done","summary":"completed"}\n'
+else
+  printf '{"task_id":null,"status":"skipped","summary":"no task"}\n'
+fi
 `
 	if err := os.WriteFile(stubPath, []byte(stubScript), 0755); err != nil {
 		t.Fatalf("Failed to write stub agent: %v", err)
@@ -849,7 +893,9 @@ printf '{"task_id":"T001","status":"%s","summary":"%s"}\n' "$status" "$summary"
 		MaxIterations: 10,
 		LogDir:        filepath.Join(tmpDir, "logs"),
 	}
-	cfg.Agents.SetAgent("codex", config.Agent{Binary: stubPath})
+	(&cfg.Roles).SetAgent("iter", "test-stub")
+	(&cfg.Roles).SetAgent("review", "test-stub")
+	cfg.Agents.SetAgent("test-stub", config.Agent{Binary: stubPath})
 
 	loop, err := New(cfg, tmpDir)
 	if err != nil {
@@ -1171,4 +1217,668 @@ func stringsEqualFold(a, b string) bool {
 		}
 	}
 	return true
+}
+
+// TestEnsureGitRepo tests git repository initialization.
+func TestEnsureGitRepo(t *testing.T) {
+	t.Run("initializes git repo when none exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Verify no .git directory
+		gitDir := filepath.Join(tmpDir, ".git")
+		if _, err := os.Stat(gitDir); !os.IsNotExist(err) {
+			t.Skip("Git repo already exists in temp dir")
+		}
+
+		err := ensureGitRepo(tmpDir)
+		if err != nil {
+			// Git may not be available
+			t.Skipf("Git not available: %v", err)
+		}
+
+		// Verify .git directory was created
+		if info, err := os.Stat(gitDir); err != nil {
+			t.Errorf("Git directory not created: %v", err)
+		} else if !info.IsDir() {
+			t.Error(".git exists but is not a directory")
+		}
+	})
+
+	t.Run("does nothing when git repo already exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Initialize git repo
+		err := ensureGitRepo(tmpDir)
+		if err != nil {
+			t.Skipf("Git not available: %v", err)
+		}
+
+		// Call again - should not error
+		err = ensureGitRepo(tmpDir)
+		if err != nil {
+			t.Errorf("ensureGitRepo() on existing repo error = %v", err)
+		}
+	})
+
+	t.Run("returns error when .git exists but is not a directory", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		gitFile := filepath.Join(tmpDir, ".git")
+		if err := os.WriteFile(gitFile, []byte("not a directory"), 0644); err != nil {
+			t.Fatalf("Failed to create .git file: %v", err)
+		}
+
+		err := ensureGitRepo(tmpDir)
+		if err == nil {
+			t.Error("ensureGitRepo() expected error when .git is a file, got nil")
+		}
+	})
+}
+
+// TestVerifyTodoFileCreated tests the todo file verification.
+func TestVerifyTodoFileCreated(t *testing.T) {
+	t.Run("returns nil for existing file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		todoPath := filepath.Join(tmpDir, "todo.json")
+		if err := os.WriteFile(todoPath, []byte("{}"), 0644); err != nil {
+			t.Fatalf("Failed to create todo file: %v", err)
+		}
+
+		if err := verifyTodoFileCreated(todoPath); err != nil {
+			t.Errorf("verifyTodoFileCreated() error = %v", err)
+		}
+	})
+
+	t.Run("returns error when file does not exist", func(t *testing.T) {
+		todoPath := "/tmp/nonexistent_todo_file_12345.json"
+		err := verifyTodoFileCreated(todoPath)
+		if err == nil {
+			t.Error("verifyTodoFileCreated() expected error for missing file, got nil")
+		}
+	})
+
+	t.Run("returns error when path is a directory", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		err := verifyTodoFileCreated(tmpDir)
+		if err == nil {
+			t.Error("verifyTodoFileCreated() expected error for directory, got nil")
+		}
+	})
+}
+
+// TestValidationErrorsMessage tests error message formatting.
+func TestValidationErrorsMessage(t *testing.T) {
+	tests := []struct {
+		name   string
+		errors []error
+		want   string
+	}{
+		{
+			name:   "empty errors returns empty string",
+			errors: []error{},
+			want:   "",
+		},
+		{
+			name:   "single error",
+			errors: []error{errors.New("error 1")},
+			want:   "error 1",
+		},
+		{
+			name:   "multiple errors joined by newline",
+			errors: []error{errors.New("error 1"), errors.New("error 2")},
+			want:   "error 1\nerror 2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validationErrorsMessage(tt.errors)
+			if got != tt.want {
+				t.Errorf("validationErrorsMessage() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMarkTaskBlocked tests marking a task as blocked.
+func TestMarkTaskBlocked(t *testing.T) {
+	tmpDir := t.TempDir()
+	todoPath := filepath.Join(tmpDir, "todo.json")
+
+	todoFile := &todo.File{
+		SchemaVersion: 1,
+		SourceFiles:   []string{"README.md"},
+		Tasks: []todo.Task{
+			{ID: "T001", Title: "Task", Priority: 1, Status: todo.StatusTodo},
+		},
+	}
+	if err := todoFile.Save(todoPath); err != nil {
+		t.Fatalf("Failed to save todo file: %v", err)
+	}
+
+	loop := &Loop{
+		todoFile: todoFile,
+		todoPath: todoPath,
+	}
+
+	if err := loop.markTaskBlocked("T001"); err != nil {
+		t.Fatalf("markTaskBlocked() error = %v", err)
+	}
+
+	// Reload and verify
+	updated, err := todo.Load(todoPath)
+	if err != nil {
+		t.Fatalf("Failed to reload todo file: %v", err)
+	}
+
+	task := updated.GetTask("T001")
+	if task.Status != todo.StatusBlocked {
+		t.Errorf("Task status = %q, want %q", task.Status, todo.StatusBlocked)
+	}
+}
+
+// TestRenderReviewPrompt tests review prompt rendering.
+func TestRenderReviewPrompt(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	loop := &Loop{
+		renderer: prompts.NewRenderer(prompts.NewStore(tmpDir, "")),
+		todoPath: filepath.Join(tmpDir, "todo.json"),
+		schemaPath: filepath.Join(tmpDir, "schema.json"),
+		workDir: tmpDir,
+	}
+
+	prompt := loop.renderReviewPrompt(5)
+
+	// Verify the prompt contains iteration info
+	if !contains(prompt, "5") {
+		t.Error("Review prompt should contain iteration number")
+	}
+}
+
+// TestDelayBetweenIterations tests the delay function.
+func TestDelayBetweenIterations(t *testing.T) {
+	tests := []struct {
+		name        string
+		delaySec    int
+		expectDelay bool
+	}{
+		{"no delay when zero", 0, false},
+		{"no delay when negative", -1, false},
+		{"delay when positive", 1, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loop := &Loop{cfg: &config.Config{LoopDelaySeconds: tt.delaySec}}
+
+			start := time.Now()
+			err := loop.delayBetweenIterations(context.Background())
+			elapsed := time.Since(start)
+
+			if err != nil {
+				t.Errorf("delayBetweenIterations() error = %v", err)
+			}
+
+			// Check if delay occurred (with tolerance)
+			if tt.expectDelay && elapsed < 500*time.Millisecond {
+				t.Errorf("Expected delay > 500ms, got %v", elapsed)
+			}
+			if !tt.expectDelay && elapsed > 100*time.Millisecond {
+				t.Errorf("Expected no delay, got %v", elapsed)
+			}
+		})
+	}
+
+	t.Run("respects context cancellation", func(t *testing.T) {
+		loop := &Loop{cfg: &config.Config{LoopDelaySeconds: 10}}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		err := loop.delayBetweenIterations(ctx)
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled, got %v", err)
+		}
+	})
+}
+
+// TestRunReviewAndMaybeFinish tests the review flow.
+func TestRunReviewAndMaybeFinish(t *testing.T) {
+	t.Setenv("LOOPER_QUIET", "1")
+	tmpDir := t.TempDir()
+
+	// Create prompts directory
+	promptsDir := filepath.Join(tmpDir, "prompts")
+	if err := os.Mkdir(promptsDir, 0755); err != nil {
+		t.Fatalf("Failed to create prompts dir: %v", err)
+	}
+
+	// Write summary schema
+	schemaPath := filepath.Join(promptsDir, prompts.SummarySchema)
+	schemaContent := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["task_id", "status"],
+		"properties": {
+			"task_id": { "type": ["string", "null"] },
+			"status": { "type": "string", "enum": ["done", "blocked", "skipped"] },
+			"summary": { "type": "string" }
+		}
+	}`
+	if err := os.WriteFile(schemaPath, []byte(schemaContent), 0644); err != nil {
+		t.Fatalf("Failed to write schema: %v", err)
+	}
+
+	// Write review prompt
+	reviewPromptPath := filepath.Join(promptsDir, prompts.ReviewPrompt)
+	reviewPromptContent := `TodoPath: {{.TodoPath}}
+SchemaPath: {{.SchemaPath}}
+WorkDir: {{.WorkDir}}
+Iteration: {{.Iteration}}
+`
+	if err := os.WriteFile(reviewPromptPath, []byte(reviewPromptContent), 0644); err != nil {
+		t.Fatalf("Failed to write review prompt: %v", err)
+	}
+
+	stubPath := filepath.Join(tmpDir, "stub-review.sh")
+	stubScript := `#!/bin/sh
+# Read all input
+cat > /dev/null
+printf '{"task_id":null,"status":"skipped","summary":"no new tasks"}\n'
+`
+	if err := os.WriteFile(stubPath, []byte(stubScript), 0755); err != nil {
+		t.Fatalf("Failed to write stub agent: %v", err)
+	}
+
+	todoPath := filepath.Join(tmpDir, "todo.json")
+
+	todoFile := &todo.File{
+		SchemaVersion: 1,
+		SourceFiles:   []string{"README.md"},
+		Tasks: []todo.Task{
+			{ID: "T001", Title: "Task", Priority: 1, Status: todo.StatusDone},
+		},
+	}
+	if err := todoFile.Save(todoPath); err != nil {
+		t.Fatalf("Failed to save todo file: %v", err)
+	}
+
+	cfg := &config.Config{
+		TodoFile:      "todo.json",
+		SchemaFile:    "to-do.schema.json",
+		PromptDir:     promptsDir,
+		ApplySummary:  false, // Don't apply review summary
+		MaxIterations: 10,
+		LogDir:        filepath.Join(tmpDir, "logs"),
+	}
+	(&cfg.Roles).SetAgent("iter", "test-stub")
+	(&cfg.Roles).SetAgent("review", "test-stub")
+	cfg.Agents.SetAgent("test-stub", config.Agent{Binary: stubPath})
+
+	loop, err := New(cfg, tmpDir)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Run review - should add project-done marker since no new tasks
+	done, err := loop.runReviewAndMaybeFinish(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("runReviewAndMaybeFinish() error = %v", err)
+	}
+
+	if !done {
+		t.Error("Expected done=true when no tasks remain")
+	}
+
+	// Verify project-done marker was added
+	updated, err := todo.Load(todoPath)
+	if err != nil {
+		t.Fatalf("Failed to reload todo file: %v", err)
+	}
+
+	found := false
+	for _, task := range updated.Tasks {
+		if stringsEqualFold(task.ID, "PROJECT-DONE") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Project-done marker was not added")
+	}
+}
+
+// TestRunMainLoop tests the main Run loop.
+func TestRunMainLoop(t *testing.T) {
+	t.Setenv("LOOPER_QUIET", "1")
+	tmpDir := t.TempDir()
+
+	// Create prompts directory
+	promptsDir := filepath.Join(tmpDir, "prompts")
+	if err := os.Mkdir(promptsDir, 0755); err != nil {
+		t.Fatalf("Failed to create prompts dir: %v", err)
+	}
+
+	// Write summary schema
+	schemaPath := filepath.Join(promptsDir, prompts.SummarySchema)
+	schemaContent := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["task_id", "status"],
+		"properties": {
+			"task_id": { "type": ["string", "null"] },
+			"status": { "type": "string", "enum": ["done", "blocked", "skipped"] },
+			"summary": { "type": "string" }
+		}
+	}`
+	if err := os.WriteFile(schemaPath, []byte(schemaContent), 0644); err != nil {
+		t.Fatalf("Failed to write schema: %v", err)
+	}
+
+	// Write iteration prompt
+	iterationPromptPath := filepath.Join(promptsDir, prompts.IterationPrompt)
+	iterationPromptContent := `Task: {{.SelectedTask.ID}}
+WorkDir: {{.WorkDir}}
+`
+	if err := os.WriteFile(iterationPromptPath, []byte(iterationPromptContent), 0644); err != nil {
+		t.Fatalf("Failed to write iteration prompt: %v", err)
+	}
+
+	// Write review prompt
+	reviewPromptPath := filepath.Join(promptsDir, prompts.ReviewPrompt)
+	reviewPromptContent := `Review pass
+`
+	if err := os.WriteFile(reviewPromptPath, []byte(reviewPromptContent), 0644); err != nil {
+		t.Fatalf("Failed to write review prompt: %v", err)
+	}
+
+	stubPath := filepath.Join(tmpDir, "stub-test.sh")
+	stubScript := `#!/bin/sh
+# Read all input to get the prompt
+prompt=$(cat)
+status="done"
+summary="completed"
+case "$prompt" in
+  *"Task: T001"*)
+    status="done"
+    summary="completed"
+    ;;
+  *"Review pass"*)
+    status="skipped"
+    summary="no new tasks"
+    ;;
+esac
+printf '{"task_id":"T001","status":"%s","summary":"%s"}\n' "$status" "$summary"
+`
+	if err := os.WriteFile(stubPath, []byte(stubScript), 0755); err != nil {
+		t.Fatalf("Failed to write stub agent: %v", err)
+	}
+
+	todoPath := filepath.Join(tmpDir, "todo.json")
+
+	todoFile := &todo.File{
+		SchemaVersion: 1,
+		SourceFiles:   []string{"README.md"},
+		Tasks: []todo.Task{
+			{ID: "T001", Title: "Test task", Priority: 1, Status: todo.StatusTodo},
+		},
+	}
+	if err := todoFile.Save(todoPath); err != nil {
+		t.Fatalf("Failed to save todo file: %v", err)
+	}
+
+	cfg := &config.Config{
+		TodoFile:      "todo.json",
+		SchemaFile:    "to-do.schema.json",
+		PromptDir:     promptsDir,
+		ApplySummary:  true,
+		MaxIterations: 10,
+		LogDir:        filepath.Join(tmpDir, "logs"),
+	}
+	(&cfg.Roles).SetAgent("iter", "test-stub")
+	(&cfg.Roles).SetAgent("review", "test-stub")
+	cfg.Agents.SetAgent("test-stub", config.Agent{Binary: stubPath})
+
+	loop, err := New(cfg, tmpDir)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Run the loop
+	err = loop.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// Verify task was completed
+	updated, err := todo.Load(todoPath)
+	if err != nil {
+		t.Fatalf("Failed to reload todo file: %v", err)
+	}
+
+	task := updated.GetTask("T001")
+	if task.Status != todo.StatusDone {
+		t.Errorf("Task status = %q, want %q", task.Status, todo.StatusDone)
+	}
+
+	// Verify project-done marker was added
+	found := false
+	for _, task := range updated.Tasks {
+		if stringsEqualFold(task.ID, "PROJECT-DONE") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Project-done marker was not added after review")
+	}
+}
+
+// TestRunWithContextCancellation tests context cancellation.
+func TestRunWithContextCancellation(t *testing.T) {
+	t.Setenv("LOOPER_QUIET", "1")
+	tmpDir := t.TempDir()
+
+	// Create prompts directory
+	promptsDir := filepath.Join(tmpDir, "prompts")
+	if err := os.Mkdir(promptsDir, 0755); err != nil {
+		t.Fatalf("Failed to create prompts dir: %v", err)
+	}
+
+	// Write summary schema
+	schemaPath := filepath.Join(promptsDir, prompts.SummarySchema)
+	schemaContent := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["task_id", "status"],
+		"properties": {
+			"task_id": { "type": ["string", "null"] },
+			"status": { "type": "string", "enum": ["done", "blocked", "skipped"] },
+			"summary": { "type": "string" }
+		}
+	}`
+	if err := os.WriteFile(schemaPath, []byte(schemaContent), 0644); err != nil {
+		t.Fatalf("Failed to write schema: %v", err)
+	}
+
+	// Write iteration prompt
+	iterationPromptPath := filepath.Join(promptsDir, prompts.IterationPrompt)
+	iterationPromptContent := `Task: {{.SelectedTask.ID}}
+`
+	if err := os.WriteFile(iterationPromptPath, []byte(iterationPromptContent), 0644); err != nil {
+		t.Fatalf("Failed to write iteration prompt: %v", err)
+	}
+
+	todoPath := filepath.Join(tmpDir, "todo.json")
+
+	todoFile := &todo.File{
+		SchemaVersion: 1,
+		SourceFiles:   []string{"README.md"},
+		Tasks: []todo.Task{
+			{ID: "T001", Title: "Task", Priority: 1, Status: todo.StatusTodo},
+			{ID: "T002", Title: "Task 2", Priority: 1, Status: todo.StatusTodo},
+		},
+	}
+	if err := todoFile.Save(todoPath); err != nil {
+		t.Fatalf("Failed to save todo file: %v", err)
+	}
+
+	cfg := &config.Config{
+		TodoFile:      "todo.json",
+		SchemaFile:    "to-do.schema.json",
+		PromptDir:     promptsDir,
+		ApplySummary:  false,
+		MaxIterations: 100,
+		LogDir:        filepath.Join(tmpDir, "logs"),
+	}
+
+	loop, err := New(cfg, tmpDir)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Cancel context after first iteration
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = loop.Run(ctx)
+	if err != context.Canceled {
+		t.Errorf("Expected context.Canceled, got %v", err)
+	}
+}
+
+// TestRunWithStatus tests the RunWithStatus method.
+func TestRunWithStatus(t *testing.T) {
+	t.Setenv("LOOPER_QUIET", "1")
+	tmpDir := t.TempDir()
+
+	// Create prompts directory
+	promptsDir := filepath.Join(tmpDir, "prompts")
+	if err := os.Mkdir(promptsDir, 0755); err != nil {
+		t.Fatalf("Failed to create prompts dir: %v", err)
+	}
+
+	// Write summary schema
+	schemaPath := filepath.Join(promptsDir, prompts.SummarySchema)
+	schemaContent := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["task_id", "status"],
+		"properties": {
+			"task_id": { "type": ["string", "null"] },
+			"status": { "type": "string", "enum": ["done", "blocked", "skipped"] },
+			"summary": { "type": "string" }
+		}
+	}`
+	if err := os.WriteFile(schemaPath, []byte(schemaContent), 0644); err != nil {
+		t.Fatalf("Failed to write schema: %v", err)
+	}
+
+	// Write iteration prompt
+	iterationPromptPath := filepath.Join(promptsDir, prompts.IterationPrompt)
+	iterationPromptContent := `Task: {{.SelectedTask.ID}}
+`
+	if err := os.WriteFile(iterationPromptPath, []byte(iterationPromptContent), 0644); err != nil {
+		t.Fatalf("Failed to write iteration prompt: %v", err)
+	}
+
+	// Write review prompt
+	reviewPromptPath := filepath.Join(promptsDir, prompts.ReviewPrompt)
+	reviewPromptContent := `Review pass
+`
+	if err := os.WriteFile(reviewPromptPath, []byte(reviewPromptContent), 0644); err != nil {
+		t.Fatalf("Failed to write review prompt: %v", err)
+	}
+
+	stubPath := filepath.Join(tmpDir, "stub-claude.sh")
+	stubScript := `#!/bin/sh
+prompt=$(cat)
+status="done"
+summary="done"
+case "$prompt" in
+  *"Task: T001"*)
+    status="done"
+    summary="done"
+    ;;
+  *"Review pass"*)
+    status="skipped"
+    summary="no new tasks"
+    ;;
+esac
+printf '{"task_id":"T001","status":"%s","summary":"%s"}\n' "$status" "$summary"
+`
+	if err := os.WriteFile(stubPath, []byte(stubScript), 0755); err != nil {
+		t.Fatalf("Failed to write stub agent: %v", err)
+	}
+
+	todoPath := filepath.Join(tmpDir, "todo.json")
+
+	todoFile := &todo.File{
+		SchemaVersion: 1,
+		SourceFiles:   []string{"README.md"},
+		Tasks: []todo.Task{
+			{ID: "T001", Title: "Test task", Priority: 1, Status: todo.StatusTodo},
+		},
+	}
+	if err := todoFile.Save(todoPath); err != nil {
+		t.Fatalf("Failed to save todo file: %v", err)
+	}
+
+	cfg := &config.Config{
+		TodoFile:      "todo.json",
+		SchemaFile:    "to-do.schema.json",
+		PromptDir:     promptsDir,
+		ApplySummary:  true,
+		MaxIterations: 10,
+		LogDir:        filepath.Join(tmpDir, "logs"),
+	}
+	(&cfg.Roles).SetAgent("iter", "test-stub")
+	(&cfg.Roles).SetAgent("review", "test-stub")
+	cfg.Agents.SetAgent("test-stub", config.Agent{Binary: stubPath})
+
+	loop, err := New(cfg, tmpDir)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	statusCh := make(chan Status, 10)
+	doneCh := make(chan error, 1)
+
+	go func() {
+		doneCh <- loop.RunWithStatus(context.Background(), statusCh)
+	}()
+
+	// Collect status updates
+	var statuses []Status
+	for status := range statusCh {
+		statuses = append(statuses, status)
+		if status.Status == "done" || status.Error != nil {
+			break
+		}
+	}
+
+	err = <-doneCh
+	if err != nil {
+		t.Fatalf("RunWithStatus() error = %v", err)
+	}
+
+	if len(statuses) == 0 {
+		t.Fatal("No status updates received")
+	}
+
+	// Verify we got at least one status update
+	found := false
+	for _, s := range statuses {
+		if s.TaskID == "T001" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Expected status update for T001")
+	}
 }

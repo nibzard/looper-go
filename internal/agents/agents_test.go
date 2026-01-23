@@ -327,36 +327,55 @@ func TestClaudeAgentConfig(t *testing.T) {
 
 // TestNewAgent tests the NewAgent factory function.
 func TestNewAgent(t *testing.T) {
-	cfg := Config{
-		Binary:  "test",
-		Timeout: DefaultTimeout,
-	}
-
 	tests := []struct {
 		name      string
 		agentType AgentType
+		cfg       Config
 		wantErr   bool
 	}{
 		{
 			name:      "codex agent",
 			agentType: AgentTypeCodex,
-			wantErr:   false,
+			cfg: Config{
+				Binary:  "test",
+				Timeout: DefaultTimeout,
+			},
+			wantErr: false,
 		},
 		{
 			name:      "claude agent",
 			agentType: AgentTypeClaude,
-			wantErr:   false,
+			cfg: Config{
+				Binary:  "test",
+				Timeout: DefaultTimeout,
+			},
+			wantErr: false,
 		},
 		{
-			name:      "unknown agent type",
+			name:      "unknown agent type with parser",
 			agentType: "unknown",
-			wantErr:   true,
+			cfg: Config{
+				Binary:  "test",
+				Timeout: DefaultTimeout,
+				Parser:  "builtin:stub", // Use builtin stub parser for testing
+			},
+			wantErr: false,
+		},
+		{
+			name:      "unknown agent type without parser",
+			agentType: "unknown",
+			cfg: Config{
+				Binary:  "test",
+				Timeout: DefaultTimeout,
+				// No parser configured
+			},
+			wantErr: true, // Unknown types without parser should error
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent, err := NewAgent(tt.agentType, cfg)
+			agent, err := NewAgent(tt.agentType, tt.cfg)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewAgent() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -846,15 +865,27 @@ func TestAgentRegistry(t *testing.T) {
 		}
 	})
 
-	// Test NewAgent with unregistered type
+	// Test NewAgent with unregistered type - now falls back to generic agent if parser is configured
 	t.Run("NewAgent with unregistered type", func(t *testing.T) {
+		// Without parser, should error
 		_, err := NewAgent("unregistered", Config{})
 		if err == nil {
-			t.Error("NewAgent() with unregistered type should return error")
+			t.Error("NewAgent() with unregistered type and no parser should return error")
 		}
-		// Error message should mention the registered types
-		if !strings.Contains(err.Error(), "unknown agent type") {
-			t.Errorf("Error message should mention unknown agent type, got: %v", err)
+
+		// With parser, should create generic agent
+		agent, err := NewAgent("unregistered", Config{
+			Parser: "builtin:stub",
+		})
+		if err != nil {
+			t.Errorf("NewAgent() with unregistered type and parser should not return error, got: %v", err)
+		}
+		if agent == nil {
+			t.Error("NewAgent() should return a generic agent for unregistered type with parser")
+		}
+		// Verify it's a genericAgent by checking type
+		if _, ok := agent.(*genericAgent); !ok {
+			t.Error("NewAgent() should return a genericAgent for unregistered type with parser")
 		}
 	})
 }

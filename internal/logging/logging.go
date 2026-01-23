@@ -10,9 +10,32 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+const (
+	// defaultLogDirPerm is the default permission for log directories.
+	// Owner-only by default (0700) for security. Logs may contain sensitive
+	// information such as file paths, command outputs, and error messages.
+	// Can be overridden via LOOPER_LOG_DIR_PERM environment variable.
+	defaultLogDirPerm = 0700
+)
+
+// getLogDirPerm returns the log directory permission.
+// It checks the LOOPER_LOG_DIR_PERM environment variable for an octal value.
+// If not set or invalid, returns defaultLogDirPerm.
+func getLogDirPerm() os.FileMode {
+	if s := os.Getenv("LOOPER_LOG_DIR_PERM"); s != "" {
+		// Parse octal string (e.g., "0755" -> 0o755)
+		perm, err := strconv.ParseUint(s, 8, 32)
+		if err == nil {
+			return os.FileMode(perm)
+		}
+	}
+	return defaultLogDirPerm
+}
 
 // RunLogger manages per-run log files and last-message paths.
 type RunLogger struct {
@@ -40,7 +63,7 @@ func NewRunLogger(baseDir, workDir string) (*RunLogger, error) {
 	projectRoot := resolveProjectRoot(resolvedWorkDir)
 	logDir := filepath.Join(baseDir, projectSlug(projectRoot))
 
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, getLogDirPerm()); err != nil {
 		return nil, fmt.Errorf("create log dir: %w", err)
 	}
 

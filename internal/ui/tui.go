@@ -99,10 +99,14 @@ type tuiModel struct {
 	statusCh     <-chan loop.Status
 	loadErr      error
 	data         *tuiData
+	filteredData *tuiData
 	lastStatus   loop.Status
 	loopDone     bool
 	loopErr      error
 	tickInterval time.Duration
+	filter       todo.Status // Filter by status
+	showHelp     bool        // Show help screen
+	showStatus   bool        // Toggle status display
 }
 
 type tuiData struct {
@@ -150,6 +154,36 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "r", "f5":
+			m.refresh()
+			m.applyFilter()
+			return m, nil
+		case "s":
+			m.showStatus = !m.showStatus
+			return m, nil
+		case "h", "?":
+			m.showHelp = !m.showHelp
+			return m, nil
+		case "1":
+			m.filter = todo.StatusTodo
+			m.applyFilter()
+			return m, nil
+		case "2":
+			m.filter = todo.StatusDoing
+			m.applyFilter()
+			return m, nil
+		case "3":
+			m.filter = todo.StatusBlocked
+			m.applyFilter()
+			return m, nil
+		case "4":
+			m.filter = todo.StatusDone
+			m.applyFilter()
+			return m, nil
+		case "0":
+			m.filter = ""
+			m.filteredData = nil
+			return m, nil
 		}
 	case tickMsg:
 		m.refresh()
@@ -176,9 +210,23 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *tuiModel) View() string {
 	var b strings.Builder
 	writeTitle(&b)
-	if m.runLoop {
+
+	// Show help screen if enabled
+	if m.showHelp {
+		writeHelp(&b)
+		writeFooter(&b, m.tickInterval)
+		return b.String()
+	}
+
+	if m.runLoop && m.showStatus {
 		writeStatusLine(&b, m.lastStatus, m.loopDone)
 	}
+
+	// Show filter indicator
+	if m.filter != "" {
+		b.WriteString(fmt.Sprintf("Filter: %s (0 to clear)\n\n", m.filter))
+	}
+
 	if m.loadErr != nil {
 		b.WriteString("Error loading todo file:\n")
 		b.WriteString("  " + m.loadErr.Error() + "\n\n")
@@ -191,9 +239,15 @@ func (m *tuiModel) View() string {
 		return b.String()
 	}
 
-	writeOverview(&b, m.data)
-	writeCurrentTask(&b, m.data)
-	writeRecent(&b, m.data)
+	// Use filtered data if filter is active, otherwise use all data
+	displayData := m.data
+	if m.filteredData != nil {
+		displayData = m.filteredData
+	}
+
+	writeOverview(&b, displayData)
+	writeCurrentTask(&b, displayData)
+	writeRecent(&b, displayData)
 	writeConfig(&b, m.cfg, m.todoPath)
 	writeFooter(&b, m.tickInterval)
 	return b.String()
@@ -224,6 +278,48 @@ func (m *tuiModel) refresh() {
 	}
 	m.loadErr = nil
 	m.data = buildTUIData(todoFile)
+	m.applyFilter()
+}
+
+// applyFilter applies the current filter to the data.
+func (m *tuiModel) applyFilter() {
+	if m.data == nil || m.filter == "" {
+		m.filteredData = nil
+		return
+	}
+
+	// Create a filtered copy of the data
+	filtered := &tuiData{
+		counts: map[todo.Status]int{
+			todo.StatusTodo:    0,
+			todo.StatusDoing:   0,
+			todo.StatusBlocked: 0,
+			todo.StatusDone:    0,
+		},
+	}
+
+	// Only show tasks matching the filter
+	for status, count := range m.data.counts {
+		if status == m.filter {
+			filtered.counts[status] = count
+		}
+	}
+
+	// Set current task if it matches the filter
+	if m.data.currentTask != nil && m.data.currentTask.Status == m.filter {
+		filtered.currentTask = m.data.currentTask
+		filtered.currentLabel = m.data.currentLabel
+		filtered.allDone = m.data.allDone
+	}
+
+	// Filter recent tasks
+	for _, task := range m.data.recent {
+		if task.Status == m.filter {
+			filtered.recent = append(filtered.recent, task)
+		}
+	}
+
+	m.filteredData = filtered
 }
 
 func buildTUIData(todoFile *todo.File) *tuiData {
@@ -340,13 +436,25 @@ func writeRecent(b *strings.Builder, data *tuiData) {
 
 func writeConfig(b *strings.Builder, cfg *config.Config, todoPath string) {
 	b.WriteString("Configuration\n\n")
-	b.WriteString(fmt.Sprintf("  Schedule:  %s\n", cfg.Schedule))
 	b.WriteString(fmt.Sprintf("  Max Iters: %d\n", cfg.MaxIterations))
 	b.WriteString(fmt.Sprintf("  Todo File: %s\n\n", todoPath))
 }
 
+func writeHelp(b *strings.Builder) {
+	b.WriteString("Keyboard Shortcuts\n\n")
+	b.WriteString("  q, ctrl+c    Quit\n")
+	b.WriteString("  r, F5        Refresh data\n")
+	b.WriteString("  s            Toggle status display\n")
+	b.WriteString("  h, ?         Toggle this help screen\n")
+	b.WriteString("  1            Filter by todo\n")
+	b.WriteString("  2            Filter by doing\n")
+	b.WriteString("  3            Filter by blocked\n")
+	b.WriteString("  4            Filter by done\n")
+	b.WriteString("  0            Clear filter\n\n")
+}
+
 func writeFooter(b *strings.Builder, interval time.Duration) {
-	b.WriteString(fmt.Sprintf("Press q to quit | Refreshing every %s\n", interval))
+	b.WriteString(fmt.Sprintf("Press h for help | q to quit | Refreshing every %s\n", interval))
 }
 
 func formatTask(t *todo.Task, verbose bool) string {

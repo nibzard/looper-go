@@ -572,13 +572,11 @@ graph TD
     E --> F[<run-id>/]
     F --> G[events.jsonl]
 
-    A --> H[Last Message Files]
-    H --> I[/tmp/looper-*]
-
     J[Agent Events] --> K[JSON Lines]
     K --> G
 
-    L[Log Methods] --> M[LogMessage]
+    A --> L[Log Methods]
+    L --> M[LogMessage]
     L --> N[LogTool]
     L --> O[LogCommand]
     L --> P[LogError]

@@ -8,9 +8,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/nibzard/looper-go/internal/utils"
+)
+
+// Schema cache for improved performance.
+var (
+	schemaCache   = make(map[string]*jsonschema.Schema)
+	schemaCacheMu sync.RWMutex
 )
 
 // idSortKey extracts the numeric value from a task ID for sorting.
@@ -268,6 +276,39 @@ func validateTaskMinimal(task *Task, path string) *ValidationError {
 	return nil
 }
 
+// getCachedSchema returns a cached compiled schema for the given path.
+// If not in cache, compiles and stores it for future use.
+func getCachedSchema(schemaPath string) (*jsonschema.Schema, error) {
+	// Check cache with read lock
+	schemaCacheMu.RLock()
+	schema, ok := schemaCache[schemaPath]
+	schemaCacheMu.RUnlock()
+
+	if ok {
+		return schema, nil
+	}
+
+	// Compile schema with write lock
+	schemaCacheMu.Lock()
+	defer schemaCacheMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if schema, ok := schemaCache[schemaPath]; ok {
+		return schema, nil
+	}
+
+	compiler := jsonschema.NewCompiler()
+	compiler.AssertFormat = true
+
+	schema, err := compiler.Compile(schemaPath)
+	if err != nil {
+		return nil, err
+	}
+
+	schemaCache[schemaPath] = schema
+	return schema, nil
+}
+
 // validateWithSchema attempts JSON Schema validation.
 func validateWithSchema(f *File, schemaPath string) *ValidationResult {
 	result := &ValidationResult{
@@ -292,10 +333,7 @@ func validateWithSchema(f *File, schemaPath string) *ValidationResult {
 		return result
 	}
 
-	compiler := jsonschema.NewCompiler()
-	compiler.AssertFormat = true
-
-	schema, err := compiler.Compile(absPath)
+	schema, err := getCachedSchema(absPath)
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("invalid schema file: %v", err))
 		return result
@@ -353,7 +391,7 @@ func collectSchemaErrors(result *ValidationResult, err *jsonschema.ValidationErr
 
 	if len(err.Causes) == 0 {
 		result.Errors = append(result.Errors, &ValidationError{
-			Path: jsonPointerToPath(err.InstanceLocation),
+			Path: utils.JSONPointerToPath(err.InstanceLocation),
 			Err:  fmt.Errorf("%s", err.Message),
 		})
 		return
@@ -362,42 +400,6 @@ func collectSchemaErrors(result *ValidationResult, err *jsonschema.ValidationErr
 	for _, cause := range err.Causes {
 		collectSchemaErrors(result, cause)
 	}
-}
-
-func jsonPointerToPath(ptr string) string {
-	if ptr == "" {
-		return ""
-	}
-	if strings.HasPrefix(ptr, "#") {
-		ptr = strings.TrimPrefix(ptr, "#")
-	}
-	if strings.HasPrefix(ptr, "/") {
-		ptr = ptr[1:]
-	}
-	if ptr == "" {
-		return ""
-	}
-
-	parts := strings.Split(ptr, "/")
-	path := ""
-	for _, part := range parts {
-		part = strings.ReplaceAll(part, "~1", "/")
-		part = strings.ReplaceAll(part, "~0", "~")
-		if part == "" {
-			continue
-		}
-		if idx, err := strconv.Atoi(part); err == nil {
-			path += fmt.Sprintf("[%d]", idx)
-			continue
-		}
-		if path == "" {
-			path = part
-		} else {
-			path += "." + part
-		}
-	}
-
-	return path
 }
 
 // GetTask returns a task by ID, or nil if not found.
