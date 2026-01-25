@@ -802,6 +802,194 @@ looper plugin install ./my-plugin
 looper plugin uninstall my-agent
 ```
 
+### Plugin Validation
+
+The `looper plugin validate` command checks a plugin for correctness and completeness:
+
+```bash
+# Basic validation
+looper plugin validate ./my-plugin
+
+# Strict validation mode (enforces all rules strictly)
+looper plugin validate ./my-plugin --strict
+
+# Quick validation (manifest only, skip binary checks)
+looper plugin validate ./my-plugin --quick
+
+# Verbose output (show all validation details)
+looper plugin validate ./my-plugin --verbose
+```
+
+**Validation Rules:**
+
+1. **Manifest Checks**
+   - `looper-plugin.toml` must exist in the plugin directory
+   - Required fields: `name`, `version`, `category`, `plugin.binary`
+   - Category must be `agent` or `workflow`
+   - Plugin name must be alphanumeric with hyphens/underscores (cannot start with `-` or `_`)
+   - Version should follow semver format (e.g., `1.0.0`)
+
+2. **Category-Specific Configuration**
+   - **Agent plugins** must have `[agent]` section with `type` field
+   - **Workflow plugins** must have `[workflow]` section with `type` field
+
+3. **Binary Validation**
+   - Binary path must exist and be executable
+   - Binary should respond to `--version` or `--help` flags
+   - Warnings for script-based plugins (`.sh`, `.py`, etc.)
+
+4. **Dependency Checks**
+   - Required binaries in `PATH` are verified
+   - API key dependencies are documented (warnings only)
+
+5. **Capability Warnings**
+   - Warns about dangerous capabilities (`can_execute_commands`, `can_access_network`)
+
+**Validation Output:**
+
+```
+Plugin: my-agent
+Status: VALID
+
+Warnings:
+  - binary does not respond to --version or --help
+  - plugin can execute commands (ensure you trust this plugin)
+```
+
+### Plugin Creation
+
+The `looper plugin create` command scaffolds a new plugin with all required files:
+
+```bash
+# Create an agent plugin (default)
+looper plugin create my-agent
+
+# Create a workflow plugin
+looper plugin create my-workflow --type workflow
+
+# Specify output directory
+looper plugin create my-agent --output ./plugins
+
+# Set metadata
+looper plugin create my-agent --author "Your Name" --license MIT --description "My custom agent"
+```
+
+**What Gets Created:**
+
+1. **Directory Structure**
+   ```
+   my-agent/
+   ├── looper-plugin.toml    # Plugin manifest
+   ├── README.md             # Plugin documentation
+   └── bin/
+       └── my-agent          # Executable binary stub
+   ```
+
+2. **Manifest File** (`looper-plugin.toml`)
+   - Pre-populated with name, version, category
+   - Category-specific configuration sections
+   - Capability declarations
+   - Default metadata fields (author, license, etc.)
+
+3. **Binary Stub**
+   - Executable shell script placeholder
+   - JSON-RPC communication example
+   - Response format for plugin type
+
+4. **README.md**
+   - Installation instructions
+   - Usage examples
+   - Plugin protocol documentation
+
+**Example: Creating a Custom Agent**
+
+```bash
+# Create the plugin skeleton
+looper plugin create my-agent --type agent --author "Jane Doe"
+
+# The command outputs:
+# Plugin "my-agent" created successfully at ./my-agent
+#
+# Next steps:
+#   1. cd my-agent
+#   2. Edit the manifest (looper-plugin.toml) if needed
+#   3. Implement the plugin binary in bin/my-agent
+#   4. Test: looper plugin validate .
+#   5. Install: looper plugin install .
+
+cd my-agent
+
+# Edit the binary to implement your agent
+# The binary must accept JSON-RPC requests via stdin and respond via stdout
+
+# Validate before installing
+looper plugin validate .
+
+# Install to project plugins
+looper plugin install .
+
+# Now use your agent
+looper run --schedule my-agent
+```
+
+**Plugin Binary Protocol**
+
+Plugins communicate via JSON-RPC over stdin/stdout:
+
+**Agent Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "run",
+  "params": {
+    "prompt": "...",
+    "context": {...}
+  }
+}
+```
+
+**Agent Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "task_id": "T001",
+    "status": "done",
+    "summary": "...",
+    "files": ["..."],
+    "blockers": []
+  }
+}
+```
+
+**Workflow Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "run",
+  "params": {
+    "config": {...},
+    "work_dir": "...",
+    "todo_file": "..."
+  }
+}
+```
+
+**Workflow Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "success": true,
+    "message": "..."
+  }
+}
+```
+
 ### Plugin Locations
 
 Plugins are searched in priority order:

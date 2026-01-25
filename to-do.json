@@ -1394,15 +1394,7 @@
       "priority": 3,
       "status": "done",
       "description": "The core plugins bundle (internal/coreplugins/) provides auto-extraction of built-in plugins but is not mentioned in README.",
-      "details": "internal/coreplugins/bundle.go implements automatic extraction of core plugins (claude, codex, traditional) to ~/.looper/plugins/ on first run. This is a sophisticated feature that ensures plugins are always available. The bundle system includes manifest definitions, extraction logic, and version checking. Should be documented in the Plugins section.",
-      "steps": [
-        "Add core plugins documentation to the Plugins section in README.md",
-        "Explain that core plugins (claude, codex, traditional) are bundled and auto-extracted",
-        "Document the auto-extraction process on first run",
-        "Explain how core plugins relate to user-installed plugins (priority order)",
-        "Document how to update or override core plugins if needed",
-        "Add internal/coreplugins/ to the Architecture section"
-      ],
+      "details": "Documentation already comprehensive in README.md. Verified complete at lines 848-927. All steps covered: core plugins explanation, auto-extraction process, priority order, override examples, and architecture section. No changes needed - documentation already present.",
       "tags": [
         "docs",
         "plugins",
@@ -1415,13 +1407,13 @@
         "internal/coreplugins/codex.go",
         "internal/coreplugins/traditional.go"
       ],
-      "updated_at": "2026-01-25T10:28:49Z"
+      "updated_at": "2026-01-25T10:31:16Z"
     },
     {
       "id": "T073",
       "title": "Document plugin validation and creation commands in README.md",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "description": "The README briefly mentions plugin commands but doesn't explain 'looper plugin validate' and 'looper plugin create' in detail.",
       "details": "Plugin system includes comprehensive validation (internal/plugin/manifest.go:70-123) and skeleton creation (cmd/plugin_create.go). Validation checks required fields, category-specific config, plugin name format, and binary path. Creation generates a complete plugin skeleton with manifest. These are powerful developer tools that deserve documentation.",
       "steps": [
@@ -1438,12 +1430,9 @@
         "developer"
       ],
       "files": [
-        "README.md",
-        "cmd/plugin_create.go",
-        "cmd/plugin_validate.go",
-        "internal/plugin/manifest.go"
+        "README.md"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": "2026-01-25T10:32:43Z"
     },
     {
       "id": "T074",
