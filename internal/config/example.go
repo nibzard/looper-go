@@ -63,5 +63,14 @@ model = ""
 # [agents.opencode]
 # binary = "opencode"
 # model = "custom-model"
+
+# Parallel task execution (disabled by default for backward compatibility)
+# [parallel]
+# enabled = false              # Enable parallel task execution
+# max_tasks = 4                # Maximum concurrent tasks (0 = unlimited)
+# max_agents_per_task = 1      # Agents per task for consensus (1 = single agent)
+# strategy = "priority"         # Task selection: priority|dependency|mixed
+# fail_fast = false            # Stop all on first failure
+# output_mode = "multiplexed"   # Output: multiplexed|buffered|summary
 `
 }

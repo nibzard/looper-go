@@ -480,6 +480,15 @@ hook_command = "/path/to/hook.sh"
 # Delay between iterations
 loop_delay_seconds = 0
 
+# Parallel task execution (disabled by default for backward compatibility)
+[parallel]
+enabled = false              # Enable parallel task execution
+max_tasks = 4                # Maximum concurrent tasks (0 = unlimited)
+max_agents_per_task = 1      # Agents per task for consensus (1 = single agent)
+strategy = "priority"         # Task selection: priority|dependency|mixed
+fail_fast = false            # Stop all on first failure
+output_mode = "multiplexed"   # Output: multiplexed|buffered|summary
+
 # Workflow selection (default: "traditional")
 workflow = "traditional"
 
@@ -629,6 +638,142 @@ The hook receives these arguments:
 ```
 <task_id> <status> <last_message_json_path> <label>
 ```
+
+## Parallelism
+
+Looper supports explicit parallel task execution while maintaining backward compatibility (sequential mode as default). The parallelism feature provides task-level parallelism (multiple tasks concurrently) and agent-level parallelism (multi-agent consensus per task).
+
+### Enabling Parallelism
+
+Parallelism is **disabled by default** for backward compatibility. Enable it via the `[parallel]` config section or CLI flag:
+
+```toml
+[parallel]
+enabled = true
+max_tasks = 4
+```
+
+Or via CLI:
+
+```bash
+looper run --parallel --max-tasks 4
+```
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable parallel task execution |
+| `max_tasks` | int | `0` | Maximum concurrent tasks (0 = unlimited) |
+| `max_agents_per_task` | int | `1` | Agents per task for consensus (>1 = multi-agent) |
+| `strategy` | string | `"priority"` | Task selection strategy |
+| `fail_fast` | bool | `false` | Stop all on first failure |
+| `output_mode` | string | `"multiplexed"` | Output handling mode |
+
+### Task Selection Strategies
+
+The `strategy` option determines how tasks are selected for parallel execution:
+
+- **`priority`** - Select highest priority tasks first (default)
+- **`dependency`** - Prioritize tasks that unblock other tasks
+- **`mixed`** - Balance priority and dependency awareness
+
+### Output Modes
+
+The `output_mode` option controls how concurrent output is displayed:
+
+- **`multiplexed`** - Interleave output with task/agent ID prefixes (default)
+- **`buffered`** - Buffer output per task and display on completion
+- **`summary`** - Show only summaries without detailed output
+
+### Environment Variables
+
+- `LOOPER_PARALLEL` - Enable parallel execution (1/0)
+- `LOOPER_MAX_TASKS` - Maximum concurrent tasks
+- `LOOPER_MAX_AGENTS_PER_TASK` - Agents per task
+- `LOOPER_PARALLEL_STRATEGY` - Task selection strategy
+- `LOOPER_FAIL_FAST` - Stop on first error (1/0)
+- `LOOPER_OUTPUT_MODE` - Output handling mode
+
+### Multi-Agent Consensus
+
+Set `max_agents_per_task > 1` to run multiple agents per task for consensus/voting:
+
+```toml
+[parallel]
+enabled = true
+max_tasks = 2
+max_agents_per_task = 3    # Run 3 agents per task for consensus
+output_mode = "summary"     # Recommended for multi-agent
+```
+
+When using multi-agent consensus:
+- Each agent runs independently with the same task
+- Results are collected and the first successful result is used
+- Use `output_mode = "summary"` to avoid verbose output
+
+### Example Configurations
+
+**Basic parallel execution:**
+```toml
+[parallel]
+enabled = true
+max_tasks = 4                # Run up to 4 tasks at once
+max_agents_per_task = 1      # Single agent per task
+strategy = "priority"         # Select highest priority first
+fail_fast = false            # Continue on errors
+output_mode = "multiplexed"   # Interleave output with prefixes
+```
+
+**Multi-agent consensus:**
+```toml
+[parallel]
+enabled = true
+max_tasks = 2
+max_agents_per_task = 3      # Run 3 agents per task
+strategy = "mixed"
+output_mode = "summary"       # Show only summaries
+```
+
+**Dependency-aware execution:**
+```toml
+[parallel]
+enabled = true
+max_tasks = 0                # Unlimited (bounded by dependencies)
+strategy = "dependency"      # Prioritize unblocking tasks
+fail_fast = false
+```
+
+### Parallelism vs Workflows
+
+Looper offers two parallel execution mechanisms:
+
+1. **`[parallel]` config** - Task-level parallelism within the traditional loop
+   - Works with the traditional loop
+   - Executes multiple independent tasks concurrently
+   - Respects task dependencies
+   - Configurable via `[parallel]` section
+
+2. **`parallel` workflow** - A complete workflow implementation
+   - Selected via `workflow = "parallel"`
+   - Different execution model
+   - Configured via `[workflows.parallel]`
+
+Both can be used together or independently. For most use cases, the `[parallel]` config is sufficient.
+
+### When to Use Parallelism
+
+**Use parallelism when:**
+- You have many independent tasks
+- Tasks have minimal file conflicts
+- You want faster completion of large backlogs
+- You need multi-agent consensus for critical tasks
+
+**Avoid parallelism when:**
+- Tasks frequently modify the same files
+- Sequential task ordering is important
+- Debugging intermittent issues
+- Resource constraints (API rate limits, memory)
 
 ## Plugins
 
