@@ -1344,7 +1344,7 @@
       "priority": 2,
       "status": "done",
       "description": "The looper workflow command is implemented (cmd/root.go:2706-2797) but not shown in the README Usage section.",
-      "details": "CLI supports 'looper workflow list' and 'looper workflow describe <name>' commands. These are useful for discovering available workflows and their configuration options. Should be added to the Usage section alongside other commands like ls, tail, doctor, etc.",
+      "details": "Documentation already present in README.md Usage section (lines 96-98) with examples: looper workflow list and looper workflow describe <name>. Full workflow documentation also exists in Workflows section (lines 688-893). No changes needed.",
       "steps": [
         "Add workflow commands to the Usage section in README.md",
         "Document 'looper workflow list' command with example output",
@@ -1360,7 +1360,7 @@
       "files": [
         "README.md"
       ],
-      "updated_at": "2026-01-25T09:30:15Z"
+      "updated_at": 1769333492.300898
     },
     {
       "id": "T071",
