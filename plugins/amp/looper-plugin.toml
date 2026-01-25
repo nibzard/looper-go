@@ -1,0 +1,34 @@
+# Looper Plugin Manifest for Amp Code Agent
+
+name = "amp"
+version = "1.0.0"
+category = "agent"
+description = "Amp Code agent plugin - frontier coding agent with multi-model support"
+
+[plugin]
+binary = "./bin/amp"
+author = "Looper Contributors"
+homepage = "https://ampcode.com"
+license = "MIT"
+min_looper_version = "0.1.0"
+
+[agent]
+type = "amp"
+supports_streaming = true
+supports_tools = true
+supports_mcp = true
+default_prompt_format = "arg"
+
+[capabilities]
+can_modify_files = true
+can_execute_commands = true
+can_access_network = true
+can_access_env = true
+
+[dependencies]
+binaries = ["amp"]
+api_keys = ["AMP_API_KEY"]
+
+# Note: Amp does not support model selection via CLI flags.
+# Models are selected via modes (smart/rush/large) which are configured
+# through Amp's settings (~/.config/amp/settings.json) or command palette.

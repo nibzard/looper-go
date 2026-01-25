@@ -21,6 +21,7 @@ import (
 	"github.com/nibzard/looper-go/internal/agents"
 	"github.com/nibzard/looper-go/internal/config"
 	"github.com/nibzard/looper-go/internal/logging"
+	"github.com/nibzard/looper-go/internal/plugin"
 	"github.com/nibzard/looper-go/internal/prompts"
 	"github.com/nibzard/looper-go/internal/todo"
 	"github.com/nibzard/looper-go/internal/ui"
@@ -2731,9 +2732,9 @@ func workflowCommand(ctx context.Context, cfg *config.Config, args []string) err
 
 	switch subcommand {
 	case "list":
-		return workflowListCommand()
+		return workflowListCommand(cfg)
 	case "describe":
-		return workflowDescribeCommand(remainingArgs)
+		return workflowDescribeCommand(cfg, remainingArgs)
 	default:
 		return fmt.Errorf("unknown workflow subcommand: %s (available: list, describe)", subcommand)
 	}
@@ -2746,29 +2747,65 @@ func pluginCommand(ctx context.Context, cfg *config.Config, args []string) error
 }
 
 // workflowListCommand lists all available workflows.
-func workflowListCommand() error {
+func workflowListCommand(cfg *config.Config) error {
 	fmt.Println("Available Workflows:")
 	fmt.Println("====================")
 	fmt.Println()
 
-	workflowTypes := workflows.List()
-	if len(workflowTypes) == 0 {
+	// Initialize plugin registry to discover workflow plugins
+	registry, err := initializePluginRegistry(cfg)
+	if err != nil {
+		// Log warning but don't fail - built-in workflows should still work
+		fmt.Printf("Warning: plugin discovery failed: %v\n", err)
+	}
+
+	// Collect all workflows: built-in + plugins
+	workflowMap := make(map[string]string)
+
+	// Add built-in workflows
+	for wt, desc := range workflows.Describe() {
+		workflowMap[string(wt)] = desc
+	}
+
+	// Add plugin workflows
+	if registry != nil && registry.IsInitialized() {
+		for _, p := range registry.ListWorkflows() {
+			name := p.GetWorkflowType()
+			if name != "" {
+				// Mark as plugin
+				desc := "Plugin workflow"
+				if p.Manifest != nil && p.Manifest.Description != "" {
+					desc = p.Manifest.Description
+				}
+				workflowMap[name] = desc + " (plugin)"
+			}
+		}
+	}
+
+	if len(workflowMap) == 0 {
 		fmt.Println("No workflows registered.")
 		return nil
 	}
 
-	descriptions := workflows.Describe()
+	// Sort workflow names
+	names := make([]string, 0, len(workflowMap))
+	for name := range workflowMap {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	// Find max name length for padding
 	maxNameLen := 0
-	for _, wt := range workflowTypes {
-		if len(wt) > maxNameLen {
-			maxNameLen = len(wt)
+	for _, name := range names {
+		if len(name) > maxNameLen {
+			maxNameLen = len(name)
 		}
 	}
 
-	for _, wt := range workflowTypes {
-		name := string(wt)
+	// Print workflows
+	for _, name := range names {
 		padding := strings.Repeat(" ", maxNameLen-len(name))
-		desc := descriptions[wt]
+		desc := workflowMap[name]
 		fmt.Printf("  %s%s  %s\n", name, padding, desc)
 	}
 
@@ -2780,7 +2817,7 @@ func workflowListCommand() error {
 }
 
 // workflowDescribeCommand shows details about a specific workflow.
-func workflowDescribeCommand(args []string) error {
+func workflowDescribeCommand(cfg *config.Config, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("describe command requires a workflow name")
 	}
@@ -2788,19 +2825,51 @@ func workflowDescribeCommand(args []string) error {
 	workflowName := args[0]
 	workflowType := workflows.WorkflowType(workflowName)
 
-	if !workflows.IsRegistered(workflowType) {
+	// Check if workflow is registered (built-in or plugin)
+	isRegistered := workflows.IsRegistered(workflowType)
+
+	// Also check plugin registry
+	var pluginWorkflow *plugin.Plugin
+	registry, _ := initializePluginRegistry(cfg)
+	if registry != nil && registry.IsInitialized() {
+		if p := registry.GetByWorkflowType(workflowName); p != nil {
+			isRegistered = true
+			pluginWorkflow = p
+		}
+	}
+
+	if !isRegistered {
 		return fmt.Errorf("workflow %q not found", workflowName)
 	}
 
 	fmt.Printf("Workflow: %s\n", workflowName)
 	fmt.Println("===================")
 
-	// Try to get description by creating a temporary workflow instance
-	w, err := workflows.New(workflowType, nil, "", nil)
-	if err == nil && w != nil {
-		fmt.Printf("Description: %s\n", w.Description())
+	// Show description from plugin or built-in workflow
+	if pluginWorkflow != nil {
+		desc := "Plugin workflow"
+		if pluginWorkflow.Manifest != nil && pluginWorkflow.Manifest.Description != "" {
+			desc = pluginWorkflow.Manifest.Description
+		}
+		fmt.Printf("Description: %s\n", desc)
+		fmt.Printf("Type: plugin\n")
+		fmt.Printf("Version: %s\n", pluginWorkflow.Version)
+		if pluginWorkflow.Manifest != nil && pluginWorkflow.Manifest.Workflow != nil {
+			fmt.Printf("Supports Parallel: %v\n", pluginWorkflow.Manifest.Workflow.SupportsParallel)
+			fmt.Printf("Supports Review: %v\n", pluginWorkflow.Manifest.Workflow.SupportsReview)
+			if pluginWorkflow.Manifest.Workflow.MaxIterations > 0 {
+				fmt.Printf("Max Iterations: %d\n", pluginWorkflow.Manifest.Workflow.MaxIterations)
+			}
+		}
 	} else {
-		fmt.Printf("Description: Workflow %s\n", workflowName)
+		// Try to get description by creating a temporary workflow instance
+		w, err := workflows.New(workflowType, nil, "", nil)
+		if err == nil && w != nil {
+			fmt.Printf("Description: %s\n", w.Description())
+		} else {
+			fmt.Printf("Description: Workflow %s\n", workflowName)
+		}
+		fmt.Printf("Type: built-in\n")
 	}
 
 	// Show workflow-specific config if available

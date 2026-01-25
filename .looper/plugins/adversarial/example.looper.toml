@@ -1,0 +1,16 @@
+# Example configuration for the adversarial workflow
+# Copy this to looper.toml in your project root
+
+workflow = "adversarial"
+
+[workflows.adversarial]
+coder_agent = "claude"      # Agent that implements tasks
+adversary_agent = "codex"   # Agent that reviews implementations
+max_reruns = 2             # Number of retry attempts after rejection
+
+# Agent configuration
+[agents.claude]
+binary = "claude"
+
+[agents.codex]
+binary = "codex"

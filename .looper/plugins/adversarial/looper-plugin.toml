@@ -1,0 +1,23 @@
+name = "adversarial"
+version = "0.1.0"
+category = "workflow"
+description = "APEX-style adversarial workflow with Coder and Adversary agents"
+
+[plugin]
+binary = "./bin/adversarial"
+author = "nibzard"
+homepage = "https://github.com/nibzard/looper-plugin-adversarial"
+license = "MIT"
+min_looper_version = "0.5.0"
+
+[workflow]
+type = "adversarial"
+supports_parallel = false
+supports_review = true
+max_iterations = 50
+
+[capabilities]
+can_modify_files = true
+can_execute_commands = true
+can_access_network = false
+can_access_env = true

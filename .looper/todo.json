@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "project": {
+    "root": "."
+  },
+  "source_files": [
+    "README.md"
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Example: Add project documentation",
+      "description": "Create a README.md file documenting the project setup and usage.",
+      "reference": "README.md",
+      "priority": 1,
+      "status": "todo"
+    }
+  ]
+}

@@ -46,6 +46,12 @@ git_init = true
 # Delay between iterations (seconds)
 loop_delay_seconds = 0
 
+# Logging configuration
+log_level = "info"        # Log level: debug, info, warn, error, fatal
+log_format = "text"       # Log format: text, json, logfmt
+log_timestamps = true     # Show timestamps in log output
+log_caller = false        # Show caller location (file:line) in logs
+
 # Agent configuration (any registered agent type)
 [agents.codex]
 binary = "codex"

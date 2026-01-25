@@ -2,6 +2,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -1750,4 +1751,892 @@ func TestRegistryInitializationIsIdempotent(t *testing.T) {
 	if plugins2 < plugins1 {
 		t.Errorf("expected plugin count to remain the same or increase, went from %d to %d", plugins1, plugins2)
 	}
+}
+
+// TestPluginValidator tests the Validator type and its methods.
+func TestPluginValidator(t *testing.T) {
+	t.Run("NewValidator creates default validator", func(t *testing.T) {
+		v := NewValidator()
+		if v.StrictMode {
+			t.Error("expected StrictMode to be false by default")
+		}
+		if v.SkipBinaryCheck {
+			t.Error("expected SkipBinaryCheck to be false by default")
+		}
+		if v.LooperVersion != "dev" {
+			t.Errorf("expected LooperVersion 'dev', got %s", v.LooperVersion)
+		}
+	})
+
+	t.Run("ValidatePlugin with valid agent plugin", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "test-agent")
+		binDir := filepath.Join(pluginDir, "bin")
+
+		// Create plugin directory structure
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		// Write manifest
+		manifest := &Manifest{
+			Name:        "test-agent",
+			Version:     "1.0.0",
+			Category:    "agent",
+			Description: "A test agent plugin",
+			Plugin: PluginMetadata{
+				Binary:           "./bin/test-agent",
+				Author:           "Test Author",
+				Homepage:         "https://example.com",
+				License:          "MIT",
+				MinLooperVersion: "0.1.0",
+			},
+			Agent: &AgentConfig{
+				Type:                "test-agent",
+				SupportsStreaming:   true,
+				SupportsTools:       true,
+				SupportsMCP:         false,
+				DefaultPromptFormat: "stdin",
+			},
+			Capabilities: &Capabilities{
+				CanModifyFiles:     true,
+				CanExecuteCommands: false,
+				CanAccessNetwork:   false,
+				CanAccessEnv:       true,
+			},
+		}
+		if err := WriteManifest(pluginDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		// Create binary
+		stubPath := filepath.Join(binDir, "test-agent")
+		createStubAgent(t, stubPath)
+
+		// Validate
+		v := NewValidator()
+		v.SkipBinaryCheck = true // Skip binary execution check for testing
+		result := v.ValidatePlugin(pluginDir)
+
+		if !result.Valid {
+			t.Errorf("expected plugin to be valid, got errors: %v", result.Errors)
+		}
+	})
+
+	t.Run("ValidatePlugin with missing directory", func(t *testing.T) {
+		v := NewValidator()
+		result := v.ValidatePlugin("/nonexistent/plugin")
+
+		if result.Valid {
+			t.Error("expected plugin to be invalid")
+		}
+		if len(result.Errors) == 0 {
+			t.Error("expected errors for nonexistent directory")
+		}
+	})
+
+	t.Run("ValidatePlugin with invalid manifest", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "invalid-plugin")
+		if err := os.MkdirAll(pluginDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		// Write invalid manifest (missing name)
+		manifestContent := `
+version = "1.0.0"
+category = "agent"
+
+[plugin]
+binary = "./bin/invalid"
+`
+		manifestPath := filepath.Join(pluginDir, ManifestFilename)
+		if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		v := NewValidator()
+		result := v.ValidatePlugin(pluginDir)
+
+		if result.Valid {
+			t.Error("expected plugin to be invalid")
+		}
+		foundNameError := false
+		for _, err := range result.Errors {
+			if strings.Contains(err, "name") {
+				foundNameError = true
+				break
+			}
+		}
+		if !foundNameError {
+			t.Errorf("expected error about missing name, got: %v", result.Errors)
+		}
+	})
+
+	t.Run("ValidatePlugin with workflow plugin", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "test-workflow")
+		binDir := filepath.Join(pluginDir, "bin")
+
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		manifest := &Manifest{
+			Name:        "test-workflow",
+			Version:     "1.0.0",
+			Category:    "workflow",
+			Description: "A test workflow plugin",
+			Plugin: PluginMetadata{
+				Binary:           "./bin/test-workflow",
+				Author:           "Test Author",
+				Homepage:         "https://example.com",
+				License:          "MIT",
+				MinLooperVersion: "0.1.0",
+			},
+			Workflow: &WorkflowConfig{
+				Type:             "test-workflow",
+				SupportsParallel: false,
+				SupportsReview:   true,
+				MaxIterations:    50,
+			},
+			Capabilities: &Capabilities{
+				CanModifyFiles:     true,
+				CanExecuteCommands: true,
+				CanAccessNetwork:   false,
+				CanAccessEnv:       true,
+			},
+		}
+		if err := WriteManifest(pluginDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		stubPath := filepath.Join(binDir, "test-workflow")
+		createStubWorkflow(t, stubPath)
+
+		v := NewValidator()
+		v.SkipBinaryCheck = true
+		result := v.ValidatePlugin(pluginDir)
+
+		if !result.Valid {
+			t.Errorf("expected workflow plugin to be valid, got errors: %v", result.Errors)
+		}
+	})
+
+	t.Run("ValidatePlugin warns about non-semver version", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "bad-version")
+		binDir := filepath.Join(pluginDir, "bin")
+
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		manifest := &Manifest{
+			Name:     "bad-version",
+			Version:  "v1", // Not semver
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/bad-version",
+			},
+			Agent: &AgentConfig{
+				Type: "bad",
+			},
+		}
+		if err := WriteManifest(pluginDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		createStubAgent(t, filepath.Join(binDir, "bad-version"))
+
+		v := NewValidator()
+		v.SkipBinaryCheck = true
+		result := v.ValidatePlugin(pluginDir)
+
+		// Should be valid but with a warning
+		if !result.Valid {
+			t.Errorf("expected plugin to be valid, got errors: %v", result.Errors)
+		}
+		foundVersionWarning := false
+		for _, warn := range result.Warnings {
+			if strings.Contains(warn, "version") {
+				foundVersionWarning = true
+				break
+			}
+		}
+		if !foundVersionWarning {
+			t.Error("expected warning about version format")
+		}
+	})
+
+	t.Run("ValidatePlugin warns about dangerous capabilities", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "dangerous")
+		binDir := filepath.Join(pluginDir, "bin")
+
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		manifest := &Manifest{
+			Name:     "dangerous",
+			Version:  "1.0.0",
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/dangerous",
+			},
+			Agent: &AgentConfig{
+				Type: "dangerous",
+			},
+			Capabilities: &Capabilities{
+				CanModifyFiles:     true,
+				CanExecuteCommands: true,  // Dangerous
+				CanAccessNetwork:   true,  // Dangerous
+				CanAccessEnv:       true,
+			},
+		}
+		if err := WriteManifest(pluginDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		createStubAgent(t, filepath.Join(binDir, "dangerous"))
+
+		v := NewValidator()
+		v.SkipBinaryCheck = true
+		result := v.ValidatePlugin(pluginDir)
+
+		if !result.Valid {
+			t.Errorf("expected plugin to be valid, got errors: %v", result.Errors)
+		}
+
+		// Check for warnings about dangerous capabilities
+		foundCommandWarning := false
+		foundNetworkWarning := false
+		for _, warn := range result.Warnings {
+			if strings.Contains(warn, "execute commands") {
+				foundCommandWarning = true
+			}
+			if strings.Contains(warn, "network") {
+				foundNetworkWarning = true
+			}
+		}
+		if !foundCommandWarning {
+			t.Error("expected warning about execute_commands capability")
+		}
+		if !foundNetworkWarning {
+			t.Error("expected warning about network access capability")
+		}
+	})
+
+	t.Run("ValidatePlugin with dependencies", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "with-deps")
+		binDir := filepath.Join(pluginDir, "bin")
+
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		manifest := &Manifest{
+			Name:     "with-deps",
+			Version:  "1.0.0",
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/with-deps",
+			},
+			Agent: &AgentConfig{
+				Type: "with-deps",
+			},
+			Dependencies: &Dependencies{
+				Binaries: []string{"sh", "nonexistent-binary-12345"},
+				APIKeys:  []string{"TEST_API_KEY"},
+			},
+		}
+		if err := WriteManifest(pluginDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		createStubAgent(t, filepath.Join(binDir, "with-deps"))
+
+		v := NewValidator()
+		v.SkipBinaryCheck = true
+		result := v.ValidatePlugin(pluginDir)
+
+		if !result.Valid {
+			t.Errorf("expected plugin to be valid, got errors: %v", result.Errors)
+		}
+
+		// Should have warning about nonexistent binary and API keys
+		foundBinaryWarning := false
+		foundAPIKeyWarning := false
+		for _, warn := range result.Warnings {
+			if strings.Contains(warn, "nonexistent-binary-12345") {
+				foundBinaryWarning = true
+			}
+			if strings.Contains(warn, "API keys") {
+				foundAPIKeyWarning = true
+			}
+		}
+		if !foundBinaryWarning {
+			t.Error("expected warning about missing binary dependency")
+		}
+		if !foundAPIKeyWarning {
+			t.Error("expected warning about API keys")
+		}
+	})
+
+	t.Run("ValidatePluginDir validates multiple plugins", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginsDir := filepath.Join(tempDir, "plugins")
+
+		// Create valid plugin
+		validDir := filepath.Join(pluginsDir, "valid")
+		validBinDir := filepath.Join(validDir, "bin")
+		if err := os.MkdirAll(validBinDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+		validManifest := &Manifest{
+			Name:     "valid",
+			Version:  "1.0.0",
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/valid",
+			},
+			Agent: &AgentConfig{Type: "valid"},
+		}
+		if err := WriteManifest(validDir, validManifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+		createStubAgent(t, filepath.Join(validBinDir, "valid"))
+
+		// Create invalid plugin
+		invalidDir := filepath.Join(pluginsDir, "invalid")
+		if err := os.MkdirAll(invalidDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+		// No manifest, so it's invalid
+
+		v := NewValidator()
+		v.SkipBinaryCheck = true
+		results := v.ValidatePluginDir(pluginsDir)
+
+		if len(results) != 2 {
+			t.Errorf("expected 2 results, got %d", len(results))
+		}
+
+		// Check valid plugin
+		validResult, ok := results["valid"]
+		if !ok {
+			t.Fatal("missing result for 'valid' plugin")
+		}
+		if !validResult.Valid {
+			t.Errorf("expected 'valid' plugin to be valid, got errors: %v", validResult.Errors)
+		}
+
+		// Check invalid plugin
+		invalidResult, ok := results["invalid"]
+		if !ok {
+			t.Fatal("missing result for 'invalid' plugin")
+		}
+		if invalidResult.Valid {
+			t.Error("expected 'invalid' plugin to be invalid")
+		}
+	})
+
+	t.Run("FormatValidationResult formats results correctly", func(t *testing.T) {
+		result := &ValidationResult{
+			Valid:    false,
+			Errors:   []string{"error 1", "error 2"},
+			Warnings: []string{"warning 1", "warning 2"},
+		}
+
+		output := FormatValidationResult("test-plugin", result)
+
+		if !strings.Contains(output, "test-plugin") {
+			t.Error("output should contain plugin name")
+		}
+		if !strings.Contains(output, "INVALID") {
+			t.Error("output should show INVALID status")
+		}
+		if !strings.Contains(output, "error 1") {
+			t.Error("output should contain error 1")
+		}
+		if !strings.Contains(output, "warning 1") {
+			t.Error("output should contain warning 1")
+		}
+	})
+
+	t.Run("ValidatePluginAt helper function", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "test")
+		binDir := filepath.Join(pluginDir, "bin")
+
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		manifest := &Manifest{
+			Name:     "test",
+			Version:  "1.0.0",
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/test",
+			},
+			Agent: &AgentConfig{Type: "test"},
+		}
+		if err := WriteManifest(pluginDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+		createStubAgent(t, filepath.Join(binDir, "test"))
+
+		// Should not return error for valid plugin
+		err := ValidatePluginAt(pluginDir)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("ValidatePluginAt returns error for invalid plugin", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "invalid")
+		if err := os.MkdirAll(pluginDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		// Write invalid manifest
+		manifestContent := `
+name = "invalid"
+version = "1.0.0"
+category = "invalid"
+`
+		manifestPath := filepath.Join(pluginDir, ManifestFilename)
+		if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		err := ValidatePluginAt(pluginDir)
+		if err == nil {
+			t.Error("expected error for invalid plugin")
+		}
+	})
+
+	t.Run("ValidatePluginQuick skips binary check", func(t *testing.T) {
+		tempDir := t.TempDir()
+		pluginDir := filepath.Join(tempDir, "test")
+
+		if err := os.MkdirAll(pluginDir, 0755); err != nil {
+			t.Fatalf("failed to create plugin dir: %v", err)
+		}
+
+		// Create manifest with binary that doesn't exist
+		manifest := &Manifest{
+			Name:     "test",
+			Version:  "1.0.0",
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/nonexistent",
+			},
+			Agent: &AgentConfig{Type: "test"},
+		}
+		if err := WriteManifest(pluginDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+
+		// Quick validation should succeed (manifest is valid, binary not checked)
+		err := ValidatePluginQuick(pluginDir)
+		if err != nil {
+			t.Errorf("unexpected error in quick validation: %v", err)
+		}
+	})
+}
+
+// TestExecutorGetPluginInfo tests getting plugin info via executor.
+func TestExecutorGetPluginInfo(t *testing.T) {
+	t.Run("get info from plugin with info method", func(t *testing.T) {
+		tempDir := t.TempDir()
+		binDir := filepath.Join(tempDir, "bin")
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create bin dir: %v", err)
+		}
+
+		// Create a stub that responds to "info" method
+		stubPath := filepath.Join(binDir, "info-agent")
+		stubContent := []byte("#!/bin/sh\n" +
+			"request=$(cat)\n" +
+			"id=$(echo \"$request\" | grep -o '\"id\":[0-9]*' | cut -d: -f2)\n" +
+			"echo \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":$id,\\\"result\\\":{\\\"name\\\":\\\"test-agent\\\",\\\"version\\\":\\\"1.0.0\\\"}}\"\n")
+		if err := os.WriteFile(stubPath, stubContent, 0755); err != nil {
+			t.Fatalf("failed to write stub: %v", err)
+		}
+
+		plugin := &Plugin{
+			Name:        "info-agent",
+			Version:     "1.0.0",
+			Category:    PluginCategoryAgent,
+			Path:        tempDir,
+			Scope:       ScopeUser,
+			BinaryPath:  stubPath,
+			Config:      make(map[string]any),
+		}
+		plugin.Manifest = &Manifest{
+			Name:     "info-agent",
+			Version:  "1.0.0",
+			Category: "agent",
+			Agent:    &AgentConfig{Type: "info"},
+		}
+
+		executor := NewExecutor(plugin)
+		ctx := context.Background()
+
+		info, err := executor.GetPluginInfo(ctx)
+		if err != nil {
+			t.Fatalf("failed to get plugin info: %v", err)
+		}
+
+		if info["name"] != "test-agent" {
+			t.Errorf("expected name 'test-agent', got %v", info["name"])
+		}
+		if info["version"] != "1.0.0" {
+			t.Errorf("expected version '1.0.0', got %v", info["version"])
+		}
+	})
+
+	t.Run("ValidatePlugin checks binary exists", func(t *testing.T) {
+		tempDir := t.TempDir()
+		binDir := filepath.Join(tempDir, "bin")
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create bin dir: %v", err)
+		}
+
+		stubPath := filepath.Join(binDir, "test-agent")
+		createStubAgent(t, stubPath)
+
+		plugin := &Plugin{
+			Name:        "test-agent",
+			Version:     "1.0.0",
+			Category:    PluginCategoryAgent,
+			Path:        tempDir,
+			Scope:       ScopeUser,
+			BinaryPath:  stubPath,
+			Config:      make(map[string]any),
+		}
+		plugin.Manifest = &Manifest{
+			Name:     "test-agent",
+			Version:  "1.0.0",
+			Category: "agent",
+			Agent:    &AgentConfig{Type: "test"},
+		}
+
+		executor := NewExecutor(plugin)
+		ctx := context.Background()
+
+		// Should not error even if binary doesn't support --version
+		err := executor.ValidatePlugin(ctx)
+		if err != nil {
+			t.Errorf("unexpected error validating plugin: %v", err)
+		}
+	})
+}
+
+// TestExecutorStreamExecute tests streaming execution.
+func TestExecutorStreamExecute(t *testing.T) {
+	t.Run("stream execute with streaming stub", func(t *testing.T) {
+		tempDir := t.TempDir()
+		binDir := filepath.Join(tempDir, "bin")
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create bin dir: %v", err)
+		}
+
+		stubPath := filepath.Join(binDir, "streaming-agent")
+		createStreamingStubAgent(t, stubPath)
+
+		plugin := &Plugin{
+			Name:        "streaming-agent",
+			Version:     "1.0.0",
+			Category:    PluginCategoryAgent,
+			Path:        tempDir,
+			Scope:       ScopeUser,
+			BinaryPath:  stubPath,
+			Config:      make(map[string]any),
+		}
+		plugin.Manifest = &Manifest{
+			Name:     "streaming-agent",
+			Version:  "1.0.0",
+			Category: "agent",
+			Agent:    &AgentConfig{Type: "streaming", SupportsStreaming: true},
+		}
+
+		executor := NewExecutor(plugin)
+		ctx := context.Background()
+
+		var logBuf bytes.Buffer
+		result, err := executor.StreamExecute(ctx, "test prompt", &logBuf)
+		if err != nil {
+			t.Fatalf("failed to stream execute: %v", err)
+		}
+
+		if result.Status != "done" {
+			t.Errorf("expected status 'done', got %s", result.Status)
+		}
+		if result.TaskID != "T001" {
+			t.Errorf("expected task_id 'T001', got %s", result.TaskID)
+		}
+	})
+}
+
+// TestLoaderDirectoryCreation tests directory creation helpers.
+func TestLoaderDirectoryCreation(t *testing.T) {
+	t.Run("EnsureProjectPluginsDir creates directory", func(t *testing.T) {
+		tempDir := t.TempDir()
+		projectRoot := filepath.Join(tempDir, "project")
+
+		loader := NewLoader(projectRoot)
+
+		err := loader.EnsureProjectPluginsDir()
+		if err != nil {
+			t.Fatalf("failed to ensure project plugins dir: %v", err)
+		}
+
+		// Check directory exists
+		expectedPath := loader.ProjectPluginsDir()
+		if _, err := os.Stat(expectedPath); err != nil {
+			t.Errorf("project plugins directory not created: %v", err)
+		}
+	})
+
+	t.Run("EnsureUserPluginsDir creates directory", func(t *testing.T) {
+		tempDir := t.TempDir()
+		homeDir := filepath.Join(tempDir, "home")
+
+		loader := &Loader{
+			UserPluginsDir: filepath.Join(homeDir, ".looper", "plugins"),
+			LoadedPlugins:  make(map[string]*Plugin),
+		}
+
+		err := loader.EnsureUserPluginsDir()
+		if err != nil {
+			t.Fatalf("failed to ensure user plugins dir: %v", err)
+		}
+
+		// Check directory exists
+		if _, err := os.Stat(loader.UserPluginsDir); err != nil {
+			t.Errorf("user plugins directory not created: %v", err)
+		}
+	})
+
+	t.Run("EnsureProjectPluginsDir fails without project root", func(t *testing.T) {
+		loader := &Loader{
+			ProjectRoot:   "",
+			LoadedPlugins: make(map[string]*Plugin),
+		}
+
+		err := loader.EnsureProjectPluginsDir()
+		if err == nil {
+			t.Error("expected error when project root is not set")
+		}
+	})
+}
+
+// TestRegistryDirectoryHelpers tests registry directory helper methods.
+func TestRegistryDirectoryHelpers(t *testing.T) {
+	tempDir := t.TempDir()
+
+	registry := &Registry{
+		plugins: make(map[string]*Plugin),
+	}
+
+	// Initialize registry
+	if err := registry.Initialize(tempDir); err != nil {
+		t.Fatalf("failed to initialize registry: %v", err)
+	}
+
+	t.Run("UserPluginsDir returns path", func(t *testing.T) {
+		path := registry.UserPluginsDir()
+		if path == "" {
+			t.Error("expected non-empty user plugins dir")
+		}
+		if !strings.Contains(path, ".looper") {
+			t.Error("user plugins dir should contain .looper")
+		}
+	})
+
+	t.Run("ProjectPluginsDir returns path", func(t *testing.T) {
+		path := registry.ProjectPluginsDir()
+		if path == "" {
+			t.Error("expected non-empty project plugins dir")
+		}
+		if !strings.Contains(path, ".looper") {
+			t.Error("project plugins dir should contain .looper")
+		}
+	})
+
+	t.Run("ProjectRoot returns initialized path", func(t *testing.T) {
+		path := registry.ProjectRoot()
+		if path != tempDir {
+			t.Errorf("expected project root %s, got %s", tempDir, path)
+		}
+	})
+
+	t.Run("GetLoader returns loader", func(t *testing.T) {
+		loader := registry.GetLoader()
+		if loader == nil {
+			t.Error("expected non-nil loader")
+		}
+	})
+}
+
+// TestRegistryInstallPlugin tests plugin installation.
+func TestRegistryInstallPlugin(t *testing.T) {
+	t.Run("install plugin to user scope", func(t *testing.T) {
+		tempDir := t.TempDir()
+		sourceDir := filepath.Join(tempDir, "source")
+		binDir := filepath.Join(sourceDir, "bin")
+
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			t.Fatalf("failed to create source dir: %v", err)
+		}
+
+		manifest := &Manifest{
+			Name:     "test-install",
+			Version:  "1.0.0",
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/test-install",
+			},
+			Agent: &AgentConfig{Type: "test"},
+		}
+		if err := WriteManifest(sourceDir, manifest); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+		createStubAgent(t, filepath.Join(binDir, "test-install"))
+
+		registry := &Registry{
+			plugins: make(map[string]*Plugin),
+		}
+		if err := registry.Initialize(tempDir); err != nil {
+			t.Fatalf("failed to initialize registry: %v", err)
+		}
+
+		// Install plugin
+		plugin, err := registry.InstallPlugin(sourceDir, ScopeUser)
+		if err != nil {
+			t.Fatalf("failed to install plugin: %v", err)
+		}
+
+		if plugin.Name != "test-install" {
+			t.Errorf("expected plugin name 'test-install', got %s", plugin.Name)
+		}
+		if plugin.Scope != ScopeUser {
+			t.Errorf("expected user scope, got %s", plugin.Scope)
+		}
+
+		// Check plugin is registered
+		_, ok := registry.Get("test-install")
+		if !ok {
+			t.Error("plugin not registered after installation")
+		}
+	})
+
+	t.Run("install plugin with invalid manifest fails", func(t *testing.T) {
+		tempDir := t.TempDir()
+		sourceDir := filepath.Join(tempDir, "invalid")
+		if err := os.MkdirAll(sourceDir, 0755); err != nil {
+			t.Fatalf("failed to create source dir: %v", err)
+		}
+
+		registry := &Registry{
+			plugins: make(map[string]*Plugin),
+		}
+		if err := registry.Initialize(tempDir); err != nil {
+			t.Fatalf("failed to initialize registry: %v", err)
+		}
+
+		_, err := registry.InstallPlugin(sourceDir, ScopeUser)
+		if err == nil {
+			t.Error("expected error for plugin without manifest")
+		}
+	})
+}
+
+// TestPluginManifestEdgeCases tests edge cases in manifest handling.
+func TestPluginManifestEdgeCases(t *testing.T) {
+	t.Run("manifest with all optional fields", func(t *testing.T) {
+		manifest := &Manifest{
+			Name:        "complete",
+			Version:     "2.5.1",
+			Category:    "agent",
+			Description: "A complete plugin with all fields",
+			Plugin: PluginMetadata{
+				Binary:           "./bin/complete",
+				Author:           "Test Author <test@example.com>",
+				Homepage:         "https://example.com/complete",
+				License:          "Apache-2.0",
+				MinLooperVersion: "0.5.0",
+			},
+			Agent: &AgentConfig{
+				Type:                "complete",
+				SupportsStreaming:   true,
+				SupportsTools:       true,
+				SupportsMCP:         true,
+				DefaultPromptFormat: "arg",
+			},
+			Dependencies: &Dependencies{
+				Binaries:   []string{"git", "node"},
+				Packages:   []string{"build-essential"},
+				APIKeys:    []string{"OPENAI_API_KEY"},
+				MinVersion: "1.0.0",
+			},
+			Capabilities: &Capabilities{
+				CanModifyFiles:     true,
+				CanExecuteCommands: true,
+				CanAccessNetwork:   true,
+				CanAccessEnv:       true,
+			},
+		}
+
+		err := ValidateManifest(manifest)
+		if err != nil {
+			t.Errorf("expected manifest to be valid: %v", err)
+		}
+	})
+
+	t.Run("agent with empty prompt format is valid", func(t *testing.T) {
+		manifest := &Manifest{
+			Name:     "test",
+			Version:  "1.0.0",
+			Category: "agent",
+			Plugin: PluginMetadata{
+				Binary: "./bin/test",
+			},
+			Agent: &AgentConfig{
+				Type:                "test",
+				DefaultPromptFormat: "", // Empty is valid
+			},
+		}
+
+		err := ValidateManifest(manifest)
+		if err != nil {
+			t.Errorf("expected empty prompt format to be valid: %v", err)
+		}
+	})
+
+	t.Run("workflow with max iterations zero means no limit", func(t *testing.T) {
+		manifest := &Manifest{
+			Name:     "test",
+			Version:  "1.0.0",
+			Category: "workflow",
+			Plugin: PluginMetadata{
+				Binary: "./bin/test",
+			},
+			Workflow: &WorkflowConfig{
+				Type:          "test",
+				MaxIterations: 0, // No limit
+			},
+		}
+
+		err := ValidateManifest(manifest)
+		if err != nil {
+			t.Errorf("expected max_iterations 0 to be valid: %v", err)
+		}
+	})
 }

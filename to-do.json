@@ -1563,9 +1563,11 @@
         "plugins"
       ],
       "files": [
-        "internal/plugin/integration_test.go"
+        "internal/plugin/integration_test.go",
+        "internal/plugin/registry.go"
       ],
-      "updated_at": "2026-01-25T13:20:00Z"
+      "updated_at": "2026-01-25T12:30:00Z",
+      "details": "Added comprehensive integration tests for the plugin validation system, including tests for Validator type, all its methods, executor streaming, directory creation helpers, registry helpers, plugin installation, and manifest edge cases. Improved test coverage from 45.7% to 68.9%. Also fixed a mutex bug in EnsureUserPluginsDir."
     },
     {
       "id": "T079",
