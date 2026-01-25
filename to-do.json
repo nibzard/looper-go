@@ -1243,6 +1243,327 @@
         "T064"
       ],
       "updated_at": "2026-01-22T21:00:00Z"
+    },
+    {
+      "id": "T067",
+      "title": "Implement composable, approval-safe workflow plugin system",
+      "priority": 2,
+      "status": "done",
+      "description": "Implement a workflow plugin system that mirrors the existing agent plugin architecture to support composable, approval-safe workflows (code review, incident triage, content pipelines).",
+      "details": "FULLY IMPLEMENTED but not documented in README. The workflow system is complete with: internal/workflows/types.go (core interfaces), internal/workflows/registry.go (registration system), internal/workflows/traditional.go (traditional workflow), internal/workflows/parallel.go (parallel workflow), internal/workflows/incident_triage.go (incident response), internal/workflows/code_review.go (code review), internal/workflows/plugin_workflow.go (plugin integration), cmd/root.go:2706-2797 (CLI commands). Workflow commands available: looper workflow list, looper workflow describe, looper run --workflow <name>.",
+      "steps": [
+        "Create workflow types and interfaces (WorkflowType, WorkflowFactory, Workflow, Stage, CheckpointPolicy)",
+        "Implement workflow registry pattern mirroring agents/registry.go",
+        "Add state persistence layer (StateManager, StateFile, StageData)",
+        "Extend config system with WorkflowMode, WorkflowConfigMap, WorkflowDefinition",
+        "Implement workflow executor (WorkflowExecutor, ExecuteWorkflow)",
+        "Integrate workflow mode into Loop.Run() with runWorkflowLoop()",
+        "Implement built-in workflows: code review, incident triage, content pipeline",
+        "Add workflow CLI commands: list, status, approve, reject, resume",
+        "Write tests and documentation"
+      ],
+      "tags": [
+        "workflows",
+        "architecture",
+        "approval",
+        "plugins"
+      ],
+      "files": [
+        "internal/workflows/types.go",
+        "internal/workflows/registry.go",
+        "internal/workflows/state.go",
+        "internal/workflows/traditional.go",
+        "internal/workflows/parallel.go",
+        "internal/workflows/incident_triage.go",
+        "internal/workflows/code_review.go",
+        "internal/workflows/plugin_workflow.go",
+        "internal/config/types.go",
+        "internal/config/getters.go",
+        "cmd/root.go",
+        "README.md"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T068",
+      "title": "Document workflow system in README.md",
+      "priority": 1,
+      "status": "done",
+      "description": "The workflow system is fully implemented but completely absent from README documentation. Add a comprehensive section covering workflow architecture, available workflows, and usage.",
+      "details": "Workflow system is a major architectural feature that users don't know exists. internal/workflows/ contains complete implementation with registry pattern, factory pattern, multiple workflow types (traditional, parallel, incident_triage, code_review), and CLI commands. Users can run workflows via --workflow flag or config. Documentation should explain what workflows are, when to use them, and how to create custom workflows.",
+      "steps": [
+        "Add 'Workflows' section after 'Plugins' in README.md",
+        "Document available built-in workflows: traditional, parallel, incident_triage, code_review",
+        "Explain workflow selection via --workflow flag and workflow config in looper.toml",
+        "Document workflow-specific configuration under [workflows.<name>] sections",
+        "Add usage examples for looper workflow list and looper workflow describe commands",
+        "Explain how to create custom workflow plugins if applicable",
+        "Add workflow system to Architecture section"
+      ],
+      "tags": [
+        "docs",
+        "workflows",
+        "architecture"
+      ],
+      "files": [
+        "README.md",
+        "internal/workflows/types.go",
+        "internal/workflows/registry.go",
+        "internal/workflows/traditional.go",
+        "internal/workflows/parallel.go"
+      ],
+      "updated_at": "2026-01-25T09:19:43Z"
+    },
+    {
+      "id": "T069",
+      "title": "Document role-based agent configuration in README.md",
+      "priority": 2,
+      "status": "todo",
+      "description": "Role-based agent configuration is implemented but not fully documented. The README only mentions --repair-agent, --review-agent, --bootstrap-agent flags but not the full [roles] config section.",
+      "details": "internal/config/types.go:69-117 defines RolesConfig with GetAgent()/SetAgent() methods. Users can configure different agents for different loop phases: iter (iterations), review (review pass), repair (repair operations), bootstrap (bootstrap). This is more powerful than just CLI flags and should be documented with examples.",
+      "steps": [
+        "Add role-based configuration to the 'Configuration' section in README.md",
+        "Document the [roles] TOML section with all available roles: iter, review, repair, bootstrap",
+        "Explain precedence: roles config > individual step agent flags > defaults",
+        "Provide example configuration showing different agents for different roles",
+        "Document when to use role-based configuration vs simple schedule setting",
+        "Update CLI flags reference to clarify relationship with roles config"
+      ],
+      "tags": [
+        "docs",
+        "config",
+        "agents"
+      ],
+      "files": [
+        "README.md",
+        "internal/config/types.go",
+        "internal/config/getters.go",
+        "internal/config/example.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T070",
+      "title": "Document workflow CLI commands in README.md usage section",
+      "priority": 2,
+      "status": "todo",
+      "description": "The looper workflow command is implemented (cmd/root.go:2706-2797) but not shown in the README Usage section.",
+      "details": "CLI supports 'looper workflow list' and 'looper workflow describe <name>' commands. These are useful for discovering available workflows and their configuration options. Should be added to the Usage section alongside other commands like ls, tail, doctor, etc.",
+      "steps": [
+        "Add workflow commands to the Usage section in README.md",
+        "Document 'looper workflow list' command with example output",
+        "Document 'looper workflow describe <name>' command with example output",
+        "Add --workflow flag documentation to 'looper run' usage",
+        "Include workflow commands in the architecture diagram or overview"
+      ],
+      "tags": [
+        "docs",
+        "cli",
+        "workflows"
+      ],
+      "files": [
+        "README.md",
+        "cmd/root.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T071",
+      "title": "Document workflow-specific configuration in README.md",
+      "priority": 2,
+      "status": "todo",
+      "description": "Workflows support per-workflow configuration via [workflows.<name>] sections in looper.toml, but this is not documented.",
+      "details": "internal/config/types.go:60-64 defines Workflow field and WorkflowConfigs map. Each workflow type can have its own configuration schema. For example, [workflows.parallel] could have max_tasks, strategy, fail_fast settings. This powerful feature should be documented with examples for each built-in workflow.",
+      "steps": [
+        "Add workflow configuration subsection to the Configuration section in README.md",
+        "Document the [workflows.<name>] pattern for per-workflow settings",
+        "Provide configuration examples for each built-in workflow: traditional, parallel, incident_triage, code_review",
+        "Explain how to discover workflow-specific settings using 'looper workflow describe'",
+        "Add workflow configuration to the example looper.toml in README"
+      ],
+      "tags": [
+        "docs",
+        "config",
+        "workflows"
+      ],
+      "files": [
+        "README.md",
+        "internal/config/types.go",
+        "internal/workflows/types.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T072",
+      "title": "Document core plugins bundle in README.md",
+      "priority": 3,
+      "status": "todo",
+      "description": "The core plugins bundle (internal/coreplugins/) provides auto-extraction of built-in plugins but is not mentioned in README.",
+      "details": "internal/coreplugins/bundle.go implements automatic extraction of core plugins (claude, codex, traditional) to ~/.looper/plugins/ on first run. This is a sophisticated feature that ensures plugins are always available. The bundle system includes manifest definitions, extraction logic, and version checking. Should be documented in the Plugins section.",
+      "steps": [
+        "Add core plugins documentation to the Plugins section in README.md",
+        "Explain that core plugins (claude, codex, traditional) are bundled and auto-extracted",
+        "Document the auto-extraction process on first run",
+        "Explain how core plugins relate to user-installed plugins (priority order)",
+        "Document how to update or override core plugins if needed",
+        "Add internal/coreplugins/ to the Architecture section"
+      ],
+      "tags": [
+        "docs",
+        "plugins",
+        "architecture"
+      ],
+      "files": [
+        "README.md",
+        "internal/coreplugins/bundle.go",
+        "internal/coreplugins/claude.go",
+        "internal/coreplugins/codex.go",
+        "internal/coreplugins/traditional.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T073",
+      "title": "Document plugin validation and creation commands in README.md",
+      "priority": 3,
+      "status": "todo",
+      "description": "The README briefly mentions plugin commands but doesn't explain 'looper plugin validate' and 'looper plugin create' in detail.",
+      "details": "Plugin system includes comprehensive validation (internal/plugin/manifest.go:70-123) and skeleton creation (cmd/plugin_create.go). Validation checks required fields, category-specific config, plugin name format, and binary path. Creation generates a complete plugin skeleton with manifest. These are powerful developer tools that deserve documentation.",
+      "steps": [
+        "Add detailed plugin command documentation to the Plugins section in README.md",
+        "Document 'looper plugin validate <path>' with validation rules explained",
+        "Document 'looper plugin create <name> --type agent|workflow' with examples",
+        "Explain the plugin manifest validation rules and error messages",
+        "Provide a walkthrough of creating a custom plugin from skeleton to working plugin",
+        "Document plugin manifest fields and their requirements"
+      ],
+      "tags": [
+        "docs",
+        "plugins",
+        "developer"
+      ],
+      "files": [
+        "README.md",
+        "cmd/plugin_create.go",
+        "cmd/plugin_validate.go",
+        "internal/plugin/manifest.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T074",
+      "title": "Document advanced logging configuration in README.md",
+      "priority": 4,
+      "status": "todo",
+      "description": "Advanced logging configuration options (log_level, log_format, log_timestamps, log_caller) exist in internal/config/types.go:90-94 but are not documented.",
+      "details": "The Config struct includes LogLevel, LogFormat, LogTimestamps, and LogCaller fields. These allow fine-grained control over logging output format and verbosity. While the basic logging is documented, these advanced options are not mentioned. Users who want to customize log output won't know these options exist.",
+      "steps": [
+        "Add advanced logging configuration to the Configuration section in README.md",
+        "Document log_level option with available levels (debug, info, warn, error)",
+        "Document log_format option (json, text)",
+        "Document log_timestamps and log_caller boolean flags",
+        "Provide examples of different logging configurations",
+        "Explain when to use each logging option",
+        "Add to example looper.toml in README"
+      ],
+      "tags": [
+        "docs",
+        "config",
+        "logging"
+      ],
+      "files": [
+        "README.md",
+        "internal/config/types.go",
+        "internal/config/example.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T075",
+      "title": "Document plugin capabilities system in README.md",
+      "priority": 4,
+      "status": "todo",
+      "description": "Plugins declare capabilities (can_modify_files, can_execute_commands, can_access_network, can_access_env) but this system is not documented.",
+      "details": "internal/plugin/types.go and internal/plugin/capabilities.go define the capability declaration system. Plugin manifests include a [capabilities] section where plugins declare what they're allowed to do. This is important for security and sandboxing but users don't know it exists or how to interpret/modify capabilities.",
+      "steps": [
+        "Add plugin capabilities documentation to the Plugins section in README.md",
+        "Explain the [capabilities] section in plugin manifests",
+        "Document each capability flag: can_modify_files, can_execute_commands, can_access_network, can_access_env",
+        "Explain how capabilities affect plugin security and permissions",
+        "Provide examples of capability declarations in plugin manifests",
+        "Document how looper enforces or uses capability declarations"
+      ],
+      "tags": [
+        "docs",
+        "plugins",
+        "security"
+      ],
+      "files": [
+        "README.md",
+        "internal/plugin/types.go",
+        "internal/plugin/capabilities.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T076",
+      "title": "Document plugin configuration in README.md",
+      "priority": 4,
+      "status": "todo",
+      "description": "Plugins can be configured via [plugins.<name>] sections in looper.toml with timeout, work_dir, binary, model, reasoning, enabled options, but this is not documented.",
+      "details": "internal/config/types.go:181-224 defines PluginConfig and PluginSettings. Users can configure plugin execution timeout, working directory, override binary path, set model/reasoning for agent plugins, and enable/disable plugins without uninstalling. This is useful for tuning plugin behavior but completely undocumented.",
+      "steps": [
+        "Add plugin configuration documentation to the Configuration section in README.md",
+        "Document the [plugins.<name>] section pattern",
+        "Explain each plugin setting: timeout, work_dir, binary, model, reasoning, enabled",
+        "Provide examples of plugin configuration for common scenarios",
+        "Document how plugin config relates to plugin manifest settings",
+        "Add to example looper.toml in README"
+      ],
+      "tags": [
+        "docs",
+        "config",
+        "plugins"
+      ],
+      "files": [
+        "README.md",
+        "internal/config/types.go",
+        "internal/config/example.go"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
+    },
+    {
+      "id": "T077",
+      "title": "Implement explicit parallelism feature (designed in TODO-Parallelism.md)",
+      "priority": 2,
+      "status": "todo",
+      "description": "Implement the parallelism feature fully designed in TODO-Parallelism.md. The design document is complete with worker pool pattern, task-level parallelism, and agent-level parallelism.",
+      "details": "TODO-Parallelism.md contains a complete implementation plan for adding explicit parallelism to looper-go. Features include: worker pool with bounded concurrency, task-level parallelism (multiple tasks concurrently), agent-level parallelism (multi-agent consensus per task), configurable strategies (priority, dependency, mixed), output modes (multiplexed, buffered, summary), and fail-fast option. This is a major feature that requires creating internal/parallel/ package and updating loop orchestration.",
+      "steps": [
+        "Phase 1: Add ParallelConfig to internal/config/types.go, add CLI flags, env var support",
+        "Phase 2: Create internal/parallel package with pool.go, selector.go, executor.go",
+        "Phase 3: Create MultiplexedLogWriter in internal/agents/multiplex_log_writer.go",
+        "Phase 4: Implement RunParallel() in internal/loop/loop.go, update Run() dispatch",
+        "Phase 5: Add race condition tests with go test -race, verify backward compatibility",
+        "Update README.md to document parallelism feature and configuration",
+        "Add examples to to-do.json for testing parallel execution"
+      ],
+      "tags": [
+        "parallelism",
+        "performance",
+        "architecture"
+      ],
+      "files": [
+        "TODO-Parallelism.md",
+        "internal/config/types.go",
+        "internal/parallel/pool.go",
+        "internal/parallel/selector.go",
+        "internal/parallel/executor.go",
+        "internal/loop/loop.go",
+        "cmd/root.go",
+        "README.md"
+      ],
+      "updated_at": "2026-01-25T12:00:00Z"
     }
   ]
 }

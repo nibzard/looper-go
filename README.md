@@ -113,6 +113,16 @@ looper push
 looper push --agent claude
 looper push -y
 
+# List available workflows
+looper workflow list
+
+# Describe a workflow
+looper workflow describe parallel
+
+# Run with a specific workflow
+looper run --workflow parallel
+looper run --workflow code-review
+
 # Validate task file against schema
 looper validate
 looper validate path/to/tasks.json
@@ -476,6 +486,287 @@ The hook receives these arguments:
 <task_id> <status> <last_message_json_path> <label>
 ```
 
+## Plugins
+
+Looper supports a plugin system for extending functionality with external agents and workflows. Plugins are external binaries that communicate via JSON-RPC over stdin/stdout.
+
+### Plugin Commands
+
+```bash
+# List installed plugins
+looper plugin list
+
+# Show plugin details
+looper plugin info claude
+
+# Create a new plugin skeleton
+looper plugin create my-agent --type agent
+
+# Validate a plugin
+looper plugin validate ./my-plugin
+
+# Install a plugin from git URL or local path
+looper plugin install https://github.com/user/looper-plugin
+looper plugin install ./my-plugin
+
+# Uninstall a plugin
+looper plugin uninstall my-agent
+```
+
+### Plugin Locations
+
+Plugins are searched in priority order:
+
+1. **Project plugins** - `.looper/plugins/` (highest priority)
+2. **User plugins** - `~/.looper/plugins/`
+3. **Built-in plugins** - claude, codex, traditional (lowest priority)
+
+### Plugin Manifest
+
+Plugins require a `looper-plugin.toml` manifest file:
+
+```toml
+name = "my-agent"
+version = "1.0.0"
+category = "agent"
+description = "My custom AI agent"
+
+[plugin]
+binary = "./bin/my-agent"
+author = "Your Name"
+homepage = "https://github.com/user/my-plugin"
+license = "MIT"
+min_looper_version = "0.1.0"
+
+[agent]
+type = "my-agent"
+supports_streaming = true
+supports_tools = true
+default_prompt_format = "stdin"
+
+[capabilities]
+can_modify_files = true
+can_execute_commands = true
+can_access_network = false
+can_access_env = true
+```
+
+### Plugin Categories
+
+- **agent** - AI agent plugins (claude, codex, or custom)
+- **workflow** - Workflow plugins (traditional, parallel, or custom)
+
+### See Also
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed architecture documentation
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contributing guidelines
+
+## Workflows
+
+Looper supports a pluggable workflow system that allows you to customize how tasks are executed. Workflows define the execution strategy for processing tasks, from simple iterative loops to complex multi-stage processes.
+
+### Available Workflows
+
+```bash
+# List all available workflows
+looper workflow list
+
+# Describe a specific workflow
+looper workflow describe traditional
+```
+
+**Built-in workflows:**
+
+- **traditional** - The default looper loop with sequential task execution, review passes, and repair
+- **parallel** - Concurrent task execution with configurable concurrency limits and fail-fast option
+- **code-review** - Multi-stage code review workflow with analyze, security, and style stages
+- **incident-triage** - Incident classification, assignment, and notification workflow
+
+### Running with a Workflow
+
+Select a workflow via the `--workflow` flag or config file:
+
+```bash
+# Run with a specific workflow
+looper run --workflow parallel
+looper run --workflow code-review
+looper run --workflow incident-triage
+
+# Use workflow via config file (looper.toml)
+workflow = "parallel"
+```
+
+### Workflow Configuration
+
+Each workflow can be configured via `[workflows.<name>]` sections in `looper.toml`:
+
+```toml
+# Select workflow
+workflow = "parallel"
+
+# Configure parallel workflow
+[workflows.parallel]
+max_concurrent = 5      # Maximum concurrent tasks
+fail_fast = true        # Stop on first error
+
+# Configure code-review workflow
+[workflows.code-review]
+diff_path = "."         # Path to review (default: ".")
+review_stages = ["analyze", "security", "style", "performance"]
+require_approval = true
+approval_file = ".looper/approval.txt"
+
+# Configure incident-triage workflow
+[workflows.incident-triage]
+severity_levels = ["critical", "high", "medium", "low"]
+auto_assign = true
+notify_slack = false
+slack_webhook = "https://hooks.slack.com/services/..."
+```
+
+### Workflow Descriptions
+
+#### Traditional
+
+The default looper workflow with sequential task execution:
+
+- Processes one task per iteration
+- Runs review pass when tasks are exhausted
+- Supports task repair via agent
+- Configurable iteration schedules (agent selection, odd-even, round-robin)
+
+```toml
+workflow = "traditional"
+```
+
+#### Parallel
+
+Execute tasks concurrently with bounded concurrency:
+
+```toml
+workflow = "parallel"
+
+[workflows.parallel]
+max_concurrent = 3      # Max concurrent tasks (default: 3)
+fail_fast = false       # Stop on first error (default: false)
+```
+
+Use parallel workflow for:
+- Independent tasks that can run simultaneously
+- Faster completion of large task backlogs
+- Projects where task isolation is guaranteed
+
+#### Code Review
+
+Multi-stage code review with git diff analysis:
+
+```toml
+workflow = "code-review"
+
+[workflows.code-review]
+diff_path = "."                    # Path to review (default: ".")
+review_stages = ["analyze", "security", "style"]
+require_approval = true            # Require manual approval
+approval_file = ".looper/approval.txt"
+```
+
+Stages:
+- **analyze** - Code quality, structure, bugs, performance, testing
+- **security** - Security vulnerabilities (SQL injection, XSS, auth issues)
+- **style** - Code formatting, naming, comments, idiomatic patterns
+
+Custom stages can be added to `review_stages` with stage-specific agent configuration:
+
+```toml
+[agents.agent_performance]
+binary = "claude"
+model = ""
+
+[workflows.code-review]
+review_stages = ["analyze", "security", "style", "performance"]
+```
+
+#### Incident Triage
+
+Automated incident classification and assignment:
+
+```toml
+workflow = "incident-triage"
+
+[workflows.incident-triage]
+severity_levels = ["critical", "high", "medium", "low"]
+auto_assign = true
+notify_slack = false
+slack_webhook = "https://hooks.slack.com/services/..."
+```
+
+The workflow:
+1. Finds tasks tagged with "incident"
+2. Classifies severity using an AI agent
+3. Auto-assigns based on severity (oncall-senior, oncall, team-backend, backlog)
+4. Optionally sends Slack notifications
+
+Assignment rules:
+- **critical** → oncall-senior
+- **high** → oncall
+- **medium** → team-backend
+- **low** → backlog
+
+### Custom Workflow Plugins
+
+Workflows can be implemented as external plugins. Create a workflow plugin:
+
+```bash
+looper plugin create my-workflow --type workflow
+```
+
+The plugin will be discovered automatically when placed in:
+- `.looper/plugins/` (project-level)
+- `~/.looper/plugins/` (user-level)
+
+Workflow plugin manifest (`looper-plugin.toml`):
+
+```toml
+name = "my-workflow"
+version = "1.0.0"
+category = "workflow"
+
+[plugin]
+binary = "./bin/my-workflow"
+
+[workflow]
+type = "my-workflow"
+supports_approval = false
+```
+
+See the Plugins section for more details on plugin development.
+
+### Workflow System Architecture
+
+The workflow system uses a registry pattern similar to agents:
+
+```go
+// Workflow interface
+type Workflow interface {
+    Run(context.Context) error
+    Description() string
+}
+
+// Register workflows in init()
+func init() {
+    workflows.Register(workflows.WorkflowType("my-workflow"), MyWorkflowFactory)
+}
+```
+
+Built-in workflows are in `internal/workflows/`:
+- `types.go` - Core interfaces and types
+- `registry.go` - Workflow registration and discovery
+- `traditional.go` - Default looper loop
+- `parallel.go` - Concurrent execution
+- `code_review.go` - Multi-stage code review
+- `incident_triage.go` - Incident response
+- `plugin_workflow.go` - Plugin workflow wrapper
+
 ## Release Workflow
 
 The `looper push` command runs a release workflow via an AI agent:
@@ -600,6 +891,8 @@ Looper is written in Go with a clean, modular architecture:
 - `internal/loop` - Orchestration state machine
 - `internal/agents` - Modular agent system with registry pattern
 - `internal/parsers` - Plugin-based parser system for agent output
+- `internal/workflows` - Pluggable workflow system (traditional, parallel, code-review, incident-triage)
+- `internal/plugin` - Plugin management and discovery
 - `internal/logging` - JSONL logging with charmbracelet/log console output
 - `internal/hooks` - Hook invocation
 - `internal/utils` - Shared utilities (platform, scheduling)
