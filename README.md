@@ -93,6 +93,10 @@ looper run path/to/tasks.json
 # Run with specific schedule
 looper run --schedule odd-even
 
+# Workflow commands
+looper workflow list              # List available workflows
+looper workflow describe parallel # Describe a specific workflow
+
 # List tasks by status
 looper ls
 looper ls todo

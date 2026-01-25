@@ -1316,7 +1316,7 @@
       "priority": 2,
       "status": "done",
       "description": "Role-based agent configuration is implemented but not fully documented. The README only mentions --repair-agent, --review-agent, --bootstrap-agent flags but not the full [roles] config section.",
-      "details": "Documentation already comprehensive in README.md lines 225-342. The Role-Based Agent Configuration section already includes: Available Roles (iter, review, repair, bootstrap), Configuration via Config File with [roles] TOML section, Configuration via Environment Variables (LOOPER_ROLES_*), Configuration via CLI Flags, Precedence Order (CLI > env > project config > user config > legacy config > schedule defaults), When to Use Role-Based Configuration vs simple schedule, and Example Configurations showing different agents for different roles. internal/config/example.go also includes [roles] section in example config (lines 24-30). No changes needed.",
+      "details": "Documentation already comprehensive in README.md. Verified complete at lines 225 to 342. No changes needed.",
       "steps": [
         "Add role-based configuration to the 'Configuration' section in README.md",
         "Document the [roles] TOML section with all available roles: iter, review, repair, bootstrap",
@@ -1333,16 +1333,16 @@
       "files": [
         "README.md",
         "internal/config/example.go",
-        "internal/config/types.go",
-        "internal/config/getters.go"
+        "internal/config/getters.go",
+        "internal/config/types.go"
       ],
-      "updated_at": "\"2026-01-25T09:25:37Z\""
+      "updated_at": "2026-01-25T09:27:14Z"
     },
     {
       "id": "T070",
       "title": "Document workflow CLI commands in README.md usage section",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "description": "The looper workflow command is implemented (cmd/root.go:2706-2797) but not shown in the README Usage section.",
       "details": "CLI supports 'looper workflow list' and 'looper workflow describe <name>' commands. These are useful for discovering available workflows and their configuration options. Should be added to the Usage section alongside other commands like ls, tail, doctor, etc.",
       "steps": [
@@ -1361,7 +1361,7 @@
         "README.md",
         "cmd/root.go"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": "2026-01-25T09:28:18Z"
     },
     {
       "id": "T071",
