@@ -742,7 +742,9 @@ workflow = "parallel"
 
 ### Workflow Configuration
 
-Each workflow can be configured via `[workflows.<name>]` sections in `looper.toml`:
+Each workflow can be configured via `[workflows.<name>]` sections in `looper.toml`. This allows you to customize workflow behavior without modifying code.
+
+#### Configuration Pattern
 
 ```toml
 # Select workflow
@@ -766,6 +768,106 @@ severity_levels = ["critical", "high", "medium", "low"]
 auto_assign = true
 notify_slack = false
 slack_webhook = "https://hooks.slack.com/services/..."
+```
+
+#### Workflow-Specific Options
+
+**Parallel Workflow** (`parallel`)
+
+The parallel workflow executes multiple tasks concurrently with bounded concurrency.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `max_concurrent` | int | `3` | Maximum number of tasks to run simultaneously |
+| `fail_fast` | bool | `false` | Stop execution immediately if any task fails |
+
+Example:
+```toml
+[workflows.parallel]
+max_concurrent = 5      # Run up to 5 tasks at once
+fail_fast = true        # Stop on first error
+```
+
+Use cases:
+- Large backlogs of independent tasks
+- Projects where task isolation is guaranteed
+- Faster completion when tasks don't depend on each other
+
+**Code Review Workflow** (`code-review`)
+
+Multi-stage code review with git diff analysis and optional manual approval.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `diff_path` | string | `"."` | Path to run git diff from |
+| `review_stages` | array | `["analyze", "security", "style"]` | Review stages to execute |
+| `require_approval` | bool | `true` | Require manual approval after review |
+| `approval_file` | string | `".looper/approval.txt"` | Path to approval marker file |
+
+Built-in stages:
+- `analyze` - Code quality, structure, bugs, performance, testing
+- `security` - SQL injection, XSS, auth issues, sensitive data
+- `style` - Formatting, naming, comments, idiomatic patterns
+
+Example:
+```toml
+[workflows.code-review]
+diff_path = "src/"                    # Review only src/ directory
+review_stages = ["analyze", "security", "style", "performance"]
+require_approval = true
+approval_file = ".looper/approval.txt"
+```
+
+**Custom Stages**: Add custom review stages by defining them in `review_stages` and configuring a stage-specific agent:
+
+```toml
+# Add a custom stage agent
+[agents.agent_performance]
+binary = "claude"
+model = ""
+
+[workflows.code-review]
+review_stages = ["analyze", "security", "style", "performance"]
+```
+
+**Incident Triage Workflow** (`incident-triage`)
+
+Automated incident classification, assignment, and notification.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `severity_levels` | array | `["critical", "high", "medium", "low"]` | Available severity levels |
+| `auto_assign` | bool | `true` | Automatically assign based on severity |
+| `notify_slack` | bool | `false` | Send Slack notifications |
+| `slack_webhook` | string | `""` | Slack webhook URL |
+
+Default assignment rules:
+- `critical` → `oncall-senior`
+- `high` → `oncall`
+- `medium` → `team-backend`
+- `low` → `backlog`
+
+Example:
+```toml
+[workflows.incident-triage]
+severity_levels = ["critical", "high", "medium", "low"]
+auto_assign = true
+notify_slack = true
+slack_webhook = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+```
+
+**Traditional Workflow** (`traditional`)
+
+The default looper workflow with sequential task execution. No specific configuration options - uses standard looper settings like `max_iterations`, `schedule`, `roles`, etc.
+
+#### Discovering Configuration Options
+
+Use `looper workflow describe` to see configuration options for a specific workflow:
+
+```bash
+looper workflow describe parallel
+looper workflow describe code-review
+looper workflow describe incident-triage
 ```
 
 ### Workflow Descriptions
