@@ -1368,7 +1368,7 @@
       "priority": 2,
       "status": "done",
       "description": "Workflows support per-workflow configuration via [workflows.<name>] sections in looper.toml, but this is not documented.",
-      "details": "internal/config/types.go:60-64 defines Workflow field and WorkflowConfigs map. Each workflow type can have its own configuration schema. For example, [workflows.parallel] could have max_tasks, strategy, fail_fast settings. This powerful feature should be documented with examples for each built-in workflow.",
+      "details": "Documentation already comprehensive in README.md. Verified: lines 745-771 explain [workflows.<name>] pattern, lines 773-857 document each workflow with tables (parallel, code-review, incident-triage), lines 863-871 explain discovery via looper workflow describe, lines 486-502 show examples in main config. Task already complete - no changes needed.",
       "steps": [
         "Add workflow configuration subsection to the Configuration section in README.md",
         "Document the [workflows.<name>] pattern for per-workflow settings",
@@ -1386,7 +1386,7 @@
         "internal/config/types.go",
         "internal/workflows/types.go"
       ],
-      "updated_at": "2026-01-25T09:40:12Z"
+      "updated_at": "2026-01-25T09:41:54Z"
     },
     {
       "id": "T072",
@@ -1531,7 +1531,7 @@
       "id": "T077",
       "title": "Implement explicit parallelism feature (designed in TODO-Parallelism.md)",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "description": "Implement the parallelism feature fully designed in TODO-Parallelism.md. The design document is complete with worker pool pattern, task-level parallelism, and agent-level parallelism.",
       "details": "TODO-Parallelism.md contains a complete implementation plan for adding explicit parallelism to looper-go. Features include: worker pool with bounded concurrency, task-level parallelism (multiple tasks concurrently), agent-level parallelism (multi-agent consensus per task), configurable strategies (priority, dependency, mixed), output modes (multiplexed, buffered, summary), and fail-fast option. This is a major feature that requires creating internal/parallel/ package and updating loop orchestration.",
       "steps": [
@@ -1549,16 +1549,26 @@
         "architecture"
       ],
       "files": [
-        "TODO-Parallelism.md",
         "internal/config/types.go",
+        "internal/config/env.go",
+        "internal/config/flags.go",
+        "internal/config/load.go",
+        "internal/config/sources.go",
+        "cmd/root.go",
+        "internal/loop/loop.go",
+        "internal/todo/types.go",
+        "internal/parallel/doc.go",
         "internal/parallel/pool.go",
         "internal/parallel/selector.go",
         "internal/parallel/executor.go",
-        "internal/loop/loop.go",
-        "cmd/root.go",
-        "README.md"
+        "internal/parallel/pool_test.go",
+        "internal/parallel/selector_test.go",
+        "internal/loop/loop_test.go",
+        "to-do.json",
+        "internal/agents/multiplex_log_writer.go",
+        "internal/agents/multiplex_log_writer_test.go"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": "2026-01-25T10:10:47Z"
     }
   ]
 }
