@@ -6,7 +6,15 @@
   },
   "source_files": [
     "README.md",
-    "MIGRATION.md"
+    "MIGRATION.md",
+    "ARCHITECTURE.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "LOOPISM.md",
+    "AI_POLICY.md",
+    "CODE_OF_CONDUCT.md",
+    "TODO-Parallelism.md"
   ],
   "tasks": [
     {
@@ -1115,9 +1123,9 @@
     {
       "id": "T062",
       "title": "Extract duplicate windowsExecutableExts function to shared util",
+      "description": "The windowsExecutableExts() function is duplicated identically in cmd/root.go and internal/agents/agents.go. Move to a shared utility package to eliminate duplication.",
       "priority": 2,
       "status": "done",
-      "description": "The windowsExecutableExts() function is duplicated identically in cmd/root.go and internal/agents/agents.go. Move to a shared utility package to eliminate duplication.",
       "details": "Both cmd/root.go:1588-1613 and internal/agents/agents.go:1413-1438 contain identical windowsExecutableExts() functions that parse PATHEXT environment variable. Extract to internal/utils/platform.go or internal/platform/platform.go.",
       "steps": [
         "Create internal/utils/platform.go with WindowsExecutableExtensions() function",
@@ -1144,9 +1152,9 @@
     {
       "id": "T063",
       "title": "Create shared CreateLogWriter helper for repeated log writer setup",
+      "description": "The pattern of creating NewIOStreamLogWriter and conditionally wrapping with NewMultiLogWriter is repeated 6+ times across loop.go and root.go.",
       "priority": 2,
       "status": "done",
-      "description": "The pattern of creating NewIOStreamLogWriter and conditionally wrapping with NewMultiLogWriter is repeated 6+ times across loop.go and root.go.",
       "details": "The 4-line pattern (NewIOStreamLogWriter, check quiet, NewIOStreamLogWriter for stdout, NewMultiLogWriter) appears in loop.go:79,324,363,457,474,701-711 and root.go:1769-1777. Extract to a shared helper function. Added CreateLogWriter(io.Writer) LogWriter to agents package; updated cmd/root.go pushCommand to use it; added comprehensive tests.",
       "steps": [
         "Add CreateLogWriter(primaryWriter io.Writer) LogWriter to internal/agents/agents.go",
@@ -1170,9 +1178,9 @@
     {
       "id": "T064",
       "title": "Consolidate duplicate agent config builders in loop.go",
+      "description": "buildAgentConfig and buildAgentConfigFromConfig are nearly identical functions that create agents.Config with the same fields.",
       "priority": 2,
       "status": "done",
-      "description": "buildAgentConfig and buildAgentConfigFromConfig are nearly identical functions that create agents.Config with the same fields.",
       "details": "Already completed in commit 7c6dc61. The Loop.buildAgentConfig() method was removed and runAgent() now uses the standalone buildAgentConfigFromConfig() function. No additional commit needed - refactor already present in HEAD.",
       "steps": [
         "Create a single buildAgentConfig function that accepts agent configuration parameters",
@@ -1193,9 +1201,9 @@
     {
       "id": "T065",
       "title": "Refactor parseFlagsHelper to reduce complexity and duplication",
+      "description": "The parseFlagsHelper function in config.go is 300+ lines with repetitive flag binding patterns and duplicated logic.",
       "priority": 3,
       "status": "done",
-      "description": "The parseFlagsHelper function in config.go is 300+ lines with repetitive flag binding patterns and duplicated logic.",
       "details": "Review completed - parseFlagsHelper was already refactored in T052 (Refactor config loading) which removed ~200 lines of duplicated code by extracting setSource, mergeAgentSources, loadFromEnvHelper, and parseFlagsHelper. The current implementation is reasonably clean; further reduction would require a table-driven approach that might reduce readability.",
       "steps": [
         "Analyze the repetitive patterns in parseFlagsHelper",
@@ -1220,9 +1228,9 @@
     {
       "id": "T066",
       "title": "Simplify loop.Run orchestration by extracting iteration logic",
+      "description": "The Loop.Run method handles iteration counting, task selection, review flow, and error handling all in one method.",
       "priority": 3,
       "status": "done",
-      "description": "The Loop.Run method handles iteration counting, task selection, review flow, and error handling all in one method.",
       "details": "Review completed - loop.Run was already refactored in T050 (Refactor loop orchestration) which extracted helpers: multiLogWriter, finalizeStep, validateAndApplySummary. The current Run() method is only ~30 lines and delegates to runReviewAndMaybeFinish(), runIteration(), and delayBetweenIterations(). Further extraction would provide minimal benefit.",
       "steps": [
         "Extract iteration execution logic into executeIteration() method",
@@ -1247,9 +1255,9 @@
     {
       "id": "T067",
       "title": "Implement composable, approval-safe workflow plugin system",
+      "description": "Implement a workflow plugin system that mirrors the existing agent plugin architecture to support composable, approval-safe workflows (code review, incident triage, content pipelines).",
       "priority": 2,
       "status": "done",
-      "description": "Implement a workflow plugin system that mirrors the existing agent plugin architecture to support composable, approval-safe workflows (code review, incident triage, content pipelines).",
       "details": "FULLY IMPLEMENTED but not documented in README. The workflow system is complete with: internal/workflows/types.go (core interfaces), internal/workflows/registry.go (registration system), internal/workflows/traditional.go (traditional workflow), internal/workflows/parallel.go (parallel workflow), internal/workflows/incident_triage.go (incident response), internal/workflows/code_review.go (code review), internal/workflows/plugin_workflow.go (plugin integration), cmd/root.go:2706-2797 (CLI commands). Workflow commands available: looper workflow list, looper workflow describe, looper run --workflow <name>.",
       "steps": [
         "Create workflow types and interfaces (WorkflowType, WorkflowFactory, Workflow, Stage, CheckpointPolicy)",
@@ -1287,9 +1295,9 @@
     {
       "id": "T068",
       "title": "Document workflow system in README.md",
+      "description": "The workflow system is fully implemented and already documented in README.md.",
       "priority": 1,
       "status": "done",
-      "description": "The workflow system is fully implemented and already documented in README.md.",
       "details": "Workflow documentation already exists in README.md lines 564-768. The documentation is comprehensive: includes Workflows section, available workflows (traditional, parallel, code-review, incident-triage), usage with --workflow flag, workflow-specific configuration via [workflows.<name>] sections, detailed descriptions of each workflow with examples, custom workflow plugins, and workflow system architecture. No code changes needed.",
       "steps": [
         "Add Workflows section after Plugins in README.md - ALREADY DONE (line 564)",
@@ -1313,9 +1321,9 @@
     {
       "id": "T069",
       "title": "Document role-based agent configuration in README.md",
+      "description": "Role-based agent configuration is implemented but not fully documented. The README only mentions --repair-agent, --review-agent, --bootstrap-agent flags but not the full [roles] config section.",
       "priority": 2,
       "status": "done",
-      "description": "Role-based agent configuration is implemented but not fully documented. The README only mentions --repair-agent, --review-agent, --bootstrap-agent flags but not the full [roles] config section.",
       "details": "Documentation already comprehensive in README.md. Verified complete at lines 225 to 342. No changes needed.",
       "steps": [
         "Add role-based configuration to the 'Configuration' section in README.md",
@@ -1341,9 +1349,9 @@
     {
       "id": "T070",
       "title": "Document workflow CLI commands in README.md usage section",
+      "description": "The looper workflow command is implemented (cmd/root.go:2706-2797) but not shown in the README Usage section.",
       "priority": 2,
       "status": "done",
-      "description": "The looper workflow command is implemented (cmd/root.go:2706-2797) but not shown in the README Usage section.",
       "details": "Documentation verified present in README.md Usage section (lines 96-98): looper workflow list, looper workflow describe <name>. Full workflow documentation exists in Workflows section (lines 688-893). Task already complete - no code changes needed.",
       "steps": [
         "Add workflow commands to the Usage section in README.md",
@@ -1365,9 +1373,9 @@
     {
       "id": "T071",
       "title": "Document workflow-specific configuration in README.md",
+      "description": "Workflows support per-workflow configuration via [workflows.<name>] sections in looper.toml, but this is not documented.",
       "priority": 2,
       "status": "done",
-      "description": "Workflows support per-workflow configuration via [workflows.<name>] sections in looper.toml, but this is not documented.",
       "details": "Documentation already comprehensive in README.md. Verified: lines 745-771 explain [workflows.<name>] pattern, lines 773-857 document each workflow with tables (parallel, code-review, incident-triage), lines 863-871 explain discovery via looper workflow describe, lines 486-502 show examples in main config. Task already complete - no changes needed.",
       "steps": [
         "Add workflow configuration subsection to the Configuration section in README.md",
@@ -1391,9 +1399,9 @@
     {
       "id": "T072",
       "title": "Document core plugins bundle in README.md",
+      "description": "The core plugins bundle (internal/coreplugins/) provides auto-extraction of built-in plugins but is not mentioned in README.",
       "priority": 3,
       "status": "done",
-      "description": "The core plugins bundle (internal/coreplugins/) provides auto-extraction of built-in plugins but is not mentioned in README.",
       "details": "Documentation already comprehensive in README.md. Verified complete at lines 848-927. All steps covered: core plugins explanation, auto-extraction process, priority order, override examples, and architecture section. No changes needed - documentation already present.",
       "tags": [
         "docs",
@@ -1412,9 +1420,9 @@
     {
       "id": "T073",
       "title": "Document plugin validation and creation commands in README.md",
+      "description": "The README briefly mentions plugin commands but doesn't explain 'looper plugin validate' and 'looper plugin create' in detail.",
       "priority": 3,
       "status": "done",
-      "description": "The README briefly mentions plugin commands but doesn't explain 'looper plugin validate' and 'looper plugin create' in detail.",
       "details": "Plugin system includes comprehensive validation (internal/plugin/manifest.go:70-123) and skeleton creation (cmd/plugin_create.go). Validation checks required fields, category-specific config, plugin name format, and binary path. Creation generates a complete plugin skeleton with manifest. These are powerful developer tools that deserve documentation.",
       "steps": [
         "Add detailed plugin command documentation to the Plugins section in README.md",
@@ -1437,9 +1445,9 @@
     {
       "id": "T074",
       "title": "Document advanced logging configuration in README.md",
+      "description": "Advanced logging configuration options (log_level, log_format, log_timestamps, log_caller) exist in internal/config/types.go:90-94 but are not documented.",
       "priority": 4,
       "status": "done",
-      "description": "Advanced logging configuration options (log_level, log_format, log_timestamps, log_caller) exist in internal/config/types.go:90-94 but are not documented.",
       "details": "The Config struct includes LogLevel, LogFormat, LogTimestamps, and LogCaller fields. These allow fine-grained control over logging output format and verbosity. While the basic logging is documented, these advanced options are not mentioned. Users who want to customize log output won't know these options exist.",
       "steps": [
         "Add advanced logging configuration to the Configuration section in README.md",
@@ -1464,9 +1472,9 @@
     {
       "id": "T075",
       "title": "Document plugin capabilities system in README.md",
+      "description": "Plugins declare capabilities (can_modify_files, can_execute_commands, can_access_network, can_access_env) but this system is not documented.",
       "priority": 4,
       "status": "done",
-      "description": "Plugins declare capabilities (can_modify_files, can_execute_commands, can_access_network, can_access_env) but this system is not documented.",
       "details": "internal/plugin/types.go and internal/plugin/capabilities.go define the capability declaration system. Plugin manifests include a [capabilities] section where plugins declare what they're allowed to do. This is important for security and sandboxing but users don't know it exists or how to interpret/modify capabilities.",
       "steps": [
         "Add plugin capabilities documentation to the Plugins section in README.md",
@@ -1489,9 +1497,9 @@
     {
       "id": "T076",
       "title": "Document plugin configuration in README.md",
+      "description": "Plugins can be configured via [plugins.<name>] sections in looper.toml with timeout, work_dir, binary, model, reasoning, enabled options, but this is not documented.",
       "priority": 4,
       "status": "todo",
-      "description": "Plugins can be configured via [plugins.<name>] sections in looper.toml with timeout, work_dir, binary, model, reasoning, enabled options, but this is not documented.",
       "details": "internal/config/types.go:181-224 defines PluginConfig and PluginSettings. Users can configure plugin execution timeout, working directory, override binary path, set model/reasoning for agent plugins, and enable/disable plugins without uninstalling. This is useful for tuning plugin behavior but completely undocumented.",
       "steps": [
         "Add plugin configuration documentation to the Configuration section in README.md",
@@ -1516,9 +1524,9 @@
     {
       "id": "T077",
       "title": "Implement explicit parallelism feature (designed in TODO-Parallelism.md)",
+      "description": "Implement the parallelism feature fully designed in TODO-Parallelism.md. The design document is complete with worker pool pattern, task-level parallelism, and agent-level parallelism.",
       "priority": 2,
       "status": "done",
-      "description": "Implement the parallelism feature fully designed in TODO-Parallelism.md. The design document is complete with worker pool pattern, task-level parallelism, and agent-level parallelism.",
       "details": "TODO-Parallelism.md contains a complete implementation plan for adding explicit parallelism to looper-go. Features include: worker pool with bounded concurrency, task-level parallelism (multiple tasks concurrently), agent-level parallelism (multi-agent consensus per task), configurable strategies (priority, dependency, mixed), output modes (multiplexed, buffered, summary), and fail-fast option. This is a major feature that requires creating internal/parallel/ package and updating loop orchestration.",
       "steps": [
         "Phase 1: Add ParallelConfig to internal/config/types.go, add CLI flags, env var support",
@@ -1558,6 +1566,7 @@
       "description": "The plugin system (internal/plugin/) has validation but no end-to-end integration tests. Add tests covering plugin discovery, loading, manifest parsing, and JSON-RPC execution.",
       "priority": 2,
       "status": "done",
+      "details": "Added comprehensive integration tests for the plugin validation system, including tests for Validator type, all its methods, executor streaming, directory creation helpers, registry helpers, plugin installation, and manifest edge cases. Improved test coverage from 45.7% to 68.9%. Also fixed a mutex bug in EnsureUserPluginsDir.",
       "tags": [
         "testing",
         "plugins"
@@ -1567,8 +1576,7 @@
         "internal/plugin/registry.go",
         "to-do.json"
       ],
-      "updated_at": "2026-01-25T12:26:12Z",
-      "details": "Added comprehensive integration tests for the plugin validation system, including tests for Validator type, all its methods, executor streaming, directory creation helpers, registry helpers, plugin installation, and manifest edge cases. Improved test coverage from 45.7% to 68.9%. Also fixed a mutex bug in EnsureUserPluginsDir."
+      "updated_at": "2026-01-25T12:26:12Z"
     },
     {
       "id": "T079",
@@ -1669,8 +1677,8 @@
         "README.md",
         "SECURITY.md"
       ],
-      "updated_at": "2026-01-25T12:29:42Z",
-      "summary": "Created comprehensive SECURITY.md documenting plugin capabilities security model with threat model, sandboxing limitations, enforcement mechanisms, and best practices for users and plugin authors. README.md updated with reference to SECURITY.md."
+      "updated_at": "2026-01-25T12:55:30Z",
+      "details": "Security model documentation already complete in SECURITY.md. Verified comprehensive coverage of: capability system, threat model with 5 attack vectors, sandboxing limitations, enforcement mechanisms, security best practices, current features, and future enhancements."
     },
     {
       "id": "T086",
@@ -1749,11 +1757,11 @@
       "description": "After to-do.json was accidentally deleted by looper agent, a review pass identified 14 follow-up tasks for plugin system polish. All original 76 tasks (T001-T077) are verified complete in codebase.",
       "priority": 5,
       "status": "done",
+      "details": "Original tasks restored from git history. New tasks T078-T090 represent actual remaining work.",
       "tags": [
         "review",
         "recovery"
-      ],
-      "details": "Original tasks restored from git history. New tasks T078-T090 represent actual remaining work."
+      ]
     }
   ]
 }
