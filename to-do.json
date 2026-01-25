@@ -1438,7 +1438,7 @@
       "id": "T074",
       "title": "Document advanced logging configuration in README.md",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "description": "Advanced logging configuration options (log_level, log_format, log_timestamps, log_caller) exist in internal/config/types.go:90-94 but are not documented.",
       "details": "The Config struct includes LogLevel, LogFormat, LogTimestamps, and LogCaller fields. These allow fine-grained control over logging output format and verbosity. While the basic logging is documented, these advanced options are not mentioned. Users who want to customize log output won't know these options exist.",
       "steps": [
@@ -1456,11 +1456,9 @@
         "logging"
       ],
       "files": [
-        "README.md",
-        "internal/config/types.go",
-        "internal/config/example.go"
+        "README.md"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": 1769337640.554927
     },
     {
       "id": "T075",

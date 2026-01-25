@@ -480,6 +480,12 @@ hook_command = "/path/to/hook.sh"
 # Delay between iterations
 loop_delay_seconds = 0
 
+# Logging configuration
+log_level = "info"        # Log level: debug, info, warn, error, fatal
+log_format = "text"       # Log format: text, json, logfmt
+log_timestamps = true     # Show timestamps in log output
+log_caller = false        # Show caller location (file:line) in logs
+
 # Parallel task execution (disabled by default for backward compatibility)
 [parallel]
 enabled = false              # Enable parallel task execution
@@ -511,6 +517,127 @@ notify_slack = false
 ```
 
 Looper reads the config file from the current working directory (not the todo file directory).
+
+### Advanced Logging Configuration
+
+Looper provides fine-grained control over log output through four configuration options:
+
+#### Log Level (`log_level`)
+
+Controls the verbosity of log messages. Available levels (from most to least verbose):
+
+- **`debug`** - Detailed information for debugging, including all internal operations
+- **`info`** (default) - General informational messages about loop progress
+- **`warn`** - Warning messages for potential issues
+- **`error`** - Error messages only
+- **`fatal`** - Critical errors that cause termination
+
+**When to use each level:**
+- Use `debug` when troubleshooting issues or developing features
+- Use `info` for normal operation (default)
+- Use `warn` or `error` to reduce noise in production logs
+- Use `fatal` for minimal logging (rarely needed)
+
+```bash
+# Via config file
+log_level = "debug"
+
+# Via environment variable
+export LOOPER_LOG_LEVEL=debug
+
+# Via CLI flag
+looper run --log-level debug
+```
+
+#### Log Format (`log_format`)
+
+Controls how log messages are formatted:
+
+- **`text`** (default) - Human-readable text format with colors and styling
+- **`json`** - Structured JSON output, one log per line (for log aggregation tools)
+- **`logfmt`** - Key-value pair format (common in cloud-native systems)
+
+**When to use each format:**
+- Use `text` for interactive terminal sessions and development (default)
+- Use `json` for log aggregation systems (e.g., ELK, Splunk, CloudWatch)
+- Use `logfmt` for systems that expect key-value logging
+
+```bash
+# JSON logging for production
+log_format = "json"
+
+# Via environment
+export LOOPER_LOG_FORMAT=json
+```
+
+#### Log Timestamps (`log_timestamps`)
+
+Controls whether timestamps are included in log output:
+
+- **`true`** (default) - Include timestamps in each log message
+- **`false` - Omit timestamps for cleaner output
+
+**When to disable timestamps:**
+- When logging to a system that adds its own timestamps
+- For cleaner local development output
+- When timing information is not needed
+
+```bash
+# Disable timestamps
+log_timestamps = false
+
+# Via environment
+export LOOPER_LOG_TIMESTAMPS=0
+```
+
+#### Log Caller (`log_caller`)
+
+Controls whether the source location (file and line number) is included:
+
+- **`false`** (default) - Do not show source location
+- **`true`** - Show `file:line` for each log message
+
+**When to enable caller information:**
+- When debugging to trace where log messages originate
+- During development to identify code paths
+- Not recommended for production (adds verbosity)
+
+```bash
+# Enable caller information for debugging
+log_caller = true
+
+# Via environment
+export LOOPER_LOG_CALLER=1
+```
+
+#### Example Configurations
+
+**Development/Debugging:**
+```toml
+# Maximum verbosity for troubleshooting
+log_level = "debug"
+log_format = "text"
+log_timestamps = true
+log_caller = true
+```
+
+**Production with Log Aggregation:**
+```toml
+# Structured logs for ELK/Splunk
+log_level = "info"
+log_format = "json"
+log_timestamps = false   # Log system adds timestamps
+log_caller = false
+```
+
+**Minimal Local Output:**
+```toml
+# Clean output for local development
+log_level = "warn"
+log_format = "text"
+log_timestamps = false
+log_caller = false
+```
 
 ### Environment Variables
 
@@ -544,6 +671,14 @@ Looper reads the config file from the current working directory (not the todo fi
 - `LOOPER_PROMPT_DIR` - Prompt directory override (dev only, requires `LOOPER_PROMPT_MODE=dev`)
 - `LOOPER_PROMPT` - User prompt for bootstrap (brainstorms tasks from your idea instead of scanning docs)
 - `LOOPER_PRINT_PROMPT` - Print rendered prompts (1/0, dev only)
+
+**Logging settings:**
+- `LOOPER_LOG_LEVEL` - Log level: `debug`, `info`, `warn`, `error`, `fatal` (default: `info`)
+- `LOOPER_LOG_FORMAT` - Log format: `text`, `json`, `logfmt` (default: `text`)
+- `LOOPER_LOG_TIMESTAMPS` - Show timestamps in logs (1/0, default: 1)
+- `LOOPER_LOG_CALLER` - Show caller location (file:line) in logs (1/0, default: 0)
+
+**Agent settings:**
 - `CODEX_BIN` / `CLAUDE_BIN` - Agent binary paths (on Windows, use `codex.exe` / `claude.exe`)
 - `CODEX_MODEL` / `CLAUDE_MODEL` - Model selection
 - `CODEX_REASONING` / `CODEX_REASONING_EFFORT` - Codex reasoning effort (e.g., "low", "medium", "high")
@@ -554,6 +689,7 @@ Looper reads the config file from the current working directory (not the todo fi
 
 Global flags (place before the subcommand):
 - `--todo`, `--schema`, `--log-dir`
+- `--log-level`, `--log-format`, `--log-timestamps`, `--log-caller`
 - `--codex-bin`, `--claude-bin`, `--codex-model`, `--claude-model`, `--codex-reasoning`, `--codex-args`, `--claude-args`
 
 Run flags (use with `run`):
