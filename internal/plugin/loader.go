@@ -126,7 +126,7 @@ func (l *Loader) loadPluginsFromDir(dir string, scope PluginScope) ([]*Plugin, e
 		plugin, err := l.loadPlugin(pluginPath, scope)
 		if err != nil {
 			// Log warning but continue loading other plugins
-			// TODO: add proper logging
+			fmt.Fprintf(os.Stderr, "warning: failed to load plugin %s from %s: %v\n", pluginName, pluginPath, err)
 			continue
 		}
 

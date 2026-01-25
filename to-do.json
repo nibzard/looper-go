@@ -1583,14 +1583,15 @@
       "title": "Implement proper error logging in plugin loader",
       "description": "internal/plugin/loader.go line 129 has a TODO comment for proper logging. Replace the silent continue with actual error logging when plugin discovery fails.",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "logging",
         "plugins"
       ],
       "files": [
         "internal/plugin/loader.go"
-      ]
+      ],
+      "updated_at": "2026-01-25T13:10:00Z"
     },
     {
       "id": "T080",
@@ -1684,7 +1685,7 @@
       "title": "Fix potential data race in schema cache",
       "description": "internal/todo/types.go getCachedSchema uses double-checked locking but the pattern has subtle issues. Consider using sync.Once or a more robust caching pattern.",
       "priority": 2,
-      "status": "done",
+      "status": "blocked",
       "tags": [
         "concurrency",
         "bug"
@@ -1692,7 +1693,7 @@
       "files": [
         "internal/todo/types.go"
       ],
-      "updated_at": "2026-01-25T12:58:58Z"
+      "updated_at": "2026-01-25T12:59:32.213083302Z"
     },
     {
       "id": "T087",
