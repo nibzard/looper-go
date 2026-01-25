@@ -1549,16 +1549,11 @@
         "architecture"
       ],
       "files": [
-        "README.md",
-        "internal/config/example.go",
         "internal/config/types.go",
-        "internal/config/flags.go",
         "internal/config/env.go",
-        "internal/config/load.go",
-        "internal/config/sources.go",
+        "internal/config/example.go",
         "cmd/root.go",
         "internal/loop/loop.go",
-        "internal/todo/types.go",
         "internal/parallel/doc.go",
         "internal/parallel/pool.go",
         "internal/parallel/pool_test.go",
@@ -1567,10 +1562,9 @@
         "internal/parallel/executor.go",
         "internal/agents/multiplex_log_writer.go",
         "internal/agents/multiplex_log_writer_test.go",
-        "internal/loop/loop_test.go",
-        "to-do.json"
+        "README.md"
       ],
-      "updated_at": "2026-01-25T10:20:42Z"
+      "updated_at": "2026-01-25T10:26:37Z"
     }
   ]
 }
