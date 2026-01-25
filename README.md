@@ -845,6 +845,86 @@ can_access_env = true
 - **agent** - AI agent plugins (claude, codex, or custom)
 - **workflow** - Workflow plugins (traditional, parallel, or custom)
 
+### Core Plugins Bundle
+
+Looper ships with a bundle of core plugins that are automatically extracted on first run. These core plugins provide the essential functionality out of the box without requiring manual installation.
+
+#### Core Plugin Extraction
+
+On the first run, looper automatically extracts core plugins to `~/.looper/plugins/`:
+
+- **claude** - Claude AI agent integration (built-in)
+- **codex** - Codex AI agent integration (built-in)
+- **traditional** - Traditional looper workflow (built-in)
+
+The extraction process:
+1. Creates `~/.looper/plugins/` if it doesn't exist
+2. Extracts each core plugin to its own subdirectory
+3. Creates a README.md in each plugin directory with usage instructions
+
+#### Core Plugin vs User Plugin Priority
+
+When plugins with the same name exist in multiple locations, looper uses this priority order:
+
+1. **Project plugins** (`.looper/plugins/`) - highest priority
+2. **User plugins** (`~/.looper/plugins/`)
+3. **Core plugins** (bundled) - lowest priority
+
+This means you can override a core plugin by installing your own version to either the project or user plugins directory. For example, to use a custom version of the claude plugin:
+
+```bash
+# Install to project directory (overrides core plugin for this project only)
+looper plugin install ./my-claude-plugin
+
+# Or install to user directory (overrides core plugin globally)
+mkdir -p ~/.looper/plugins
+cp -r my-claude-plugin ~/.looper/plugins/claude
+```
+
+#### Core Plugin Manifests
+
+Core plugins include embedded manifests that define their capabilities. The manifests are used to register plugins with the plugin registry and are available via `GetCoreManifests()`.
+
+Core plugin capabilities:
+
+**Claude Agent:**
+- Supports streaming, tools, and MCP (Model Context Protocol)
+- Can modify files and execute commands
+- Default prompt format: stdin
+
+**Codex Agent:**
+- Supports streaming and tools
+- Can modify files and execute commands
+- Default prompt format: stdin
+
+**Traditional Workflow:**
+- Sequential task execution with review passes
+- Supports repair operations
+- Maximum 50 iterations (configurable)
+
+#### Checking Core Plugin Status
+
+To verify core plugins are installed:
+
+```bash
+# List all plugins (includes core plugins)
+looper plugin list
+
+# Show info about a specific core plugin
+looper plugin info claude
+looper plugin info traditional
+```
+
+#### Core Plugins in the Architecture
+
+The core plugins bundle is implemented in `internal/coreplugins/`:
+- `bundle.go` - Extraction logic and manifest registry
+- `claude.go` - Claude agent manifest
+- `codex.go` - Codex agent manifest
+- `traditional.go` - Traditional workflow manifest
+
+Core plugins are extracted automatically via `EnsureExtracted()` which is called during looper initialization. The extraction is thread-safe and only happens once per session.
+
 ### See Also
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed architecture documentation
@@ -1281,6 +1361,7 @@ Looper is written in Go with a clean, modular architecture:
 - `internal/todo` - Task file types and validation
 - `internal/loop` - Orchestration state machine
 - `internal/agents` - Modular agent system with registry pattern
+- `internal/coreplugins` - Bundled core plugins (claude, codex, traditional) with auto-extraction
 - `internal/parsers` - Plugin-based parser system for agent output
 - `internal/workflows` - Pluggable workflow system (traditional, parallel, code-review, incident-triage)
 - `internal/plugin` - Plugin management and discovery

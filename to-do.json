@@ -1392,7 +1392,7 @@
       "id": "T072",
       "title": "Document core plugins bundle in README.md",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "description": "The core plugins bundle (internal/coreplugins/) provides auto-extraction of built-in plugins but is not mentioned in README.",
       "details": "internal/coreplugins/bundle.go implements automatic extraction of core plugins (claude, codex, traditional) to ~/.looper/plugins/ on first run. This is a sophisticated feature that ensures plugins are always available. The bundle system includes manifest definitions, extraction logic, and version checking. Should be documented in the Plugins section.",
       "steps": [
@@ -1415,7 +1415,7 @@
         "internal/coreplugins/codex.go",
         "internal/coreplugins/traditional.go"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": "2026-01-25T10:28:49Z"
     },
     {
       "id": "T073",
@@ -1549,22 +1549,22 @@
         "architecture"
       ],
       "files": [
-        "internal/config/types.go",
+        "README.md",
+        "cmd/root.go",
+        "internal/agents/multiplex_log_writer.go",
+        "internal/agents/multiplex_log_writer_test.go",
         "internal/config/env.go",
         "internal/config/example.go",
-        "cmd/root.go",
+        "internal/config/types.go",
         "internal/loop/loop.go",
         "internal/parallel/doc.go",
+        "internal/parallel/executor.go",
         "internal/parallel/pool.go",
         "internal/parallel/pool_test.go",
         "internal/parallel/selector.go",
-        "internal/parallel/selector_test.go",
-        "internal/parallel/executor.go",
-        "internal/agents/multiplex_log_writer.go",
-        "internal/agents/multiplex_log_writer_test.go",
-        "README.md"
+        "internal/parallel/selector_test.go"
       ],
-      "updated_at": "2026-01-25T10:26:37Z"
+      "updated_at": "2026-01-25T10:27:42Z"
     }
   ]
 }
