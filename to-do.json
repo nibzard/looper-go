@@ -592,7 +592,7 @@
       "title": "Profile performance and add benchmarks",
       "priority": 3,
       "status": "done",
-      "details": "Added 7 prompt benchmarks, 13 todo benchmarks, and 8 loop benchmarks. Profiled CPU usage for hot paths. Key findings: prompt rendering ~100\u00b5s (template parsing 30% of CPU), task selection zero-allocation but strconv.Atoi accounts for 32% of CPU, applySummary ~1ms dominated by file I/O. No critical issues found - code is well-optimized. Benchmarks already present; no code changes needed this iteration. Ran `go test -bench=. ./cmd/... ./internal/...` (note: `go test -bench ./...` fails at repo root with no Go files).",
+      "details": "Added 7 prompt benchmarks, 13 todo benchmarks, and 8 loop benchmarks. Profiled CPU usage for hot paths. Key findings: prompt rendering ~100µs (template parsing 30% of CPU), task selection zero-allocation but strconv.Atoi accounts for 32% of CPU, applySummary ~1ms dominated by file I/O. No critical issues found - code is well-optimized. Benchmarks already present; no code changes needed this iteration. Ran `go test -bench=. ./cmd/... ./internal/...` (note: `go test -bench ./...` fails at repo root with no Go files).",
       "steps": [
         "Add targeted benchmarks for hot paths and run `go test -bench ./...`.",
         "Capture hotspots with pprof and summarize top offenders."
@@ -1557,14 +1557,15 @@
       "title": "Add integration tests for plugin system",
       "description": "The plugin system (internal/plugin/) has validation but no end-to-end integration tests. Add tests covering plugin discovery, loading, manifest parsing, and JSON-RPC execution.",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "testing",
         "plugins"
       ],
       "files": [
-        "internal/plugin/"
-      ]
+        "internal/plugin/integration_test.go"
+      ],
+      "updated_at": "2026-01-25T12:02:52Z"
     },
     {
       "id": "T079",
