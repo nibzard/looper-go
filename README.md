@@ -222,9 +222,112 @@ looper run --schedule round-robin --rr-agents claude,claude,codex
 
 **Note:** The final review pass uses the configured review agent (defaults to Codex if not set).
 
+### Role-Based Agent Configuration
+
+Looper supports role-based agent configuration that allows you to assign different agents to different phases of the loop. This is more powerful than simple iteration scheduling as it gives you fine-grained control over which agent handles each operation.
+
+#### Available Roles
+
+- **iter** - Agent used for main task iterations (overrides `schedule` when set)
+- **review** - Agent used for the review pass when no tasks are found
+- **repair** - Agent used for repairing invalid task files
+- **bootstrap** - Agent used for creating the initial task file
+
+#### Configuration via Config File
+
+The preferred way to configure roles is via the `[roles]` section in `looper.toml`:
+
+```toml
+# Assign different agents to different loop phases
+[roles]
+iter = "claude"       # Use Claude for task iterations
+review = "codex"      # Use Codex for review passes
+repair = "claude"     # Use Claude for repair operations
+bootstrap = "codex"   # Use Codex for bootstrapping
+```
+
+#### Configuration via Environment Variables
+
+Roles can also be set via environment variables:
+
+- `LOOPER_ROLES_ITER` - Agent for iterations
+- `LOOPER_ROLES_REVIEW` - Agent for review passes
+- `LOOPER_ROLES_REPAIR` - Agent for repair operations
+- `LOOPER_ROLES_BOOTSTRAP` - Agent for bootstrap
+
+```bash
+export LOOPER_ROLES_ITER="claude"
+export LOOPER_ROLES_REVIEW="codex"
+looper run
+```
+
+#### Configuration via CLI Flags
+
+For one-off overrides, use the step-specific CLI flags:
+
+```bash
+looper run --repair-agent claude
+looper run --review-agent claude
+looper run --bootstrap-agent claude
+```
+
+#### Precedence Order
+
+When multiple configuration sources specify the same role, the precedence order is:
+
+1. **CLI flags** (highest priority) - e.g., `--review-agent`
+2. **Environment variables** - e.g., `LOOPER_ROLES_REVIEW`
+3. **Project config file** - `looper.toml` [roles] section
+4. **User config file** - `~/.looper/looper.toml` [roles] section
+5. **Legacy config keys** - `repair_agent`, `review_agent`, `bootstrap_agent`
+6. **Schedule defaults** - Uses `schedule` setting as fallback for iterations
+
+#### When to Use Role-Based Configuration
+
+**Use role-based configuration when:**
+- You want different agents for different phases (e.g., Claude for coding, Codex for review)
+- You want to override the schedule for specific operations
+- You want a consistent assignment regardless of iteration count
+
+**Use simple schedule when:**
+- You want the same agent for all operations
+- You want to alternate agents between iterations
+- You only need simple round-robin patterns
+
+#### Example Configurations
+
+**Claude for development, Codex for review:**
+```toml
+[roles]
+iter = "claude"
+review = "codex"
+repair = "claude"
+bootstrap = "codex"
+```
+
+**Codex for everything except repair:**
+```toml
+[roles]
+iter = "codex"
+review = "codex"
+bootstrap = "codex"
+repair = "claude"  # Use Claude for complex repairs
+```
+
+**Use schedule for iterations, override specific roles:**
+```toml
+schedule = "odd-even"  # Alternate for iterations
+odd_agent = "claude"
+even_agent = "codex"
+
+[roles]
+review = "claude"  # Always use Claude for review
+repair = "claude"  # Always use Claude for repair
+```
+
 ### Step Agents
 
-Agents for specific loop steps can be configured independently:
+Agents for specific loop steps can also be configured via CLI flags for one-off overrides:
 
 ```bash
 looper run --repair-agent claude
@@ -235,6 +338,8 @@ looper run --bootstrap-agent claude
 - **Repair agent** - Used for repairing invalid task files (default: `codex`)
 - **Review agent** - Used for the review pass when no tasks are found (configurable, defaults to `codex`)
 - **Bootstrap agent** - Used for creating the initial task file (default: `codex`)
+
+**Note:** For persistent configuration, prefer the `[roles]` section in `looper.toml` over CLI flags.
 
 ## Initializing a Project
 
@@ -323,7 +428,16 @@ log_dir = "~/.looper"
 # Loop settings
 max_iterations = 50
 schedule = "codex"  # agent name|odd-even|round-robin
-repair_agent = "codex"  # any registered agent type
+
+# Role-based agent configuration (preferred over repair_agent/review_agent/bootstrap_agent)
+[roles]
+iter = "codex"       # Agent for task iterations (overrides schedule)
+review = "codex"     # Agent for review passes
+repair = "codex"     # Agent for repair operations
+bootstrap = "codex"  # Agent for bootstrap
+
+# Legacy single-step configuration (still supported, use [roles] for clarity)
+# repair_agent = "codex"  # any registered agent type
 # review_agent = "codex"  # any registered agent type (default: codex)
 # bootstrap_agent = "codex"  # any registered agent type (default: codex)
 
@@ -378,12 +492,24 @@ Looper reads the config file from the current working directory (not the todo fi
 - `LOOPER_BASE_DIR` / `LOOPER_LOG_DIR` - Log directory (supports `~`, `$HOME`, or `%USERPROFILE%` on Windows)
 - `LOOPER_MAX_ITERATIONS` - Maximum iterations
 - `LOOPER_ITER_SCHEDULE` / `LOOPER_SCHEDULE` - Iteration schedule (agent name or odd-even/round-robin)
+
+**Role-based environment variables (preferred):**
+- `LOOPER_ROLES_ITER` - Agent for task iterations (overrides schedule when set)
+- `LOOPER_ROLES_REVIEW` - Agent for review passes
+- `LOOPER_ROLES_REPAIR` - Agent for repair operations
+- `LOOPER_ROLES_BOOTSTRAP` - Agent for bootstrap
+
+**Legacy single-step environment variables (still supported):**
 - `LOOPER_REPAIR_AGENT` - Agent for repair operations
 - `LOOPER_REVIEW_AGENT` - Agent for review pass (default: codex)
 - `LOOPER_BOOTSTRAP_AGENT` - Agent for bootstrap (default: codex)
+
+**Schedule options:**
 - `LOOPER_ITER_ODD_AGENT` - Agent for odd iterations
 - `LOOPER_ITER_EVEN_AGENT` - Agent for even iterations
 - `LOOPER_ITER_RR_AGENTS` - Comma-separated agent list for round-robin
+
+**Other settings:**
 - `LOOPER_APPLY_SUMMARY` - Apply summaries to task file (1/0)
 - `LOOPER_GIT_INIT` - Run 'git init' before bootstrap when enabled (1/0)
 - `LOOPER_HOOK` - Hook command to run after each iteration

@@ -21,13 +21,17 @@ max_iterations = 50
 # Iteration schedule: any registered agent name, odd-even, or round-robin
 schedule = "codex"
 
-# Agent for repair operations (any registered agent type)
-repair_agent = "codex"
+# Role-based agent configuration (preferred)
+# Assign different agents to different loop phases
+[roles]
+iter = "codex"       # Agent for task iterations (overrides schedule)
+review = "codex"     # Agent for review passes
+repair = "codex"     # Agent for repair operations
+bootstrap = "codex"  # Agent for bootstrap
 
-# Agent for review pass (any registered agent type, default: codex)
+# Legacy single-step configuration (still supported, use [roles] for clarity)
+# repair_agent = "codex"
 # review_agent = "codex"
-
-# Agent for bootstrap operations (any registered agent type, default: codex)
 # bootstrap_agent = "codex"
 
 # Apply summaries back to task file

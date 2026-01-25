@@ -1308,13 +1308,13 @@
       "files": [
         "README.md"
       ],
-      "updated_at": "2026-01-25T09:22:05Z"
+      "updated_at": "2026-01-25T09:22:51Z"
     },
     {
       "id": "T069",
       "title": "Document role-based agent configuration in README.md",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "description": "Role-based agent configuration is implemented but not fully documented. The README only mentions --repair-agent, --review-agent, --bootstrap-agent flags but not the full [roles] config section.",
       "details": "internal/config/types.go:69-117 defines RolesConfig with GetAgent()/SetAgent() methods. Users can configure different agents for different loop phases: iter (iterations), review (review pass), repair (repair operations), bootstrap (bootstrap). This is more powerful than just CLI flags and should be documented with examples.",
       "steps": [
@@ -1332,11 +1332,11 @@
       ],
       "files": [
         "README.md",
+        "internal/config/example.go",
         "internal/config/types.go",
-        "internal/config/getters.go",
-        "internal/config/example.go"
+        "internal/config/getters.go"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": 1769333068.608133
     },
     {
       "id": "T070",
