@@ -1289,16 +1289,16 @@
       "title": "Document workflow system in README.md",
       "priority": 1,
       "status": "done",
-      "description": "The workflow system is fully implemented but completely absent from README documentation. Add a comprehensive section covering workflow architecture, available workflows, and usage.",
-      "details": "Workflow system is a major architectural feature that users don't know exists. internal/workflows/ contains complete implementation with registry pattern, factory pattern, multiple workflow types (traditional, parallel, incident_triage, code_review), and CLI commands. Users can run workflows via --workflow flag or config. Documentation should explain what workflows are, when to use them, and how to create custom workflows.",
+      "description": "The workflow system is fully implemented and already documented in README.md.",
+      "details": "Workflow documentation already exists in README.md lines 564-768. The documentation is comprehensive: includes Workflows section, available workflows (traditional, parallel, code-review, incident-triage), usage with --workflow flag, workflow-specific configuration via [workflows.<name>] sections, detailed descriptions of each workflow with examples, custom workflow plugins, and workflow system architecture. No code changes needed.",
       "steps": [
-        "Add 'Workflows' section after 'Plugins' in README.md",
-        "Document available built-in workflows: traditional, parallel, incident_triage, code_review",
-        "Explain workflow selection via --workflow flag and workflow config in looper.toml",
-        "Document workflow-specific configuration under [workflows.<name>] sections",
-        "Add usage examples for looper workflow list and looper workflow describe commands",
-        "Explain how to create custom workflow plugins if applicable",
-        "Add workflow system to Architecture section"
+        "Add Workflows section after Plugins in README.md - ALREADY DONE (line 564)",
+        "Document available built-in workflows - ALREADY DONE (lines 578-583)",
+        "Explain workflow selection via --workflow flag - ALREADY DONE (lines 585-597)",
+        "Document workflow-specific configuration - ALREADY DONE (lines 599-625)",
+        "Add usage examples for workflow commands - ALREADY DONE (lines 570-576)",
+        "Explain how to create custom workflow plugins - ALREADY DONE (lines 715-742)",
+        "Add workflow system to Architecture section - ALREADY DONE (lines 744-768, 894)"
       ],
       "tags": [
         "docs",
@@ -1306,13 +1306,9 @@
         "architecture"
       ],
       "files": [
-        "README.md",
-        "internal/workflows/types.go",
-        "internal/workflows/registry.go",
-        "internal/workflows/traditional.go",
-        "internal/workflows/parallel.go"
+        "README.md"
       ],
-      "updated_at": "2026-01-25T09:19:43Z"
+      "updated_at": "2026-01-25T09:22:05Z"
     },
     {
       "id": "T069",
