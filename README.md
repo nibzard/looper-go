@@ -112,20 +112,14 @@ looper doctor
 # Show version
 looper version
 
+# Run with a specific workflow
+looper run --workflow parallel
+looper run --workflow code-review
+
 # Run a release workflow via the agent
 looper push
 looper push --agent claude
 looper push -y
-
-# List available workflows
-looper workflow list
-
-# Describe a workflow
-looper workflow describe parallel
-
-# Run with a specific workflow
-looper run --workflow parallel
-looper run --workflow code-review
 
 # Validate task file against schema
 looper validate
