@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "source_files": [
+    "README.md"
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Add comprehensive unit tests for parallel execution",
+      "description": "The parallel execution code in internal/loop/loop.go (runParallelBasic, executeTasksParallel) lacks dedicated unit tests. Add tests for concurrent task execution, semaphore handling, fail-fast behavior, and error collection.",
+      "priority": 2,
+      "status": "done",
+      "tags": [
+        "testing",
+        "parallel"
+      ],
+      "files": [
+        "internal/loop/loop_parallel_test.go"
+      ],
+      "updated_at": "2026-01-25T10:58:39Z"
+    },
+    {
+      "id": "T002",
+      "title": "Add integration tests for plugin system",
+      "description": "The plugin system (internal/plugin/) has validation but no end-to-end integration tests. Add tests covering plugin discovery, loading, manifest parsing, and JSON-RPC execution.",
+      "priority": 2,
+      "status": "todo",
+      "tags": [
+        "testing",
+        "plugins"
+      ],
+      "files": [
+        "internal/plugin/"
+      ]
+    },
+    {
+      "id": "T003",
+      "title": "Implement proper error logging in plugin loader",
+      "description": "internal/plugin/loader.go line 129 has a TODO comment for proper logging. Replace the silent continue with actual error logging when plugin discovery fails.",
+      "priority": 3,
+      "status": "todo",
+      "tags": [
+        "logging",
+        "plugins"
+      ],
+      "files": [
+        "internal/plugin/loader.go"
+      ]
+    },
+    {
+      "id": "T004",
+      "title": "Add error logging in plugin agent registration",
+      "description": "internal/agents/plugin_agent.go line 193 has a TODO comment for proper logging. Add error logging when agent plugin registration fails during LoadAndRegisterAgentPlugins.",
+      "priority": 3,
+      "status": "todo",
+      "tags": [
+        "logging",
+        "plugins"
+      ],
+      "files": [
+        "internal/agents/plugin_agent.go"
+      ]
+    },
+    {
+      "id": "T005",
+      "title": "Complete plugin configuration environment variable passing",
+      "description": "internal/plugin/executor.go line 172 has a TODO for passing plugin configuration as environment variables. Implement this feature to allow plugins to receive their configuration via env vars.",
+      "priority": 4,
+      "status": "todo",
+      "tags": [
+        "plugins",
+        "config"
+      ],
+      "files": [
+        "internal/plugin/executor.go"
+      ]
+    },
+    {
+      "id": "T006",
+      "title": "Add timeout configuration to plugin settings",
+      "description": "Plugin timeout handling exists but is not configurable via looper.toml. The PluginSettings struct has a Timeout field but it is not documented or exposed in the config example.",
+      "priority": 3,
+      "status": "todo",
+      "tags": [
+        "config",
+        "plugins"
+      ],
+      "files": [
+        "internal/config/types.go",
+        "internal/config/example.go"
+      ]
+    },
+    {
+      "id": "T007",
+      "title": "Improve multi-agent consensus result handling",
+      "description": "internal/parallel/executor.go executeMultiple() uses only the first successful result (line 119). Implement proper consensus logic like voting, merging, or conflict resolution.",
+      "priority": 3,
+      "status": "todo",
+      "tags": [
+        "parallel",
+        "consensus"
+      ],
+      "files": [
+        "internal/parallel/executor.go"
+      ]
+    },
+    {
+      "id": "T008",
+      "title": "Add integration test for looper-live-test skill",
+      "description": "skills/looper-live-test/SKILL.md defines a live test skill but there is no automated verification that it works. Add an integration test or CI check.",
+      "priority": 4,
+      "status": "todo",
+      "tags": [
+        "testing",
+        "skills"
+      ],
+      "files": [
+        "skills/looper-live-test/SKILL.md"
+      ]
+    },
+    {
+      "id": "T009",
+      "title": "Document security model for plugin capabilities",
+      "description": "Plugin capabilities system exists (can_execute_commands, can_access_network, etc.) but the README only warns about them. Add a SECURITY.md section explaining the threat model and sandboxing limitations.",
+      "priority": 2,
+      "status": "todo",
+      "tags": [
+        "security",
+        "documentation"
+      ],
+      "files": [
+        "README.md",
+        "SECURITY.md"
+      ]
+    },
+    {
+      "id": "T010",
+      "title": "Fix potential data race in schema cache",
+      "description": "internal/todo/types.go getCachedSchema uses double-checked locking but the pattern has subtle issues. Consider using sync.Once or a more robust caching pattern.",
+      "priority": 2,
+      "status": "todo",
+      "tags": [
+        "concurrency",
+        "bug"
+      ],
+      "files": [
+        "internal/todo/types.go"
+      ]
+    },
+    {
+      "id": "T011",
+      "title": "Add validation for workflow configuration sections",
+      "description": "Config parsing accepts any [workflows.*] section without validation. Add validation to warn about unknown workflow configurations or typos in workflow names.",
+      "priority": 4,
+      "status": "todo",
+      "tags": [
+        "config",
+        "validation"
+      ],
+      "files": [
+        "internal/config/"
+      ]
+    },
+    {
+      "id": "T012",
+      "title": "Implement graceful shutdown for running plugins",
+      "description": "Plugin executor (internal/plugin/executor.go) does not handle context cancellation gracefully for long-running plugins. Add proper cleanup and timeout handling.",
+      "priority": 3,
+      "status": "todo",
+      "tags": [
+        "plugins",
+        "concurrency"
+      ],
+      "files": [
+        "internal/plugin/executor.go"
+      ]
+    },
+    {
+      "id": "T013",
+      "title": "Add health check endpoint for plugin discovery",
+      "description": "Plugin discovery is silent on failures. Add a --verbose flag or doctor command that reports which plugins failed to load and why.",
+      "priority": 4,
+      "status": "todo",
+      "tags": [
+        "plugins",
+        "ux"
+      ],
+      "files": [
+        "cmd/plugin_list.go",
+        "internal/plugin/loader.go"
+      ]
+    },
+    {
+      "id": "T014",
+      "title": "Standardize error messages across plugin commands",
+      "description": "Plugin error messages use inconsistent formats. Create a centralized error formatting utility for user-facing plugin errors.",
+      "priority": 4,
+      "status": "todo",
+      "tags": [
+        "plugins",
+        "ux"
+      ],
+      "files": [
+        "cmd/plugin_*.go"
+      ]
+    },
+    {
+      "id": "T015",
+      "title": "Review completed: no critical issues found",
+      "description": "Senior developer review completed. Code is well-organized with good separation of concerns. Plugin system architecture is solid. Found minor improvements around testing, logging, and documentation.",
+      "priority": 5,
+      "status": "done",
+      "tags": [
+        "project-done",
+        "review"
+      ],
+      "details": "Review found 14 improvement tasks but no blocking issues. Codebase is production-ready with minor polish needed."
+    }
+  ]
+}
