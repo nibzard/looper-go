@@ -471,7 +471,7 @@ func (f *File) SelectTask() *Task {
 	// First, look for any "doing" task (lowest id wins)
 	var selected *Task
 	for i := range f.Tasks {
-		if f.Tasks[i].Status == StatusDoing && f.dependenciesSatisfied(&f.Tasks[i]) {
+		if f.Tasks[i].Status == StatusDoing && f.DependenciesSatisfied(&f.Tasks[i]) {
 			if selected == nil || CompareIDs(f.Tasks[i].ID, selected.ID) {
 				selected = &f.Tasks[i]
 			}
@@ -484,7 +484,7 @@ func (f *File) SelectTask() *Task {
 	// No "doing" tasks, find highest priority "todo" with satisfied dependencies
 	bestPriority := 5 // maximum priority value (lowest priority)
 	for i := range f.Tasks {
-		if f.Tasks[i].Status == StatusTodo && f.dependenciesSatisfied(&f.Tasks[i]) {
+		if f.Tasks[i].Status == StatusTodo && f.DependenciesSatisfied(&f.Tasks[i]) {
 			if selected == nil || f.Tasks[i].Priority < bestPriority ||
 				(f.Tasks[i].Priority == bestPriority && CompareIDs(f.Tasks[i].ID, selected.ID)) {
 				selected = &f.Tasks[i]
@@ -499,7 +499,7 @@ func (f *File) SelectTask() *Task {
 	// No "todo" tasks, find highest priority "blocked" with satisfied dependencies
 	bestPriority = 5
 	for i := range f.Tasks {
-		if f.Tasks[i].Status == StatusBlocked && f.dependenciesSatisfied(&f.Tasks[i]) {
+		if f.Tasks[i].Status == StatusBlocked && f.DependenciesSatisfied(&f.Tasks[i]) {
 			if selected == nil || f.Tasks[i].Priority < bestPriority ||
 				(f.Tasks[i].Priority == bestPriority && CompareIDs(f.Tasks[i].ID, selected.ID)) {
 				selected = &f.Tasks[i]
@@ -509,6 +509,12 @@ func (f *File) SelectTask() *Task {
 	}
 
 	return selected
+}
+
+// DependenciesSatisfied returns true if all tasks in the depends_on list have status "done".
+// Missing dependencies are treated as not satisfied.
+func (f *File) DependenciesSatisfied(task *Task) bool {
+	return f.dependenciesSatisfied(task)
 }
 
 // dependenciesSatisfied returns true if all tasks in the depends_on list have status "done".

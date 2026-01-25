@@ -1565,10 +1565,12 @@
         "internal/parallel/selector.go",
         "internal/parallel/selector_test.go",
         "internal/parallel/executor.go",
+        "internal/agents/multiplex_log_writer.go",
+        "internal/agents/multiplex_log_writer_test.go",
         "internal/loop/loop_test.go",
         "to-do.json"
       ],
-      "updated_at": "2026-01-25T12:30:00Z"
+      "updated_at": "2026-01-25T10:20:42Z"
     }
   ]
 }

@@ -7,13 +7,24 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/nibzard/looper-go/internal/plugin"
 	"github.com/nibzard/looper-go/internal/utils"
 )
 
 // NewAgent creates an agent of the specified type.
-// It uses the agent registry to find the appropriate factory.
-// If the agent type is not registered, it falls back to a generic agent.
+// It first checks the plugin registry, then falls back to the built-in registry.
+// If the agent type is not found anywhere, it falls back to a generic agent.
 func NewAgent(agentType AgentType, cfg Config) (Agent, error) {
+	// First, check if there's a plugin for this agent type
+	registry := plugin.GetRegistry()
+	if registry.IsInitialized() {
+		if p := registry.GetByAgentType(string(agentType)); p != nil {
+			// Use the plugin
+			return NewPluginAgent(p, cfg)
+		}
+	}
+
+	// Fall back to built-in registry
 	factory, ok := Registry[agentType]
 	if !ok {
 		// Fall back to generic agent for unknown types

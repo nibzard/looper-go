@@ -21,11 +21,11 @@ import (
 	"github.com/nibzard/looper-go/internal/agents"
 	"github.com/nibzard/looper-go/internal/config"
 	"github.com/nibzard/looper-go/internal/logging"
-	"github.com/nibzard/looper-go/internal/loop"
 	"github.com/nibzard/looper-go/internal/prompts"
 	"github.com/nibzard/looper-go/internal/todo"
 	"github.com/nibzard/looper-go/internal/ui"
 	"github.com/nibzard/looper-go/internal/utils"
+	"github.com/nibzard/looper-go/internal/workflows"
 )
 
 // Version is set via ldflags at build time.
@@ -99,6 +99,10 @@ func Run(ctx context.Context, args []string) error {
 		return completionCommand(cfg, remainingArgs)
 	case "clean":
 		return cleanCommand(cfg, remainingArgs)
+	case "workflow":
+		return workflowCommand(ctx, cfg, remainingArgs)
+	case "plugin":
+		return pluginCommand(ctx, cfg, remainingArgs)
 	case "version", "--version", "-v":
 		return versionCommand()
 	case "help", "--help", "-h":
@@ -140,6 +144,14 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	hook := fs.String("hook", cfg.HookCommand, "Hook command to run after each iteration")
 	loopDelay := fs.Int("loop-delay", cfg.LoopDelaySeconds, "Delay between iterations (seconds)")
 
+	// Parallel execution flags
+	parallel := fs.Bool("parallel", cfg.Parallel.Enabled, "Enable parallel task execution")
+	maxTasks := fs.Int("max-tasks", cfg.Parallel.MaxTasks, "Maximum concurrent tasks (0 = unlimited)")
+	maxAgentsPerTask := fs.Int("max-agents-per-task", cfg.Parallel.MaxAgentsPerTask, "Maximum agents per task (1 = single agent)")
+	strategy := fs.String("strategy", string(cfg.Parallel.Strategy), "Task selection strategy (priority|dependency|mixed)")
+	failFast := fs.Bool("fail-fast", cfg.Parallel.FailFast, "Stop all on first failure")
+	outputMode := fs.String("output-mode", string(cfg.Parallel.OutputMode), "Output handling (multiplexed|buffered|summary)")
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -171,6 +183,14 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	cfg.HookCommand = *hook
 	cfg.LoopDelaySeconds = *loopDelay
 
+	// Update parallel config with parsed values
+	cfg.Parallel.Enabled = *parallel
+	cfg.Parallel.MaxTasks = *maxTasks
+	cfg.Parallel.MaxAgentsPerTask = *maxAgentsPerTask
+	cfg.Parallel.Strategy = config.ParallelStrategy(*strategy)
+	cfg.Parallel.FailFast = *failFast
+	cfg.Parallel.OutputMode = config.ParallelOutputMode(*outputMode)
+
 	// Make todo file path absolute
 	if !filepath.IsAbs(cfg.TodoFile) {
 		cfg.TodoFile = filepath.Join(cfg.ProjectRoot, cfg.TodoFile)
@@ -181,13 +201,34 @@ func runCommand(ctx context.Context, cfg *config.Config, args []string) error {
 		return ui.RunTUI(ctx, cfg, cfg.TodoFile, ui.WithRunLoop(true))
 	}
 
-	// Create and run loop
-	l, err := loop.New(cfg, cfg.ProjectRoot)
+	// Load todo file for workflow
+	todoPath := cfg.TodoFile
+	if !filepath.IsAbs(todoPath) {
+		todoPath = filepath.Join(cfg.ProjectRoot, todoPath)
+	}
+	todoFile, err := todo.Load(todoPath)
 	if err != nil {
-		return fmt.Errorf("initializing loop: %w", err)
+		// If todo file doesn't exist, the workflow might bootstrap it
+		// For now, create an empty one that traditional workflow will bootstrap
+		promptDir := resolvePromptDir(cfg)
+		promptStore := prompts.NewStore(cfg.ProjectRoot, promptDir)
+		if err := bootstrapTodoIfMissing(ctx, cfg, cfg.ProjectRoot, todoPath, promptStore); err != nil {
+			return fmt.Errorf("bootstrap todo file: %w", err)
+		}
+		todoFile, err = todo.Load(todoPath)
+		if err != nil {
+			return fmt.Errorf("load todo file: %w", err)
+		}
 	}
 
-	return l.Run(ctx)
+	// Create and run workflow
+	workflowType := workflows.WorkflowType(cfg.Workflow)
+	w, err := workflows.New(workflowType, cfg, cfg.ProjectRoot, todoFile)
+	if err != nil {
+		return fmt.Errorf("creating workflow: %w", err)
+	}
+
+	return w.Run(ctx)
 }
 
 // tuiCommand launches the TUI.
@@ -882,8 +923,8 @@ _looper_init() {
     _arguments -s \
         '--force[Overwrite existing files]' \
         '--skip-config[Skip creating looper.toml]' \
-        '--todo[Path for to-do.json]:file:_files' \
-        '--schema[Path for to-do.schema.json]:file:_files' \
+        '--todo[Path for .looper/todo.json]:file:_files' \
+        '--schema[Path for .looper/todo.schema.json]:file:_files' \
         '--config[Path for looper.toml]:file:_files'
 }
 
@@ -987,9 +1028,9 @@ complete -c looper -n "__fish_seen_subcommand_from push" -s y -d 'Skip confirmat
 # Init command options
 complete -c looper -n "__fish_seen_subcommand_from init" -l force -d 'Overwrite existing files'
 complete -c looper -n "__fish_seen_subcommand_from init" -l skip-config -d 'Skip creating looper.toml'
-complete -c looper -n "__fish_seen_subcommand_from init" -l todo -r -d 'Path for to-do.json'
-complete -c looper -n "__fish_seen_subcommand_from init" -l schema -r -d 'Path for to-do.schema.json'
-complete -c looper -n "__fish_seen_subcommand_from init" -l config -r -d 'Path for looper.toml'
+complete -c looper -n "__fish_seen_subcommand_from init" -l todo -r -d 'Path for .looper/todo.json'
+complete -c looper -n "__fish_seen_subcommand_from init" -l schema -r -d 'Path for .looper/todo.schema.json'
+complete -c looper -n "__fish_seen_subcommand_from init" -l config -r -d 'Path for .looper/looper.toml'
 
 # Validate command options
 complete -c looper -n "__fish_seen_subcommand_from validate" -l schema -r -d 'Path to schema file'
@@ -1139,11 +1180,12 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  tail          Tail the latest log file")
 	fmt.Fprintln(w, "  ls [status] [file]  List tasks by status")
 	fmt.Fprintln(w, "  push          Run a release workflow via the agent")
-	fmt.Fprintln(w, "  init          Scaffold project files (to-do.json, to-do.schema.json, looper.toml)")
+	fmt.Fprintln(w, "  init          Scaffold project files (.looper/todo.json, .looper/todo.schema.json, .looper/looper.toml)")
 	fmt.Fprintln(w, "  validate      Validate task file against schema")
 	fmt.Fprintln(w, "  fmt           Format task file with stable ordering and 2-space indent")
 	fmt.Fprintln(w, "  config        Show effective configuration")
 	fmt.Fprintln(w, "  clean         Remove old log runs by age or count")
+	fmt.Fprintln(w, "  workflow      Manage workflows (list, describe)")
 	fmt.Fprintln(w, "  completion    Output shell completion script (bash|zsh|fish|powershell)")
 	fmt.Fprintln(w, "  version       Show version information")
 	fmt.Fprintln(w, "  help          Show this help message")
@@ -1213,15 +1255,15 @@ func printUsage(fs *flag.FlagSet, w io.Writer) {
 	fmt.Fprintln(w, "  -skip-config")
 	fmt.Fprintln(w, "        Skip creating looper.toml")
 	fmt.Fprintln(w, "  -todo string")
-	fmt.Fprintln(w, "        Path for to-do.json (default: to-do.json)")
+	fmt.Fprintln(w, "        Path for todo.json (default: .looper/todo.json)")
 	fmt.Fprintln(w, "  -schema string")
-	fmt.Fprintln(w, "        Path for to-do.schema.json (default: to-do.schema.json)")
+	fmt.Fprintln(w, "        Path for todo.schema.json (default: .looper/todo.schema.json)")
 	fmt.Fprintln(w, "  -config string")
-	fmt.Fprintln(w, "        Path for looper.toml (default: looper.toml)")
+	fmt.Fprintln(w, "        Path for looper.toml (default: .looper/looper.toml)")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Validate Options (use with 'validate' command):")
 	fmt.Fprintln(w, "  -schema string")
-	fmt.Fprintln(w, "        Path to schema file (default: to-do.schema.json)")
+	fmt.Fprintln(w, "        Path to schema file (default: .looper/todo.schema.json)")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Fmt Options (use with 'fmt' command):")
 	fmt.Fprintln(w, "  -check")
@@ -1479,6 +1521,117 @@ func resolvePromptDir(cfg *config.Config) string {
 	return promptDir
 }
 
+// bootstrapTodoIfMissing bootstraps the todo file if it doesn't exist.
+func bootstrapTodoIfMissing(ctx context.Context, cfg *config.Config, workDir, todoPath string, promptStore *prompts.Store) error {
+	// Check if file exists
+	if _, err := os.Stat(todoPath); err == nil {
+		return nil // File exists, nothing to do
+	}
+
+	// Ensure schema exists
+	schemaPath := cfg.SchemaFile
+	if !filepath.IsAbs(schemaPath) {
+		schemaPath = filepath.Join(workDir, schemaPath)
+	}
+	if err := ensureSchemaExists(schemaPath); err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+
+	// Run bootstrap
+	renderer := prompts.NewRenderer(promptStore)
+	promptData := prompts.NewDataForBootstrap(
+		todoPath,
+		schemaPath,
+		workDir,
+		cfg.UserPrompt,
+		time.Now(),
+	)
+	prompt, err := renderer.Render(prompts.BootstrapPrompt, promptData)
+	if err != nil {
+		return fmt.Errorf("render bootstrap prompt: %w", err)
+	}
+
+	bootstrapAgentType := cfg.GetBootstrapAgent()
+	logWriter := agents.NewIOStreamLogWriter(os.Stderr)
+
+	agentCfg := buildAgentConfigFromConfig(cfg, bootstrapAgentType, workDir)
+	agent, err := agents.NewAgent(agents.AgentType(bootstrapAgentType), agentCfg)
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+
+	_, err = agent.Run(ctx, prompt, logWriter)
+	if err != nil && !errors.Is(err, agents.ErrSummaryMissing) {
+		return fmt.Errorf("run bootstrap agent: %w", err)
+	}
+
+	if err := verifyTodoFileCreated(todoPath); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ensureSchemaExists ensures the schema file exists, creating it if necessary.
+func ensureSchemaExists(schemaPath string) error {
+	// Check if schema already exists
+	if info, err := os.Stat(schemaPath); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("schema path is a directory: %s", schemaPath)
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat schema file: %w", err)
+	}
+
+	// Ensure directory exists
+	schemaDir := filepath.Dir(schemaPath)
+	if schemaDir != "" && schemaDir != "." {
+		if err := os.MkdirAll(schemaDir, 0755); err != nil {
+			return fmt.Errorf("create schema directory: %w", err)
+		}
+	}
+
+	// Read the bundled schema from prompts
+	bundledSchema, err := prompts.BundledSchema()
+	if err != nil {
+		return fmt.Errorf("get bundled schema: %w", err)
+	}
+
+	// Write the schema to the project root
+	if err := os.WriteFile(schemaPath, bundledSchema, 0644); err != nil {
+		return fmt.Errorf("write schema file: %w", err)
+	}
+
+	return nil
+}
+
+// verifyTodoFileCreated checks that the todo file was created and is valid.
+func verifyTodoFileCreated(todoPath string) error {
+	info, err := os.Stat(todoPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("todo file was not created at %s", todoPath)
+		}
+		return fmt.Errorf("stat todo file: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("todo path is a directory: %s", todoPath)
+	}
+	return nil
+}
+
+// buildAgentConfigFromConfig creates an agent configuration from a config object.
+func buildAgentConfigFromConfig(cfg *config.Config, agentType, workDir string) agents.Config {
+	return agents.Config{
+		Binary:   cfg.GetAgentBinary(agentType),
+		Model:    cfg.GetAgentModel(agentType),
+		Reasoning: cfg.GetAgentReasoning(agentType),
+		Args:     cfg.GetAgentArgs(agentType),
+		WorkDir:  workDir,
+	}
+}
+
 // pushCommand runs a release workflow via the agent.
 func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	// Parse push-specific flags
@@ -1679,15 +1832,15 @@ func pushCommand(ctx context.Context, cfg *config.Config, args []string) error {
 	return nil
 }
 
-// initCommand scaffolds project files (to-do.json, to-do.schema.json, looper.toml).
+// initCommand scaffolds project files (.looper/todo.json, .looper/todo.schema.json, .looper/looper.toml).
 func initCommand(cfg *config.Config, args []string) error {
 	// Parse init-specific flags
 	fs := flag.NewFlagSet("looper init", flag.ContinueOnError)
 	force := fs.Bool("force", false, "Overwrite existing files")
 	skipConfig := fs.Bool("skip-config", false, "Skip creating looper.toml")
-	todoFile := fs.String("todo", cfg.TodoFile, "Path for to-do.json")
-	schemaFile := fs.String("schema", cfg.SchemaFile, "Path for to-do.schema.json")
-	configFile := fs.String("config", "looper.toml", "Path for looper.toml")
+	todoFile := fs.String("todo", cfg.TodoFile, "Path for .looper/todo.json")
+	schemaFile := fs.String("schema", cfg.SchemaFile, "Path for .looper/todo.schema.json")
+	configFile := fs.String("config", ".looper/looper.toml", "Path for .looper/looper.toml")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -1733,7 +1886,7 @@ func initCommand(cfg *config.Config, args []string) error {
 	}
 	printInitAction("Schema", schemaAction)
 
-	// Create to-do.json
+	// Create .looper/todo.json
 	fmt.Printf("\nCreating %s...\n", todoPath)
 	todoAction, err := createTodoFile(todoPath, *force)
 	if err != nil {
@@ -1741,7 +1894,7 @@ func initCommand(cfg *config.Config, args []string) error {
 	}
 	printInitAction("Todo", todoAction)
 
-	// Create looper.toml
+	// Create .looper/looper.toml
 	if !*skipConfig {
 		fmt.Printf("\nCreating %s...\n", configPath)
 		configAction, err := createConfigFile(configPath, *force)
@@ -2564,4 +2717,97 @@ func formatBytes(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// workflowCommand handles workflow-related commands.
+func workflowCommand(ctx context.Context, cfg *config.Config, args []string) error {
+	// Parse workflow subcommand
+	if len(args) == 0 {
+		return fmt.Errorf("workflow command requires a subcommand: list, describe")
+	}
+
+	subcommand := args[0]
+	remainingArgs := args[1:]
+
+	switch subcommand {
+	case "list":
+		return workflowListCommand()
+	case "describe":
+		return workflowDescribeCommand(remainingArgs)
+	default:
+		return fmt.Errorf("unknown workflow subcommand: %s (available: list, describe)", subcommand)
+	}
+}
+
+// pluginCommand handles plugin-related commands.
+func pluginCommand(ctx context.Context, cfg *config.Config, args []string) error {
+	cmd := NewPluginCommand(cfg)
+	return cmd.Run(ctx, args)
+}
+
+// workflowListCommand lists all available workflows.
+func workflowListCommand() error {
+	fmt.Println("Available Workflows:")
+	fmt.Println("====================")
+	fmt.Println()
+
+	workflowTypes := workflows.List()
+	if len(workflowTypes) == 0 {
+		fmt.Println("No workflows registered.")
+		return nil
+	}
+
+	descriptions := workflows.Describe()
+	maxNameLen := 0
+	for _, wt := range workflowTypes {
+		if len(wt) > maxNameLen {
+			maxNameLen = len(wt)
+		}
+	}
+
+	for _, wt := range workflowTypes {
+		name := string(wt)
+		padding := strings.Repeat(" ", maxNameLen-len(name))
+		desc := descriptions[wt]
+		fmt.Printf("  %s%s  %s\n", name, padding, desc)
+	}
+
+	fmt.Println()
+	fmt.Println("Use with: looper run --workflow <name>")
+	fmt.Println("Default workflow: traditional")
+
+	return nil
+}
+
+// workflowDescribeCommand shows details about a specific workflow.
+func workflowDescribeCommand(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("describe command requires a workflow name")
+	}
+
+	workflowName := args[0]
+	workflowType := workflows.WorkflowType(workflowName)
+
+	if !workflows.IsRegistered(workflowType) {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+
+	fmt.Printf("Workflow: %s\n", workflowName)
+	fmt.Println("===================")
+
+	// Try to get description by creating a temporary workflow instance
+	w, err := workflows.New(workflowType, nil, "", nil)
+	if err == nil && w != nil {
+		fmt.Printf("Description: %s\n", w.Description())
+	} else {
+		fmt.Printf("Description: Workflow %s\n", workflowName)
+	}
+
+	// Show workflow-specific config if available
+	fmt.Println("\nConfiguration:")
+	fmt.Printf("  workflow = \"%s\"\n", workflowName)
+	fmt.Println("\n  [workflows." + workflowName + "]")
+	fmt.Println("  # Workflow-specific settings")
+
+	return nil
 }

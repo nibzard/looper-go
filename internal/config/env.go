@@ -78,6 +78,10 @@ func loadFromEnvHelper(cfg *Config, sources map[string]ConfigSource, source Conf
 	if v := os.Getenv("LOOPER_PROMPT"); v != "" {
 		cfg.UserPrompt = v
 	}
+	if v := os.Getenv("LOOPER_WORKFLOW"); v != "" {
+		cfg.Workflow = v
+		setEnv("workflow", v)
+	}
 	if v := os.Getenv("LOOPER_MAX_ITERATIONS"); v != "" {
 		var i int
 		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
@@ -169,5 +173,37 @@ func loadFromEnvHelper(cfg *Config, sources map[string]ConfigSource, source Conf
 	if v := os.Getenv("LOOPER_LOG_CALLER"); v != "" {
 		cfg.LogCaller = boolFromString(v)
 		setEnvBool("log_caller", cfg.LogCaller)
+	}
+
+	// Parallel execution configuration
+	if v := os.Getenv("LOOPER_PARALLEL"); v != "" {
+		cfg.Parallel.Enabled = boolFromString(v)
+		setEnvBool("parallel_enabled", cfg.Parallel.Enabled)
+	}
+	if v := os.Getenv("LOOPER_MAX_TASKS"); v != "" {
+		var i int
+		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
+			cfg.Parallel.MaxTasks = i
+			setEnvInt("parallel_max_tasks", i)
+		}
+	}
+	if v := os.Getenv("LOOPER_MAX_AGENTS_PER_TASK"); v != "" {
+		var i int
+		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
+			cfg.Parallel.MaxAgentsPerTask = i
+			setEnvInt("parallel_max_agents_per_task", i)
+		}
+	}
+	if v := os.Getenv("LOOPER_PARALLEL_STRATEGY"); v != "" {
+		cfg.Parallel.Strategy = ParallelStrategy(v)
+		setEnv("parallel_strategy", v)
+	}
+	if v := os.Getenv("LOOPER_FAIL_FAST"); v != "" {
+		cfg.Parallel.FailFast = boolFromString(v)
+		setEnvBool("parallel_fail_fast", cfg.Parallel.FailFast)
+	}
+	if v := os.Getenv("LOOPER_OUTPUT_MODE"); v != "" {
+		cfg.Parallel.OutputMode = ParallelOutputMode(v)
+		setEnv("parallel_output_mode", v)
 	}
 }

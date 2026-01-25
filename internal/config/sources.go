@@ -25,8 +25,8 @@ func findConfigFile() string {
 
 // findProjectConfigFile looks for a config file in the current directory.
 func findProjectConfigFile() string {
-	// Check for looper.toml in current directory
-	names := []string{"looper.toml", ".looper.toml"}
+	// Check for looper.toml in .looper/ directory first, then root
+	names := []string{".looper/looper.toml", "looper.toml", ".looper.toml"}
 	for _, name := range names {
 		if _, err := os.Stat(name); err == nil {
 			return name
@@ -90,12 +90,13 @@ func osUserConfigDir() string {
 // setDefaults applies default values to the config.
 func setDefaults(cfg *Config) {
 	cfg.TodoFile = DefaultTodoFile
-	cfg.SchemaFile = "to-do.schema.json"
+	cfg.SchemaFile = DefaultSchemaFile
 	cfg.LogDir = DefaultLogDir
 	cfg.MaxIterations = DefaultMaxIterations
 	cfg.ApplySummary = DefaultApplySummary
 	cfg.GitInit = true
 	cfg.LoopDelaySeconds = 0
+	cfg.Workflow = "traditional" // Default to traditional loop
 
 	// Logging defaults
 	if cfg.LogLevel == "" {

@@ -162,6 +162,26 @@ func loadConfigFileWithSources(cfg *Config, path string, sources map[string]Conf
 		setSource(cfg, &cfg.LoopDelaySeconds, tempCfg.LoopDelaySeconds, sources, "loop_delay_seconds", source)
 	}
 
+	// Handle parallel config
+	if tempCfg.Parallel.Enabled {
+		setSource(cfg, &cfg.Parallel.Enabled, tempCfg.Parallel.Enabled, sources, "parallel_enabled", source)
+	}
+	if tempCfg.Parallel.MaxTasks != 0 {
+		setSource(cfg, &cfg.Parallel.MaxTasks, tempCfg.Parallel.MaxTasks, sources, "parallel_max_tasks", source)
+	}
+	if tempCfg.Parallel.MaxAgentsPerTask != 0 {
+		setSource(cfg, &cfg.Parallel.MaxAgentsPerTask, tempCfg.Parallel.MaxAgentsPerTask, sources, "parallel_max_agents_per_task", source)
+	}
+	if tempCfg.Parallel.Strategy != "" {
+		setSource(cfg, &cfg.Parallel.Strategy, tempCfg.Parallel.Strategy, sources, "parallel_strategy", source)
+	}
+	if tempCfg.Parallel.FailFast {
+		setSource(cfg, &cfg.Parallel.FailFast, tempCfg.Parallel.FailFast, sources, "parallel_fail_fast", source)
+	}
+	if tempCfg.Parallel.OutputMode != "" {
+		setSource(cfg, &cfg.Parallel.OutputMode, tempCfg.Parallel.OutputMode, sources, "parallel_output_mode", source)
+	}
+
 	// Handle agent configs
 	mergeAgentSources(cfg, tempCfg, sources, source, "codex", DefaultAgentBinaries()["codex"])
 	mergeAgentSources(cfg, tempCfg, sources, source, "claude", DefaultAgentBinaries()["claude"])
@@ -191,6 +211,13 @@ func finalizeConfig(cfg *Config) error {
 	if !filepath.IsAbs(cfg.SchemaFile) {
 		cfg.SchemaFile = filepath.Join(cfg.ProjectRoot, cfg.SchemaFile)
 	}
+
+	// NOTE: Plugin registry initialization is deferred until needed
+	// to avoid potential slowdowns or hangs during startup.
+	// It will be initialized automatically when:
+	// 1. A plugin command is run
+	// 2. An agent/workflow from a plugin is requested
+	// The registry can be manually initialized with: plugin.GetRegistry().Initialize(projectRoot)
 
 	return nil
 }

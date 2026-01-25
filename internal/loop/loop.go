@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nibzard/looper-go/internal/agents"
@@ -390,6 +392,17 @@ func (l *Loop) Run(ctx context.Context) error {
 	if l.runLogger != nil {
 		defer l.runLogger.Close()
 	}
+
+	// Dispatch to parallel or sequential execution
+	if l.cfg.Parallel.Enabled {
+		return l.RunParallel(ctx)
+	}
+
+	return l.RunSequential(ctx)
+}
+
+// RunSequential executes the loop sequentially (one task at a time).
+func (l *Loop) RunSequential(ctx context.Context) error {
 	for i := 1; i <= l.cfg.MaxIterations; i++ {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -888,6 +901,38 @@ func buildAgentConfigFromConfig(cfg *config.Config, agentType, workDir string) a
 	}
 }
 
+// Exported methods for parallel execution support.
+
+// TodoPath returns the path to the todo file.
+func (l *Loop) TodoPath() string {
+	return l.todoPath
+}
+
+// SchemaPath returns the path to the schema file.
+func (l *Loop) SchemaPath() string {
+	return l.schemaPath
+}
+
+// WorkDir returns the working directory.
+func (l *Loop) WorkDir() string {
+	return l.workDir
+}
+
+// RenderPrompt renders a prompt with the given data.
+func (l *Loop) RenderPrompt(promptName string, data prompts.Data) (string, error) {
+	return l.renderer.Render(promptName, data)
+}
+
+// MultiLogWriter returns a log writer that writes to both log file and console.
+func (l *Loop) MultiLogWriter() agents.LogWriter {
+	return l.multiLogWriter()
+}
+
+// RunAgent runs an agent with the given parameters.
+func (l *Loop) RunAgent(ctx context.Context, agentType, prompt, label string, logWriter agents.LogWriter) (*agents.Summary, error) {
+	return l.runAgent(ctx, agentType, prompt, label, logWriter)
+}
+
 // Status represents a status update for TUI monitoring.
 type Status struct {
 	Iteration int
@@ -956,3 +1001,151 @@ func (l *Loop) RunWithStatus(ctx context.Context, statusCh chan<- Status) error 
 
 	return nil
 }
+
+// RunParallel executes the loop with parallel task execution.
+func (l *Loop) RunParallel(ctx context.Context) error {
+	// Import parallel package to avoid import cycle
+	// This is a minimal implementation that uses the worker pool pattern
+	return l.runParallelBasic(ctx)
+}
+
+// runParallelBasic implements basic parallel execution without full dependency
+// on the parallel package to avoid circular imports.
+func (l *Loop) runParallelBasic(ctx context.Context) error {
+	// For now, implement a simple parallel execution model
+	// Run up to maxTasks tasks concurrently per iteration
+	maxTasks := l.cfg.Parallel.MaxTasks
+	if maxTasks <= 0 {
+		maxTasks = 4 // Default to 4 concurrent tasks
+	}
+
+	for i := 1; i <= l.cfg.MaxIterations; i++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		// Select multiple tasks for parallel execution
+		tasks := l.selectMultipleTasks(maxTasks)
+		if len(tasks) == 0 {
+			// No tasks available - run review pass
+			done, err := l.runReviewAndMaybeFinish(ctx, i)
+			if err != nil {
+				return err
+			}
+			if done {
+				break
+			}
+			continue
+		}
+
+		// Execute tasks in parallel
+		if err := l.executeTasksParallel(ctx, i, tasks); err != nil {
+			return fmt.Errorf("parallel iteration %d: %w", i, err)
+		}
+
+		if err := l.delayBetweenIterations(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// selectMultipleTasks selects up to n tasks for parallel execution.
+// This is a simplified version that will be replaced by the parallel.TaskSelector.
+func (l *Loop) selectMultipleTasks(n int) []*todo.Task {
+	var ready []*todo.Task
+	for i := range l.todoFile.Tasks {
+		task := &l.todoFile.Tasks[i]
+		// Check if dependencies are satisfied
+		if l.todoFile.DependenciesSatisfied(task) && task.Status != todo.StatusDone {
+			ready = append(ready, task)
+		}
+	}
+
+	// Sort by priority (lower first), then by ID
+	sort.Slice(ready, func(i, j int) bool {
+		if ready[i].Priority != ready[j].Priority {
+			return ready[i].Priority < ready[j].Priority
+		}
+		return todo.CompareIDs(ready[i].ID, ready[j].ID)
+	})
+
+	if n > 0 && n < len(ready) {
+		return ready[:n]
+	}
+	return ready
+}
+
+// executeTasksParallel executes multiple tasks concurrently.
+func (l *Loop) executeTasksParallel(ctx context.Context, iter int, tasks []*todo.Task) error {
+	type taskResult struct {
+		taskID string
+		err    error
+	}
+
+	resultCh := make(chan taskResult, len(tasks))
+	var wg sync.WaitGroup
+
+	// Create a semaphore for bounded concurrency
+	sem := make(chan struct{}, len(tasks))
+	if l.cfg.Parallel.MaxTasks > 0 && l.cfg.Parallel.MaxTasks < len(tasks) {
+		sem = make(chan struct{}, l.cfg.Parallel.MaxTasks)
+	}
+
+	for _, task := range tasks {
+		wg.Add(1)
+		go func(t *todo.Task) {
+			defer wg.Done()
+
+			// Acquire semaphore slot
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Check context
+			if ctx.Err() != nil {
+				resultCh <- taskResult{taskID: t.ID, err: ctx.Err()}
+				return
+			}
+
+			// Mark task as doing
+			if err := l.markTaskDoing(t.ID); err != nil {
+				resultCh <- taskResult{taskID: t.ID, err: err}
+				return
+			}
+
+			// Run the iteration
+			if err := l.runIteration(ctx, iter, t); err != nil {
+				_ = l.markTaskBlocked(t.ID)
+				resultCh <- taskResult{taskID: t.ID, err: err}
+				return
+			}
+
+			resultCh <- taskResult{taskID: t.ID, err: nil}
+		}(task)
+	}
+
+	// Wait for all tasks to complete
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	// Collect results
+	var errors []error
+	for result := range resultCh {
+		if result.err != nil {
+			if l.cfg.Parallel.FailFast {
+				return fmt.Errorf("task %s failed (fail-fast): %w", result.taskID, result.err)
+			}
+			errors = append(errors, fmt.Errorf("task %s: %w", result.taskID, result.err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("%d tasks failed: %v", len(errors), errors[0])
+	}
+
+	return nil
+}
+

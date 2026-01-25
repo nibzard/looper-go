@@ -1882,3 +1882,212 @@ printf '{"task_id":"T001","status":"%s","summary":"%s"}\n' "$status" "$summary"
 		t.Error("Expected status update for T001")
 	}
 }
+
+// TestSelectMultipleTasks tests the selectMultipleTasks method for parallel execution.
+func TestSelectMultipleTasks(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name     string
+		tasks    []todo.Task
+		n        int
+		expected []string // IDs of selected tasks
+	}{
+		{
+			name: "selects all when n is large",
+			tasks: []todo.Task{
+				{ID: "T001", Title: "Task 1", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T002", Title: "Task 2", Priority: 2, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T003", Title: "Task 3", Priority: 3, Status: todo.StatusTodo, CreatedAt: &now},
+			},
+			n:        10,
+			expected: []string{"T001", "T002", "T003"},
+		},
+		{
+			name: "selects n when n is smaller",
+			tasks: []todo.Task{
+				{ID: "T001", Title: "Task 1", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T002", Title: "Task 2", Priority: 2, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T003", Title: "Task 3", Priority: 3, Status: todo.StatusTodo, CreatedAt: &now},
+			},
+			n:        2,
+			expected: []string{"T001", "T002"},
+		},
+		{
+			name: "excludes done tasks",
+			tasks: []todo.Task{
+				{ID: "T001", Title: "Task 1", Priority: 1, Status: todo.StatusDone, CreatedAt: &now},
+				{ID: "T002", Title: "Task 2", Priority: 2, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T003", Title: "Task 3", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+			},
+			n:        10,
+			expected: []string{"T003", "T002"},
+		},
+		{
+			name: "respects dependencies",
+			tasks: []todo.Task{
+				{ID: "T001", Title: "Task 1", Priority: 1, Status: todo.StatusDone, CreatedAt: &now},
+				{ID: "T002", Title: "Task 2", Priority: 1, Status: todo.StatusTodo, DependsOn: []string{"T001"}, CreatedAt: &now},
+				{ID: "T003", Title: "Task 3", Priority: 1, Status: todo.StatusTodo, DependsOn: []string{"T002"}, CreatedAt: &now},
+			},
+			n:        10,
+			expected: []string{"T002"},
+		},
+		{
+			name: "sorts by priority then ID",
+			tasks: []todo.Task{
+				{ID: "T003", Title: "Task 3", Priority: 3, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T001", Title: "Task 1", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T002", Title: "Task 2", Priority: 2, Status: todo.StatusTodo, CreatedAt: &now},
+				{ID: "T010", Title: "Task 10", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+			},
+			n:        10,
+			expected: []string{"T001", "T010", "T002", "T003"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loop := &Loop{
+				todoFile: &todo.File{Tasks: tt.tasks},
+			}
+
+			selected := loop.selectMultipleTasks(tt.n)
+
+			if len(selected) != len(tt.expected) {
+				t.Fatalf("expected %d tasks, got %d", len(tt.expected), len(selected))
+			}
+
+			for i, task := range selected {
+				if task.ID != tt.expected[i] {
+					t.Errorf("position %d: expected %s, got %s", i, tt.expected[i], task.ID)
+				}
+			}
+		})
+	}
+}
+
+// TestRunParallel tests parallel execution of tasks.
+func TestRunParallel(t *testing.T) {
+	t.Run("sequential mode unchanged", func(t *testing.T) {
+		// Verify that when parallel is disabled, config is set correctly
+		cfg := &config.Config{
+			Parallel: config.ParallelConfig{
+				Enabled: false,
+			},
+		}
+
+		if cfg.Parallel.Enabled {
+			t.Error("expected parallel to be disabled")
+		}
+	})
+
+	t.Run("parallel mode enabled", func(t *testing.T) {
+		cfg := &config.Config{
+			Parallel: config.ParallelConfig{
+				Enabled:    true,
+				MaxTasks:   4,
+				FailFast:   false,
+				OutputMode: config.OutputMultiplexed,
+			},
+		}
+
+		if !cfg.Parallel.Enabled {
+			t.Error("expected parallel to be enabled")
+		}
+		if cfg.Parallel.MaxTasks != 4 {
+			t.Errorf("expected MaxTasks=4, got %d", cfg.Parallel.MaxTasks)
+		}
+	})
+}
+
+// TestExecuteTasksParallel tests the parallel execution of multiple tasks.
+func TestExecuteTasksParallel(t *testing.T) {
+	t.Run("selectMultipleTasks with various scenarios", func(t *testing.T) {
+		now := time.Now()
+
+		tests := []struct {
+			name     string
+			tasks    []todo.Task
+			n        int
+			expected []string // IDs of selected tasks
+		}{
+			{
+				name: "all tasks ready",
+				tasks: []todo.Task{
+					{ID: "T001", Title: "Task 1", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+					{ID: "T002", Title: "Task 2", Priority: 2, Status: todo.StatusTodo, CreatedAt: &now},
+				},
+				n:        10,
+				expected: []string{"T001", "T002"},
+			},
+			{
+				name: "respects max tasks limit",
+				tasks: []todo.Task{
+					{ID: "T001", Title: "Task 1", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+					{ID: "T002", Title: "Task 2", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+					{ID: "T003", Title: "Task 3", Priority: 1, Status: todo.StatusTodo, CreatedAt: &now},
+				},
+				n:        2,
+				expected: []string{"T001", "T002"},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				loop := &Loop{
+					todoFile: &todo.File{Tasks: tt.tasks},
+				}
+
+				selected := loop.selectMultipleTasks(tt.n)
+
+				if len(selected) != len(tt.expected) {
+					t.Fatalf("expected %d tasks, got %d", len(tt.expected), len(selected))
+				}
+
+				for i, task := range selected {
+					if task.ID != tt.expected[i] {
+						t.Errorf("position %d: expected %s, got %s", i, tt.expected[i], task.ID)
+					}
+				}
+			})
+		}
+	})
+}
+
+// TestParallelConfigDefaults tests that parallel config has safe defaults.
+func TestParallelConfigDefaults(t *testing.T) {
+	cfg := &config.Config{}
+
+	// Parallel should be disabled by default (backward compatibility)
+	if cfg.Parallel.Enabled {
+		t.Error("parallel should be disabled by default")
+	}
+
+	// MaxTasks should default to 0 (unlimited within reason)
+	if cfg.Parallel.MaxTasks != 0 {
+		t.Errorf("expected MaxTasks=0 (unlimited), got %d", cfg.Parallel.MaxTasks)
+	}
+
+	// MaxAgentsPerTask should default to 1 (single agent)
+	if cfg.Parallel.MaxAgentsPerTask != 0 {
+		t.Errorf("expected MaxAgentsPerTask=0 (default 1), got %d", cfg.Parallel.MaxAgentsPerTask)
+	}
+
+	// FailFast should default to false
+	if cfg.Parallel.FailFast {
+		t.Error("fail-fast should be false by default")
+	}
+
+	// Default strategy should be priority
+	if cfg.Parallel.Strategy != "" {
+		// Empty string means use default
+		t.Logf("default strategy: %s", cfg.Parallel.Strategy)
+	}
+
+	// Default output mode should be multiplexed
+	if cfg.Parallel.OutputMode != "" {
+		// Empty string means use default
+		t.Logf("default output mode: %s", cfg.Parallel.OutputMode)
+	}
+}

@@ -115,6 +115,15 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 		bindings = append(bindings, flagBinding{name: "loop-delay", target: &loopDelay})
 	}
 
+	// Workflow
+	var workflow string
+	if sources == nil {
+		fs.StringVar(&cfg.Workflow, "workflow", cfg.Workflow, "Loop execution strategy (traditional, code-review, parallel, incident-triage)")
+	} else {
+		fs.StringVar(&workflow, "workflow", cfg.Workflow, "")
+		bindings = append(bindings, flagBinding{name: "workflow", target: &workflow})
+	}
+
 	// Logging
 	var logLevel, logFormat string
 	var logTimestamps, logCaller bool
@@ -133,6 +142,37 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 			flagBinding{name: "log-format", target: &logFormat},
 			flagBinding{name: "log-timestamps", target: &logTimestamps},
 			flagBinding{name: "log-caller", target: &logCaller},
+		)
+	}
+
+	// Parallel execution
+	var parallel bool
+	var maxTasks int
+	var maxAgentsPerTask int
+	var strategyStr string
+	var failFast bool
+	var outputModeStr string
+	if sources == nil {
+		fs.BoolVar(&cfg.Parallel.Enabled, "parallel", cfg.Parallel.Enabled, "Enable parallel task execution")
+		fs.IntVar(&cfg.Parallel.MaxTasks, "max-tasks", cfg.Parallel.MaxTasks, "Maximum concurrent tasks (0 = unlimited)")
+		fs.IntVar(&cfg.Parallel.MaxAgentsPerTask, "max-agents-per-task", cfg.Parallel.MaxAgentsPerTask, "Maximum agents per task")
+		fs.StringVar(&strategyStr, "strategy", string(cfg.Parallel.Strategy), "Task selection strategy (priority|dependency|mixed)")
+		fs.BoolVar(&cfg.Parallel.FailFast, "fail-fast", cfg.Parallel.FailFast, "Stop all on first failure")
+		fs.StringVar(&outputModeStr, "output-mode", string(cfg.Parallel.OutputMode), "Output handling (multiplexed|buffered|summary)")
+	} else {
+		fs.BoolVar(&parallel, "parallel", cfg.Parallel.Enabled, "")
+		fs.IntVar(&maxTasks, "max-tasks", cfg.Parallel.MaxTasks, "")
+		fs.IntVar(&maxAgentsPerTask, "max-agents-per-task", cfg.Parallel.MaxAgentsPerTask, "")
+		fs.StringVar(&strategyStr, "strategy", string(cfg.Parallel.Strategy), "")
+		fs.BoolVar(&failFast, "fail-fast", cfg.Parallel.FailFast, "")
+		fs.StringVar(&outputModeStr, "output-mode", string(cfg.Parallel.OutputMode), "")
+		bindings = append(bindings,
+			flagBinding{name: "parallel", target: &parallel},
+			flagBinding{name: "max-tasks", target: &maxTasks},
+			flagBinding{name: "max-agents-per-task", target: &maxAgentsPerTask},
+			flagBinding{name: "strategy", target: &strategyStr},
+			flagBinding{name: "fail-fast", target: &failFast},
+			flagBinding{name: "output-mode", target: &outputModeStr},
 		)
 	}
 
@@ -176,25 +216,32 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 
 	// Map flag names to source field names
 	flagToSource := map[string]string{
-		"todo":            "todo_file",
-		"schema":          "schema_file",
-		"log-dir":         "log_dir",
-		"max-iterations":  "max_iterations",
-		"apply-summary":   "apply_summary",
-		"git-init":        "git_init",
-		"hook":            "hook_command",
-		"loop-delay":      "loop_delay_seconds",
-		"log-level":       "log_level",
-		"log-format":      "log_format",
-		"log-timestamps":  "log_timestamps",
-		"log-caller":      "log_caller",
-		"codex-bin":       "codex_binary",
-		"claude-bin":      "claude_binary",
-		"codex-model":     "codex_model",
-		"claude-model":    "claude_model",
-		"codex-reasoning": "codex_reasoning",
-		"codex-args":      "codex_args",
-		"claude-args":     "claude_args",
+		"todo":               "todo_file",
+		"schema":             "schema_file",
+		"log-dir":            "log_dir",
+		"max-iterations":     "max_iterations",
+		"apply-summary":      "apply_summary",
+		"git-init":           "git_init",
+		"hook":               "hook_command",
+		"loop-delay":         "loop_delay_seconds",
+		"workflow":           "workflow",
+		"log-level":          "log_level",
+		"log-format":         "log_format",
+		"log-timestamps":     "log_timestamps",
+		"log-caller":         "log_caller",
+		"parallel":           "parallel_enabled",
+		"max-tasks":          "parallel_max_tasks",
+		"max-agents-per-task": "parallel_max_agents_per_task",
+		"strategy":           "parallel_strategy",
+		"fail-fast":          "parallel_fail_fast",
+		"output-mode":        "parallel_output_mode",
+		"codex-bin":          "codex_binary",
+		"claude-bin":         "claude_binary",
+		"codex-model":        "codex_model",
+		"claude-model":       "claude_model",
+		"codex-reasoning":    "codex_reasoning",
+		"codex-args":         "codex_args",
+		"claude-args":        "claude_args",
 	}
 
 	// Track which flags were set and apply to config
@@ -210,7 +257,11 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 
 	// Apply flag values to config
 	if sources == nil {
-		// Direct binding already applied
+		// Direct binding already applied for most flags
+		// But parallel flags use variables, so apply them
+		cfg.Parallel.Strategy = ParallelStrategy(strategyStr)
+		cfg.Parallel.OutputMode = ParallelOutputMode(outputModeStr)
+		// Agent args need splitting
 		codexArgs := utils.SplitAndTrim(codexArgsStr, ",")
 		claudeArgs := utils.SplitAndTrim(claudeArgsStr, ",")
 		cfg.Agents.SetAgent("codex", Agent{Binary: codexBinary, Model: codexModel, Reasoning: codexReasoning, Args: codexArgs})
@@ -247,6 +298,9 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 		if flagSet["loop-delay"] {
 			cfg.LoopDelaySeconds = loopDelay
 		}
+		if flagSet["workflow"] {
+			cfg.Workflow = workflow
+		}
 		if flagSet["log-level"] {
 			cfg.LogLevel = logLevel
 		}
@@ -258,6 +312,26 @@ func parseFlagsHelper(cfg *Config, fs *flag.FlagSet, args []string, sources map[
 		}
 		if flagSet["log-caller"] {
 			cfg.LogCaller = logCaller
+		}
+
+		// Parallel execution flags
+		if flagSet["parallel"] {
+			cfg.Parallel.Enabled = parallel
+		}
+		if flagSet["max-tasks"] {
+			cfg.Parallel.MaxTasks = maxTasks
+		}
+		if flagSet["max-agents-per-task"] {
+			cfg.Parallel.MaxAgentsPerTask = maxAgentsPerTask
+		}
+		if flagSet["strategy"] {
+			cfg.Parallel.Strategy = ParallelStrategy(strategyStr)
+		}
+		if flagSet["fail-fast"] {
+			cfg.Parallel.FailFast = failFast
+		}
+		if flagSet["output-mode"] {
+			cfg.Parallel.OutputMode = ParallelOutputMode(outputModeStr)
 		}
 
 		// Agent flags - only update values when explicitly set

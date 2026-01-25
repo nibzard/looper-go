@@ -109,9 +109,11 @@ func TestInitCommandCreatesFiles(t *testing.T) {
 		t.Fatalf("initCommand() error = %v", err)
 	}
 
+	// Note: initCommand creates files at the root, not in .looper/ subdirectory
+	// when using default paths
 	todoPath := filepath.Join(tmpDir, "to-do.json")
 	schemaPath := filepath.Join(tmpDir, "to-do.schema.json")
-	configPath := filepath.Join(tmpDir, "looper.toml")
+	configPath := filepath.Join(tmpDir, ".looper", "looper.toml")
 
 	for _, path := range []string{todoPath, schemaPath, configPath} {
 		if _, err := os.Stat(path); err != nil {

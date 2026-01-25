@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/nibzard/looper-go/internal/looperdir"
 	"github.com/nibzard/looper-go/internal/utils"
 )
 
@@ -27,7 +28,9 @@ type ConfigWithSources struct {
 // Default values.
 const (
 	DefaultMaxIterations = 50
-	DefaultTodoFile      = "to-do.json"
+	DefaultTodoFile      = looperdir.Dir + "/" + looperdir.DefaultTodoFile
+	DefaultSchemaFile    = looperdir.Dir + "/" + looperdir.DefaultSchemaFile
+	DefaultConfigFile    = looperdir.Dir + "/" + looperdir.DefaultConfigFile
 	DefaultLogDir        = "~/.looper"
 	DefaultApplySummary  = true
 )
@@ -54,6 +57,12 @@ type Config struct {
 	// User prompt for bootstrap (not persisted in config file)
 	UserPrompt string `toml:"-"` // User-provided prompt to drive bootstrap
 
+	// Workflow selection (default: "traditional")
+	Workflow string `toml:"workflow"`
+
+	// Workflow-specific configuration
+	WorkflowConfigs map[string]map[string]any `toml:"workflows"`
+
 	// Loop settings
 	MaxIterations int `toml:"max_iterations"`
 
@@ -62,6 +71,9 @@ type Config struct {
 
 	// Agents
 	Agents AgentConfig `toml:"agents"`
+
+	// Plugins
+	Plugins PluginConfig `toml:"plugins"`
 
 	// Output
 	ApplySummary bool `toml:"apply_summary"`
@@ -80,6 +92,9 @@ type Config struct {
 	LogFormat     string `toml:"log_format"`
 	LogTimestamps bool   `toml:"log_timestamps"`
 	LogCaller     bool   `toml:"log_caller"`
+
+	// Parallel execution configuration
+	Parallel ParallelConfig `toml:"parallel"`
 
 	// Project root (computed)
 	ProjectRoot string `toml:"-"`
@@ -164,4 +179,96 @@ type Agent struct {
 	PromptFormat PromptFormat `toml:"prompt_format"` // How to pass the prompt: "stdin" or "arg"
 	Parser      string       `toml:"parser"`   // Parser script path (e.g., "claude_parser.py", "~/.looper/parsers/custom.js", "builtin:claude")
 	// Additional flags can be added here as needed
+}
+
+// PluginConfig holds plugin-specific configuration.
+// It is a map keyed by plugin name.
+type PluginConfig map[string]PluginSettings
+
+// PluginSettings holds configuration for a single plugin.
+type PluginSettings struct {
+	// Timeout is the maximum duration to wait for plugin execution.
+	Timeout string `toml:"timeout"`
+
+	// WorkDir is the working directory for plugin execution.
+	WorkDir string `toml:"work_dir"`
+
+	// Binary is the path to the plugin binary (overrides manifest).
+	Binary string `toml:"binary"`
+
+	// Model is the model to use for agent plugins.
+	Model string `toml:"model"`
+
+	// Reasoning is the reasoning effort for agent plugins.
+	Reasoning string `toml:"reasoning"`
+
+	// Enabled allows disabling a plugin without uninstalling it.
+	Enabled bool `toml:"enabled"`
+
+	// Additional plugin-specific settings can be added here.
+	// We use a map for flexibility.
+	Extra map[string]any `toml:"-"`
+}
+
+// ParallelConfig holds configuration for parallel task execution.
+type ParallelConfig struct {
+	// Enabled enables parallel execution of tasks.
+	Enabled bool `toml:"enabled"`
+
+	// MaxTasks is the maximum number of tasks to run concurrently.
+	// 0 means unlimited (bounded by available dependencies).
+	MaxTasks int `toml:"max_tasks"`
+
+	// MaxAgentsPerTask is the maximum number of agents to run per task.
+	// 1 means single agent (default), >1 enables multi-agent consensus.
+	MaxAgentsPerTask int `toml:"max_agents_per_task"`
+
+	// Strategy determines how tasks are selected for parallel execution.
+	Strategy ParallelStrategy `toml:"strategy"`
+
+	// FailFast stops all execution on the first task failure.
+	FailFast bool `toml:"fail_fast"`
+
+	// OutputMode determines how output from concurrent tasks is handled.
+	OutputMode ParallelOutputMode `toml:"output_mode"`
+}
+
+// ParallelStrategy defines the task selection strategy for parallel execution.
+type ParallelStrategy string
+
+const (
+	// StrategyPriority selects highest priority tasks first.
+	StrategyPriority ParallelStrategy = "priority"
+	// StrategyDependency respects dependencies when selecting tasks.
+	StrategyDependency ParallelStrategy = "dependency"
+	// StrategyMixed balances priority and dependency awareness.
+	StrategyMixed ParallelStrategy = "mixed"
+)
+
+// ParallelOutputMode defines how output from concurrent tasks is displayed.
+type ParallelOutputMode string
+
+const (
+	// OutputMultiplexed interleaves output with task/agent ID prefixes.
+	OutputMultiplexed ParallelOutputMode = "multiplexed"
+	// OutputBuffered buffers output per task and displays it on completion.
+	OutputBuffered ParallelOutputMode = "buffered"
+	// OutputSummary shows only summaries without detailed output.
+	OutputSummary ParallelOutputMode = "summary"
+)
+
+// GetPlugin returns the configuration for a given plugin name.
+func (pc PluginConfig) GetPlugin(pluginName string) PluginSettings {
+	if pc == nil {
+		return PluginSettings{}
+	}
+	return pc[pluginName]
+}
+
+// SetPlugin sets the configuration for a given plugin name.
+func (pc *PluginConfig) SetPlugin(pluginName string, settings PluginSettings) {
+	if *pc == nil {
+		*pc = PluginConfig{}
+	}
+	(*pc)[pluginName] = settings
 }
