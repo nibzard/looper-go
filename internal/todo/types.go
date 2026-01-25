@@ -16,8 +16,15 @@ import (
 )
 
 // Schema cache for improved performance.
+// Each schema path has its own sync.Once to ensure thread-safe initialization.
+type schemaCacheEntry struct {
+	schema *jsonschema.Schema
+	once   sync.Once
+	err    error
+}
+
 var (
-	schemaCache   = make(map[string]*jsonschema.Schema)
+	schemaCache   = make(map[string]*schemaCacheEntry)
 	schemaCacheMu sync.RWMutex
 )
 
@@ -278,35 +285,31 @@ func validateTaskMinimal(task *Task, path string) *ValidationError {
 
 // getCachedSchema returns a cached compiled schema for the given path.
 // If not in cache, compiles and stores it for future use.
+// Uses sync.Once for thread-safe initialization without race conditions.
 func getCachedSchema(schemaPath string) (*jsonschema.Schema, error) {
-	// Check cache with read lock
 	schemaCacheMu.RLock()
-	schema, ok := schemaCache[schemaPath]
+	entry, ok := schemaCache[schemaPath]
 	schemaCacheMu.RUnlock()
 
-	if ok {
-		return schema, nil
+	if !ok {
+		// Entry doesn't exist, create it under write lock
+		schemaCacheMu.Lock()
+		// Double-check after acquiring write lock
+		if entry, ok = schemaCache[schemaPath]; !ok {
+			entry = &schemaCacheEntry{}
+			schemaCache[schemaPath] = entry
+		}
+		schemaCacheMu.Unlock()
 	}
 
-	// Compile schema with write lock
-	schemaCacheMu.Lock()
-	defer schemaCacheMu.Unlock()
+	// Use sync.Once to ensure the schema is compiled exactly once
+	entry.once.Do(func() {
+		compiler := jsonschema.NewCompiler()
+		compiler.AssertFormat = true
+		entry.schema, entry.err = compiler.Compile(schemaPath)
+	})
 
-	// Double-check after acquiring write lock
-	if schema, ok := schemaCache[schemaPath]; ok {
-		return schema, nil
-	}
-
-	compiler := jsonschema.NewCompiler()
-	compiler.AssertFormat = true
-
-	schema, err := compiler.Compile(schemaPath)
-	if err != nil {
-		return nil, err
-	}
-
-	schemaCache[schemaPath] = schema
-	return schema, nil
+	return entry.schema, entry.err
 }
 
 // validateWithSchema attempts JSON Schema validation.

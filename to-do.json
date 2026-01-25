@@ -1668,7 +1668,7 @@
       "title": "Document security model for plugin capabilities",
       "description": "Plugin capabilities system exists (can_execute_commands, can_access_network, etc.) but the README only warns about them. Add a SECURITY.md section explaining the threat model and sandboxing limitations.",
       "priority": 2,
-      "status": "done",
+      "status": "blocked",
       "tags": [
         "security",
         "documentation"
@@ -1677,22 +1677,22 @@
         "README.md",
         "SECURITY.md"
       ],
-      "updated_at": "2026-01-25T12:55:30Z",
-      "details": "Security model documentation already complete in SECURITY.md. Verified comprehensive coverage of: capability system, threat model with 5 attack vectors, sandboxing limitations, enforcement mechanisms, security best practices, current features, and future enhancements."
+      "updated_at": "2026-01-25T12:56:39.031985113Z"
     },
     {
       "id": "T086",
       "title": "Fix potential data race in schema cache",
       "description": "internal/todo/types.go getCachedSchema uses double-checked locking but the pattern has subtle issues. Consider using sync.Once or a more robust caching pattern.",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "concurrency",
         "bug"
       ],
       "files": [
         "internal/todo/types.go"
-      ]
+      ],
+      "updated_at": "2026-01-25T12:58:58Z"
     },
     {
       "id": "T087",
