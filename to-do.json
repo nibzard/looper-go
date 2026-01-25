@@ -1344,7 +1344,7 @@
       "priority": 2,
       "status": "done",
       "description": "The looper workflow command is implemented (cmd/root.go:2706-2797) but not shown in the README Usage section.",
-      "details": "Documentation already present in README.md Usage section (lines 96-98) with examples: looper workflow list and looper workflow describe <name>. Full workflow documentation also exists in Workflows section (lines 688-893). No changes needed.",
+      "details": "Documentation verified present in README.md Usage section (lines 96-98): looper workflow list, looper workflow describe <name>. Full workflow documentation exists in Workflows section (lines 688-893). Task already complete - no code changes needed.",
       "steps": [
         "Add workflow commands to the Usage section in README.md",
         "Document 'looper workflow list' command with example output",
@@ -1360,13 +1360,13 @@
       "files": [
         "README.md"
       ],
-      "updated_at": 1769333492.300898
+      "updated_at": "2026-01-25T09:34:37Z"
     },
     {
       "id": "T071",
       "title": "Document workflow-specific configuration in README.md",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "description": "Workflows support per-workflow configuration via [workflows.<name>] sections in looper.toml, but this is not documented.",
       "details": "internal/config/types.go:60-64 defines Workflow field and WorkflowConfigs map. Each workflow type can have its own configuration schema. For example, [workflows.parallel] could have max_tasks, strategy, fail_fast settings. This powerful feature should be documented with examples for each built-in workflow.",
       "steps": [
@@ -1386,7 +1386,7 @@
         "internal/config/types.go",
         "internal/workflows/types.go"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": "2026-01-25T09:35:23Z"
     },
     {
       "id": "T072",

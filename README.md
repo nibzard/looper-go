@@ -479,6 +479,26 @@ hook_command = "/path/to/hook.sh"
 
 # Delay between iterations
 loop_delay_seconds = 0
+
+# Workflow selection (default: "traditional")
+workflow = "traditional"
+
+# Workflow-specific configuration
+[workflows.parallel]
+max_concurrent = 3      # Max concurrent tasks (default: 3)
+fail_fast = false       # Stop on first error (default: false)
+
+[workflows.code-review]
+diff_path = "."                    # Path to review (default: ".")
+review_stages = ["analyze", "security", "style"]
+require_approval = true            # Require manual approval
+approval_file = ".looper/approval.txt"
+
+[workflows.incident-triage]
+severity_levels = ["critical", "high", "medium", "low"]
+auto_assign = true
+notify_slack = false
+# slack_webhook = "https://hooks.slack.com/services/..."
 ```
 
 Looper reads the config file from the current working directory (not the todo file directory).
