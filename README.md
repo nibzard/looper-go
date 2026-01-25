@@ -1264,6 +1264,8 @@ can_access_env = false
 4. **Sandbox When Possible** - Consider running untrusted plugins in isolated environments
 5. **Audit Regularly** - Review plugin manifests for excessive capability requests
 
+> **Important Security Notice**: Looper's capability system provides transparency but does not enforce OS-level restrictions. Plugins run with the same permissions as the looper process itself. For detailed information about the security model, threat model, and sandboxing limitations, see [SECURITY.md](SECURITY.md#plugin-security-model).
+
 #### Validation Warnings
 
 When validating plugins, looper warns about dangerous capabilities:

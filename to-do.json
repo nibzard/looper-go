@@ -1564,9 +1564,10 @@
       ],
       "files": [
         "internal/plugin/integration_test.go",
-        "internal/plugin/registry.go"
+        "internal/plugin/registry.go",
+        "to-do.json"
       ],
-      "updated_at": 1769343935.749115,
+      "updated_at": "2026-01-25T12:26:12Z",
       "details": "Added comprehensive integration tests for the plugin validation system, including tests for Validator type, all its methods, executor streaming, directory creation helpers, registry helpers, plugin installation, and manifest edge cases. Improved test coverage from 45.7% to 68.9%. Also fixed a mutex bug in EnsureUserPluginsDir."
     },
     {
@@ -1659,7 +1660,7 @@
       "title": "Document security model for plugin capabilities",
       "description": "Plugin capabilities system exists (can_execute_commands, can_access_network, etc.) but the README only warns about them. Add a SECURITY.md section explaining the threat model and sandboxing limitations.",
       "priority": 2,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "security",
         "documentation"
@@ -1667,7 +1668,8 @@
       "files": [
         "README.md",
         "SECURITY.md"
-      ]
+      ],
+      "updated_at": "2026-01-25T12:28:18Z"
     },
     {
       "id": "T086",
