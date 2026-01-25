@@ -1456,15 +1456,16 @@
         "logging"
       ],
       "files": [
-        "README.md"
+        "README.md",
+        "to-do.json"
       ],
-      "updated_at": 1769337640.554927
+      "updated_at": "2026-01-25T10:41:07Z"
     },
     {
       "id": "T075",
       "title": "Document plugin capabilities system in README.md",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "description": "Plugins declare capabilities (can_modify_files, can_execute_commands, can_access_network, can_access_env) but this system is not documented.",
       "details": "internal/plugin/types.go and internal/plugin/capabilities.go define the capability declaration system. Plugin manifests include a [capabilities] section where plugins declare what they're allowed to do. This is important for security and sandboxing but users don't know it exists or how to interpret/modify capabilities.",
       "steps": [
@@ -1481,11 +1482,9 @@
         "security"
       ],
       "files": [
-        "README.md",
-        "internal/plugin/types.go",
-        "internal/plugin/capabilities.go"
+        "README.md"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": "2026-01-25T10:42:09Z"
     },
     {
       "id": "T076",

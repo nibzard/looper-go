@@ -1169,6 +1169,127 @@ can_access_env = true
 - **agent** - AI agent plugins (claude, codex, or custom)
 - **workflow** - Workflow plugins (traditional, parallel, or custom)
 
+### Plugin Capabilities
+
+Plugins declare their security permissions via a `[capabilities]` section in their manifest. This system allows looper to enforce security boundaries and provide transparency about what plugins can do.
+
+#### Capability Flags
+
+The `[capabilities]` section in `looper-plugin.toml` declares which operations the plugin can perform:
+
+```toml
+[capabilities]
+can_modify_files = true     # Can create, read, and modify files
+can_execute_commands = true # Can run shell commands
+can_access_network = false  # Can make network requests
+can_access_env = true       # Can read environment variables
+```
+
+#### Available Capabilities
+
+| Capability | Type | Description | Security Consideration |
+|------------|------|-------------|------------------------|
+| `can_modify_files` | bool | Plugin can create, modify, and delete files | **High risk** - allows plugin to change any file in the project |
+| `can_execute_commands` | bool | Plugin can run shell commands via `exec.Command` | **High risk** - allows arbitrary command execution |
+| `can_access_network` | bool | Plugin can make HTTP/network requests | **Medium risk** - could exfiltrate data or download malicious content |
+| `can_access_env` | bool | Plugin can read environment variables | **Medium risk** - could access API keys and secrets |
+
+**Note:** File reading is implied by `can_modify_files = true`. If a plugin only needs to read files, set `can_modify_files = true` and document that it only reads.
+
+#### How Looper Enforces Capabilities
+
+Looper uses a capability manager that enforces these security boundaries:
+
+1. **Manifest Declaration** - Plugins must declare capabilities in their manifest
+2. **Runtime Checks** - Looper checks capabilities before each sensitive operation
+3. **Permission Levels** - Three permission levels are available:
+   - `granted` - Capability is allowed
+   - `denied` - Capability is explicitly blocked
+   - `prompt` - User is prompted before allowing (future feature)
+
+4. **Default Deny** - If a plugin doesn't declare a capability, it cannot use that operation
+
+#### Restricted Execution Helpers
+
+Looper provides helper types that automatically enforce capability checks:
+
+**`RestrictedCommandBuilder`** - For shell command execution with capability checks:
+```go
+builder := plugin.NewRestrictedCommandBuilder(capManager, plugin)
+cmd, err := builder.Command(ctx, "git", "status")
+// Returns error if !can_execute_commands
+```
+
+**`RestrictedFileWriter`** - For file operations with capability checks:
+```go
+writer := plugin.NewRestrictedFileWriter(capManager, plugin, baseDir)
+err := writer.WriteFile(ctx, "output.txt", data, 0644)
+// Returns error if !can_modify_files
+```
+
+#### Example Manifests
+
+**Minimal Agent (Read-Only):**
+```toml
+[capabilities]
+can_modify_files = false
+can_execute_commands = false
+can_access_network = false
+can_access_env = true
+```
+
+**Full-Featured Agent:**
+```toml
+[capabilities]
+can_modify_files = true
+can_execute_commands = true
+can_access_network = true
+can_access_env = true
+```
+
+**Network-Only Plugin:**
+```toml
+[capabilities]
+can_modify_files = false
+can_execute_commands = false
+can_access_network = true  # Only network access
+can_access_env = false
+```
+
+#### Security Best Practices
+
+1. **Principle of Least Privilege** - Only enable capabilities your plugin actually needs
+2. **Document Intent** - Clearly explain why each capability is needed in your plugin's README
+3. **Warn Users** - Use validation warnings for dangerous capabilities (`can_execute_commands`, `can_modify_files`)
+4. **Sandbox When Possible** - Consider running untrusted plugins in isolated environments
+5. **Audit Regularly** - Review plugin manifests for excessive capability requests
+
+#### Validation Warnings
+
+When validating plugins, looper warns about dangerous capabilities:
+
+```bash
+$ looper plugin validate ./my-plugin
+
+Plugin: my-plugin
+Status: VALID
+
+Warnings:
+  - plugin can execute commands (ensure you trust this plugin)
+  - plugin can modify files (ensure you trust this plugin)
+```
+
+#### Capability Discovery
+
+To see what capabilities a plugin has declared:
+
+```bash
+# View plugin info including capabilities
+looper plugin info my-plugin
+
+# The output shows the [capabilities] section from the manifest
+```
+
 ### Core Plugins Bundle
 
 Looper ships with a bundle of core plugins that are automatically extracted on first run. These core plugins provide the essential functionality out of the box without requiring manual installation.
