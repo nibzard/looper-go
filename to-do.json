@@ -1316,7 +1316,7 @@
       "priority": 2,
       "status": "done",
       "description": "Role-based agent configuration is implemented but not fully documented. The README only mentions --repair-agent, --review-agent, --bootstrap-agent flags but not the full [roles] config section.",
-      "details": "internal/config/types.go:69-117 defines RolesConfig with GetAgent()/SetAgent() methods. Users can configure different agents for different loop phases: iter (iterations), review (review pass), repair (repair operations), bootstrap (bootstrap). This is more powerful than just CLI flags and should be documented with examples.",
+      "details": "Documentation already comprehensive in README.md lines 225-342. The Role-Based Agent Configuration section already includes: Available Roles (iter, review, repair, bootstrap), Configuration via Config File with [roles] TOML section, Configuration via Environment Variables (LOOPER_ROLES_*), Configuration via CLI Flags, Precedence Order (CLI > env > project config > user config > legacy config > schedule defaults), When to Use Role-Based Configuration vs simple schedule, and Example Configurations showing different agents for different roles. internal/config/example.go also includes [roles] section in example config (lines 24-30). No changes needed.",
       "steps": [
         "Add role-based configuration to the 'Configuration' section in README.md",
         "Document the [roles] TOML section with all available roles: iter, review, repair, bootstrap",
@@ -1336,7 +1336,7 @@
         "internal/config/types.go",
         "internal/config/getters.go"
       ],
-      "updated_at": 1769333068.608133
+      "updated_at": "\"2026-01-25T09:25:37Z\""
     },
     {
       "id": "T070",
