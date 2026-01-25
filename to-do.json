@@ -1669,7 +1669,8 @@
         "README.md",
         "SECURITY.md"
       ],
-      "updated_at": "2026-01-25T12:28:18Z"
+      "updated_at": "2026-01-25T12:29:42Z",
+      "summary": "Created comprehensive SECURITY.md documenting plugin capabilities security model with threat model, sandboxing limitations, enforcement mechanisms, and best practices for users and plugin authors. README.md updated with reference to SECURITY.md."
     },
     {
       "id": "T086",
