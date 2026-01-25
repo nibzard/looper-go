@@ -1358,10 +1358,9 @@
         "workflows"
       ],
       "files": [
-        "README.md",
-        "cmd/root.go"
+        "README.md"
       ],
-      "updated_at": "2026-01-25T09:28:18Z"
+      "updated_at": "2026-01-25T09:30:15Z"
     },
     {
       "id": "T071",
