@@ -514,9 +514,122 @@ severity_levels = ["critical", "high", "medium", "low"]
 auto_assign = true
 notify_slack = false
 # slack_webhook = "https://hooks.slack.com/services/..."
+
+# Plugin configuration (settings for installed plugins)
+[plugins.claude]
+timeout = "30m"              # Execution timeout (e.g., "30s", "5m", "1h")
+# work_dir = "."           # Working directory for plugin execution
+# binary = "claude"         # Override plugin binary path
+# model = ""                # Model for agent plugins
+# reasoning = "medium"      # Reasoning effort for agent plugins
+# enabled = true            # Enable/disable plugin without uninstalling
 ```
 
 Looper reads the config file from the current working directory (not the todo file directory).
+
+### Plugin Configuration
+
+Plugins can be configured via `[plugins.<name>]` sections in `looper.toml`. This allows you to customize plugin behavior without modifying the plugin manifest or reinstalling the plugin.
+
+#### Configuration Pattern
+
+```toml
+[plugins.<plugin-name>]
+timeout = "30m"       # Maximum execution time
+work_dir = "."        # Working directory for plugin execution
+binary = "claude"     # Override binary path from manifest
+model = ""            # Model for agent plugins
+reasoning = ""        # Reasoning effort for agent plugins
+enabled = true        # Enable or disable plugin
+```
+
+#### Plugin Settings
+
+| Setting | Type | Description |
+|---------|------|-------------|
+| `timeout` | string | Maximum execution duration (e.g., `"30s"`, `"5m"`, `"1h"`) |
+| `work_dir` | string | Working directory for plugin execution (relative to project root) |
+| `binary` | string | Override the plugin binary path from the manifest |
+| `model` | string | Model to use for agent plugins (e.g., `"claude-3-5-sonnet-20241022"`) |
+| `reasoning` | string | Reasoning effort for agent plugins (e.g., `"low"`, `"medium"`, `"high"`) |
+| `enabled` | bool | Enable or disable the plugin without uninstalling it |
+
+#### Configuration Examples
+
+**Set a longer timeout for a slow plugin:**
+```toml
+[plugins.my-slow-plugin]
+timeout = "1h"
+```
+
+**Override the binary path for local development:**
+```toml
+[plugins.claude]
+binary = "/path/to/dev/claude"
+```
+
+**Configure model and reasoning for an agent plugin:**
+```toml
+[plugins.codex]
+model = "gpt-4"
+reasoning = "high"
+```
+
+**Disable a plugin temporarily:**
+```toml
+[plugins.experimental-plugin]
+enabled = false
+```
+
+**Set a specific working directory:**
+```toml
+[plugins.build-tool]
+work_dir = "./build"
+```
+
+#### Configuration Precedence
+
+Plugin configuration settings override the corresponding values in the plugin manifest (`looper-plugin.toml`). This allows you to:
+
+1. Override timeouts for specific projects
+2. Use different binary paths for development vs production
+3. Configure agent plugins with project-specific models
+4. Temporarily disable plugins without uninstalling them
+
+#### Relationship to Plugin Manifests
+
+The `[plugins.<name>]` configuration complements the plugin manifest:
+
+- **Manifest** (`looper-plugin.toml`): Defines the plugin's default settings and metadata
+- **Config** (`looper.toml`): Overrides manifest settings for a specific project
+
+For example, if a plugin manifest declares:
+```toml
+[plugin]
+binary = "./bin/my-plugin"
+```
+
+You can override it in your project config:
+```toml
+[plugins.my-plugin]
+binary = "/usr/local/bin/my-plugin"
+timeout = "5m"
+```
+
+#### Environment Variables
+
+Plugin settings can also be configured via environment variables using the pattern `LOOPER_PLUGINS_<NAME>_<SETTING>`:
+
+```bash
+# Set timeout for claude plugin
+export LOOPER_PLUGINS_CLAUDE_TIMEOUT="1h"
+
+# Disable a plugin
+export LOOPER_PLUGINS_EXPERIMENTAL_ENABLED="0"
+
+# Set model for codex plugin
+export LOOPER_PLUGINS_CODEX_MODEL="gpt-4"
+```
 
 ### Advanced Logging Configuration
 
@@ -684,6 +797,14 @@ log_caller = false
 - `CODEX_REASONING` / `CODEX_REASONING_EFFORT` - Codex reasoning effort (e.g., "low", "medium", "high")
 - `CODEX_ARGS` - Comma-separated extra args for Codex (e.g., `--flag,value`)
 - `CLAUDE_ARGS` - Comma-separated extra args for Claude (e.g., `--flag,value`)
+
+**Plugin settings:**
+- `LOOPER_PLUGINS_<NAME>_TIMEOUT` - Plugin execution timeout (e.g., `LOOPER_PLUGINS_CLAUDE_TIMEOUT="1h"`)
+- `LOOPER_PLUGINS_<NAME>_WORK_DIR` - Plugin working directory (e.g., `LOOPER_PLUGINS_BUILD_WORK_DIR="./build"`)
+- `LOOPER_PLUGINS_<NAME>_BINARY` - Override plugin binary path (e.g., `LOOPER_PLUGINS_CLAUDE_BINARY="/path/to/claude"`)
+- `LOOPER_PLUGINS_<NAME>_MODEL` - Model for agent plugins (e.g., `LOOPER_PLUGINS_CODEX_MODEL="gpt-4"`)
+- `LOOPER_PLUGINS_<NAME>_REASONING` - Reasoning effort for agent plugins (e.g., `LOOPER_PLUGINS_CODEX_REASONING="high"`)
+- `LOOPER_PLUGINS_<NAME>_ENABLED` - Enable/disable plugin (1/0, e.g., `LOOPER_PLUGINS_EXPERIMENTAL_ENABLED="0"`)
 
 ### CLI Flags
 

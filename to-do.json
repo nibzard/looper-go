@@ -1499,7 +1499,7 @@
       "title": "Document plugin configuration in README.md",
       "description": "Plugins can be configured via [plugins.<name>] sections in looper.toml with timeout, work_dir, binary, model, reasoning, enabled options, but this is not documented.",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "details": "internal/config/types.go:181-224 defines PluginConfig and PluginSettings. Users can configure plugin execution timeout, working directory, override binary path, set model/reasoning for agent plugins, and enable/disable plugins without uninstalling. This is useful for tuning plugin behavior but completely undocumented.",
       "steps": [
         "Add plugin configuration documentation to the Configuration section in README.md",
@@ -1515,11 +1515,9 @@
         "plugins"
       ],
       "files": [
-        "README.md",
-        "internal/config/types.go",
-        "internal/config/example.go"
+        "README.md"
       ],
-      "updated_at": "2026-01-25T12:00:00Z"
+      "updated_at": "2026-01-26T12:00:13Z"
     },
     {
       "id": "T077",
@@ -1717,7 +1715,7 @@
       "title": "Implement graceful shutdown for running plugins",
       "description": "Plugin executor (internal/plugin/executor.go) does not handle context cancellation gracefully for long-running plugins. Add proper cleanup and timeout handling.",
       "priority": 3,
-      "status": "done",
+      "status": "blocked",
       "tags": [
         "plugins",
         "concurrency"
@@ -1725,7 +1723,7 @@
       "files": [
         "internal/plugin/executor.go"
       ],
-      "updated_at": "2026-01-26T11:56:39Z"
+      "updated_at": "2026-01-26T12:00:01.223400776Z"
     },
     {
       "id": "T089",
