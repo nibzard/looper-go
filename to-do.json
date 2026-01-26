@@ -1583,7 +1583,7 @@
       "title": "Implement proper error logging in plugin loader",
       "description": "internal/plugin/loader.go line 129 has a TODO comment for proper logging. Replace the silent continue with actual error logging when plugin discovery fails.",
       "priority": 3,
-      "status": "done",
+      "status": "blocked",
       "tags": [
         "logging",
         "plugins"
@@ -1591,21 +1591,22 @@
       "files": [
         "internal/plugin/loader.go"
       ],
-      "updated_at": "2026-01-25T13:10:00Z"
+      "updated_at": "2026-01-25T13:08:19.738011554Z"
     },
     {
       "id": "T080",
       "title": "Add error logging in plugin agent registration",
       "description": "internal/agents/plugin_agent.go line 193 has a TODO comment for proper logging. Add error logging when agent plugin registration fails during LoadAndRegisterAgentPlugins.",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "logging",
         "plugins"
       ],
       "files": [
         "internal/agents/plugin_agent.go"
-      ]
+      ],
+      "updated_at": "2026-01-26T11:48:00Z"
     },
     {
       "id": "T081",

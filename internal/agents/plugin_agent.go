@@ -4,6 +4,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/nibzard/looper-go/internal/plugin"
@@ -190,7 +191,7 @@ func LoadAndRegisterAgentPlugins() error {
 	for _, p := range registry.ListAgents() {
 		if err := RegisterAgentPlugin(p); err != nil {
 			// Log warning but continue loading other plugins
-			// TODO: add proper logging
+			fmt.Fprintf(os.Stderr, "warning: failed to register agent plugin %s: %v\n", p.Name, err)
 			continue
 		}
 	}
