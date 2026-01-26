@@ -1717,14 +1717,15 @@
       "title": "Implement graceful shutdown for running plugins",
       "description": "Plugin executor (internal/plugin/executor.go) does not handle context cancellation gracefully for long-running plugins. Add proper cleanup and timeout handling.",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "plugins",
         "concurrency"
       ],
       "files": [
         "internal/plugin/executor.go"
-      ]
+      ],
+      "updated_at": "2026-01-26T11:56:39Z"
     },
     {
       "id": "T089",

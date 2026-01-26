@@ -9,6 +9,7 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -50,8 +51,8 @@ func (e *Executor) Execute(ctx context.Context, method string, params interface{
 		return fmt.Errorf("marshaling request: %w", err)
 	}
 
-	// Create command
-	cmd := exec.CommandContext(ctx, e.plugin.BinaryPath)
+	// Create command without context initially - we'll handle graceful shutdown manually
+	cmd := exec.Command(e.plugin.BinaryPath)
 	cmd.Dir = e.GetWorkDir()
 
 	// Set up environment
@@ -76,22 +77,36 @@ func (e *Executor) Execute(ctx context.Context, method string, params interface{
 		return fmt.Errorf("starting plugin binary: %w", err)
 	}
 
+	// Handle graceful shutdown in a goroutine
+	done := make(chan error, 1)
+	go func() {
+		// Wait for command to finish
+		err := cmd.Wait()
+		done <- err
+	}()
+
 	// Send request
 	if _, err := stdin.Write(reqData); err != nil {
+		e.killProcess(cmd)
+		<-done // Wait for goroutine to finish
 		return fmt.Errorf("writing request to plugin: %w", err)
 	}
 	if err := stdin.Close(); err != nil {
+		e.killProcess(cmd)
+		<-done
 		return fmt.Errorf("closing stdin: %w", err)
 	}
 
-	// Read response
-	respData, err := io.ReadAll(stdout)
+	// Read response with context awareness
+	respData, err := e.readWithContext(ctx, stdout)
 	if err != nil {
-		return fmt.Errorf("reading response from plugin: %w", err)
+		e.killProcess(cmd)
+		<-done
+		return err
 	}
 
 	// Wait for command to finish
-	if err := cmd.Wait(); err != nil {
+	if err := <-done; err != nil {
 		// Include stderr in error
 		stderrStr := stderr.String()
 		if stderrStr != "" {
@@ -263,8 +278,8 @@ func (e *Executor) StreamExecute(ctx context.Context, prompt string, logWriter i
 		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	// Create command
-	cmd := exec.CommandContext(ctx, e.plugin.BinaryPath)
+	// Create command without context initially - we'll handle graceful shutdown manually
+	cmd := exec.Command(e.plugin.BinaryPath)
 	cmd.Dir = e.GetWorkDir()
 	cmd.Env = e.getEnvVars()
 
@@ -289,6 +304,14 @@ func (e *Executor) StreamExecute(ctx context.Context, prompt string, logWriter i
 		return nil, fmt.Errorf("starting plugin binary: %w", err)
 	}
 
+	// Handle graceful shutdown in a goroutine
+	done := make(chan error, 1)
+	go func() {
+		// Wait for command to finish
+		err := cmd.Wait()
+		done <- err
+	}()
+
 	// Send request
 	go func() {
 		stdin.Write(reqData)
@@ -296,17 +319,36 @@ func (e *Executor) StreamExecute(ctx context.Context, prompt string, logWriter i
 	}()
 
 	// Read stderr in background (for logs)
-	if logWriter != nil {
-		go io.Copy(logWriter, stderr)
-	} else {
-		go io.Copy(io.Discard, stderr)
-	}
+	stderrDone := make(chan struct{})
+	go func() {
+		if logWriter != nil {
+			io.Copy(logWriter, stderr)
+		} else {
+			io.Copy(io.Discard, stderr)
+		}
+		close(stderrDone)
+	}()
 
-	// Read streaming response
+	// Read streaming response with context awareness
 	decoder := json.NewDecoder(stdout)
 	var finalResult *AgentResult
 
-	for decoder.More() {
+	for {
+		select {
+		case <-ctx.Done():
+			// Context cancelled - kill process and return
+			e.killProcess(cmd)
+			<-done       // Wait for command to finish
+			<-stderrDone // Wait for stderr to finish
+			return nil, fmt.Errorf("plugin execution cancelled: %w", ctx.Err())
+		default:
+		}
+
+		// Check if there's more data to decode
+		if !decoder.More() {
+			break
+		}
+
 		var resp Response
 		if err := decoder.Decode(&resp); err != nil {
 			break
@@ -314,6 +356,9 @@ func (e *Executor) StreamExecute(ctx context.Context, prompt string, logWriter i
 
 		// Handle different response types
 		if resp.Error != nil {
+			e.killProcess(cmd)
+			<-done
+			<-stderrDone
 			return nil, fmt.Errorf("plugin error: %s", resp.Error.Message)
 		}
 
@@ -330,13 +375,70 @@ func (e *Executor) StreamExecute(ctx context.Context, prompt string, logWriter i
 	}
 
 	// Wait for command to finish
-	if err := cmd.Wait(); err != nil {
+	if err := <-done; err != nil {
+		<-stderrDone
 		return nil, fmt.Errorf("plugin execution failed: %w", err)
 	}
+
+	<-stderrDone
 
 	if finalResult == nil {
 		return nil, fmt.Errorf("plugin did not return a result")
 	}
 
 	return finalResult, nil
+}
+
+// readWithContext reads from stdout while respecting context cancellation.
+// Returns the data read or an error if context is cancelled.
+func (e *Executor) readWithContext(ctx context.Context, stdout io.Reader) ([]byte, error) {
+	dataCh := make(chan []byte, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		data, err := io.ReadAll(stdout)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		dataCh <- data
+	}()
+
+	select {
+	case <-ctx.Done():
+		// Context was cancelled
+		return nil, fmt.Errorf("plugin execution cancelled: %w", ctx.Err())
+	case data := <-dataCh:
+		return data, nil
+	case err := <-errCh:
+		return nil, fmt.Errorf("reading response from plugin: %w", err)
+	}
+}
+
+// killProcess gracefully terminates a plugin process.
+// It first attempts to send SIGTERM, then SIGKILL if the process doesn't exit.
+func (e *Executor) killProcess(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+
+	// Try graceful shutdown first (SIGTERM)
+	cmd.Process.Signal(syscall.SIGTERM)
+
+	// Wait a bit for graceful shutdown
+	done := make(chan error, 1)
+	go func() {
+		_, err := cmd.Process.Wait()
+		done <- err
+	}()
+
+	select {
+	case <-done:
+		// Process exited gracefully
+		return
+	case <-time.After(5 * time.Second):
+		// Process didn't exit, force kill
+		cmd.Process.Kill()
+		<-done // Wait for the process to be reaped
+	}
 }
