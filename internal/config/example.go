@@ -78,5 +78,15 @@ model = ""
 # strategy = "priority"         # Task selection: priority|dependency|mixed
 # fail_fast = false            # Stop all on first failure
 # output_mode = "multiplexed"   # Output: multiplexed|buffered|summary
+
+# Plugin configuration (settings for installed plugins)
+# Plugins can be configured via [plugins.<name>] sections
+# [plugins.claude]
+# timeout = "30m"              # Execution timeout (e.g., "30m", "1h")
+# work_dir = "."               # Working directory for plugin execution
+# binary = "claude"            # Override plugin binary path
+# model = ""                   # Model for agent plugins
+# reasoning = ""               # Reasoning effort for agent plugins (e.g., "medium")
+# enabled = true               # Enable/disable plugin without uninstalling
 `
 }

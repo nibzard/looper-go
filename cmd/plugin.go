@@ -125,6 +125,8 @@ func initializePluginRegistry(cfg *config.Config) (*plugin.Registry, error) {
 	registry := plugin.GetRegistry()
 
 	if registry.IsInitialized() {
+		// Even if already initialized, apply plugin configs in case they changed
+		applyPluginConfigs(cfg, registry)
 		return registry, nil
 	}
 
@@ -145,5 +147,38 @@ func initializePluginRegistry(cfg *config.Config) (*plugin.Registry, error) {
 		return nil, fmt.Errorf("initializing plugin registry: %w", err)
 	}
 
+	// Apply plugin configurations from looper.toml
+	applyPluginConfigs(cfg, registry)
+
 	return registry, nil
+}
+
+// applyPluginConfigs applies plugin configurations from the config to the registry.
+func applyPluginConfigs(cfg *config.Config, registry *plugin.Registry) {
+	for pluginName, settings := range cfg.Plugins {
+		configMap := make(map[string]any)
+
+		// Convert PluginSettings to map[string]any
+		if settings.Timeout != "" {
+			configMap["timeout"] = settings.Timeout
+		}
+		if settings.WorkDir != "" {
+			configMap["work_dir"] = settings.WorkDir
+		}
+		if settings.Binary != "" {
+			configMap["binary"] = settings.Binary
+		}
+		if settings.Model != "" {
+			configMap["model"] = settings.Model
+		}
+		if settings.Reasoning != "" {
+			configMap["reasoning"] = settings.Reasoning
+		}
+		// Note: enabled field is handled separately during plugin lookup
+
+		if err := registry.UpdatePluginConfig(pluginName, configMap); err != nil {
+			// Log warning but continue - plugin might not be installed yet
+			fmt.Fprintf(os.Stderr, "warning: failed to apply config for plugin %s: %v\n", pluginName, err)
+		}
+	}
 }

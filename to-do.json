@@ -1598,7 +1598,7 @@
       "title": "Add error logging in plugin agent registration",
       "description": "internal/agents/plugin_agent.go line 193 has a TODO comment for proper logging. Add error logging when agent plugin registration fails during LoadAndRegisterAgentPlugins.",
       "priority": 3,
-      "status": "done",
+      "status": "blocked",
       "tags": [
         "logging",
         "plugins"
@@ -1606,7 +1606,7 @@
       "files": [
         "internal/agents/plugin_agent.go"
       ],
-      "updated_at": "2026-01-26T11:48:00Z"
+      "updated_at": "2026-01-26T11:48:15.733703889Z"
     },
     {
       "id": "T081",
@@ -1627,15 +1627,16 @@
       "title": "Add timeout configuration to plugin settings",
       "description": "Plugin timeout handling exists but is not configurable via looper.toml. The PluginSettings struct has a Timeout field but it is not documented or exposed in the config example.",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "config",
         "plugins"
       ],
       "files": [
-        "internal/config/types.go",
+        "cmd/plugin.go",
         "internal/config/example.go"
-      ]
+      ],
+      "updated_at": 1769428310.371714
     },
     {
       "id": "T083",
