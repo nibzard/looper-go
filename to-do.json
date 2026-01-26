@@ -1627,30 +1627,31 @@
       "title": "Add timeout configuration to plugin settings",
       "description": "Plugin timeout handling exists but is not configurable via looper.toml. The PluginSettings struct has a Timeout field but it is not documented or exposed in the config example.",
       "priority": 3,
-      "status": "done",
+      "status": "blocked",
       "tags": [
         "config",
         "plugins"
       ],
       "files": [
-        "cmd/plugin.go",
+        "internal/config/types.go",
         "internal/config/example.go"
       ],
-      "updated_at": 1769428310.371714
+      "updated_at": "2026-01-26T11:52:23.081477391Z"
     },
     {
       "id": "T083",
       "title": "Improve multi-agent consensus result handling",
       "description": "internal/parallel/executor.go executeMultiple() uses only the first successful result (line 119). Implement proper consensus logic like voting, merging, or conflict resolution.",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "parallel",
         "consensus"
       ],
       "files": [
         "internal/parallel/executor.go"
-      ]
+      ],
+      "updated_at": "2026-01-26T11:53:07.597747762Z"
     },
     {
       "id": "T084",
