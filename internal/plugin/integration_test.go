@@ -2640,3 +2640,253 @@ func TestPluginManifestEdgeCases(t *testing.T) {
 		}
 	})
 }
+
+// TestExecutorGetEnvVars tests that plugin configuration is passed as environment variables.
+func TestExecutorGetEnvVars(t *testing.T) {
+	t.Run("basic config values", func(t *testing.T) {
+		plugin := &Plugin{
+			Name:     "test-plugin",
+			Version:  "1.0.0",
+			Category: PluginCategoryAgent,
+			Path:     "/path/to/plugin",
+			Config: map[string]any{
+				"timeout":  "10m",
+				"work_dir": "/tmp/test",
+				"model":    "gpt-4",
+				"enabled":  true,
+			},
+		}
+
+		executor := NewExecutor(plugin)
+		envVars := executor.getEnvVars()
+
+		// Convert to map for easier checking
+		envMap := make(map[string]string)
+		for _, e := range envVars {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				envMap[parts[0]] = parts[1]
+			}
+		}
+
+		// Check standard metadata env vars
+		if envMap["LOOPER_PLUGIN_NAME"] != "test-plugin" {
+			t.Errorf("expected LOOPER_PLUGIN_NAME=test-plugin, got %s", envMap["LOOPER_PLUGIN_NAME"])
+		}
+		if envMap["LOOPER_PLUGIN_VERSION"] != "1.0.0" {
+			t.Errorf("expected LOOPER_PLUGIN_VERSION=1.0.0, got %s", envMap["LOOPER_PLUGIN_VERSION"])
+		}
+		if envMap["LOOPER_PLUGIN_CATEGORY"] != "agent" {
+			t.Errorf("expected LOOPER_PLUGIN_CATEGORY=agent, got %s", envMap["LOOPER_PLUGIN_CATEGORY"])
+		}
+		if envMap["LOOPER_PLUGIN_PATH"] != "/path/to/plugin" {
+			t.Errorf("expected LOOPER_PLUGIN_PATH=/path/to/plugin, got %s", envMap["LOOPER_PLUGIN_PATH"])
+		}
+
+		// Check config env vars
+		if envMap["LOOPER_PLUGIN_TIMEOUT"] != "10m" {
+			t.Errorf("expected LOOPER_PLUGIN_TIMEOUT=10m, got %s", envMap["LOOPER_PLUGIN_TIMEOUT"])
+		}
+		if envMap["LOOPER_PLUGIN_WORK_DIR"] != "/tmp/test" {
+			t.Errorf("expected LOOPER_PLUGIN_WORK_DIR=/tmp/test, got %s", envMap["LOOPER_PLUGIN_WORK_DIR"])
+		}
+		if envMap["LOOPER_PLUGIN_MODEL"] != "gpt-4" {
+			t.Errorf("expected LOOPER_PLUGIN_MODEL=gpt-4, got %s", envMap["LOOPER_PLUGIN_MODEL"])
+		}
+		if envMap["LOOPER_PLUGIN_ENABLED"] != "1" {
+			t.Errorf("expected LOOPER_PLUGIN_ENABLED=1, got %s", envMap["LOOPER_PLUGIN_ENABLED"])
+		}
+	})
+
+	t.Run("kebab-case config keys converted to underscore", func(t *testing.T) {
+		plugin := &Plugin{
+			Name:     "test-plugin",
+			Category: PluginCategoryAgent,
+			Config: map[string]any{
+				"some-custom-key": "value1",
+				"another.key":     "value2",
+			},
+		}
+
+		executor := NewExecutor(plugin)
+		envVars := executor.getEnvVars()
+
+		envMap := make(map[string]string)
+		for _, e := range envVars {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				envMap[parts[0]] = parts[1]
+			}
+		}
+
+		if envMap["LOOPER_PLUGIN_SOME_CUSTOM_KEY"] != "value1" {
+			t.Errorf("expected LOOPER_PLUGIN_SOME_CUSTOM_KEY=value1, got %s", envMap["LOOPER_PLUGIN_SOME_CUSTOM_KEY"])
+		}
+		if envMap["LOOPER_PLUGIN_ANOTHER_KEY"] != "value2" {
+			t.Errorf("expected LOOPER_PLUGIN_ANOTHER_KEY=value2, got %s", envMap["LOOPER_PLUGIN_ANOTHER_KEY"])
+		}
+	})
+
+	t.Run("boolean false converts to 0", func(t *testing.T) {
+		plugin := &Plugin{
+			Name:     "test-plugin",
+			Category: PluginCategoryAgent,
+			Config: map[string]any{
+				"enabled": false,
+			},
+		}
+
+		executor := NewExecutor(plugin)
+		envVars := executor.getEnvVars()
+
+		envMap := make(map[string]string)
+		for _, e := range envVars {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				envMap[parts[0]] = parts[1]
+			}
+		}
+
+		if envMap["LOOPER_PLUGIN_ENABLED"] != "0" {
+			t.Errorf("expected LOOPER_PLUGIN_ENABLED=0, got %s", envMap["LOOPER_PLUGIN_ENABLED"])
+		}
+	})
+
+	t.Run("numeric values", func(t *testing.T) {
+		plugin := &Plugin{
+			Name:     "test-plugin",
+			Category: PluginCategoryAgent,
+			Config: map[string]any{
+				"port":     8080,
+				"timeout": 30,
+			},
+		}
+
+		executor := NewExecutor(plugin)
+		envVars := executor.getEnvVars()
+
+		envMap := make(map[string]string)
+		for _, e := range envVars {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				envMap[parts[0]] = parts[1]
+			}
+		}
+
+		if envMap["LOOPER_PLUGIN_PORT"] != "8080" {
+			t.Errorf("expected LOOPER_PLUGIN_PORT=8080, got %s", envMap["LOOPER_PLUGIN_PORT"])
+		}
+		if envMap["LOOPER_PLUGIN_TIMEOUT"] != "30" {
+			t.Errorf("expected LOOPER_PLUGIN_TIMEOUT=30, got %s", envMap["LOOPER_PLUGIN_TIMEOUT"])
+		}
+	})
+
+	t.Run("slice values joined with commas", func(t *testing.T) {
+		plugin := &Plugin{
+			Name:     "test-plugin",
+			Category: PluginCategoryAgent,
+			Config: map[string]any{
+				"tags":     []string{"a", "b", "c"},
+				"plugins": []any{"x", "y", "z"},
+			},
+		}
+
+		executor := NewExecutor(plugin)
+		envVars := executor.getEnvVars()
+
+		envMap := make(map[string]string)
+		for _, e := range envVars {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				envMap[parts[0]] = parts[1]
+			}
+		}
+
+		if envMap["LOOPER_PLUGIN_TAGS"] != "a,b,c" {
+			t.Errorf("expected LOOPER_PLUGIN_TAGS=a,b,c, got %s", envMap["LOOPER_PLUGIN_TAGS"])
+		}
+		if envMap["LOOPER_PLUGIN_PLUGINS"] != "x,y,z" {
+			t.Errorf("expected LOOPER_PLUGIN_PLUGINS=x,y,z, got %s", envMap["LOOPER_PLUGIN_PLUGINS"])
+		}
+	})
+
+	t.Run("empty config", func(t *testing.T) {
+		plugin := &Plugin{
+			Name:     "test-plugin",
+			Category: PluginCategoryAgent,
+			Config:   make(map[string]any),
+		}
+
+		executor := NewExecutor(plugin)
+		envVars := executor.getEnvVars()
+
+		envMap := make(map[string]string)
+		for _, e := range envVars {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				envMap[parts[0]] = parts[1]
+			}
+		}
+
+		// Should still have metadata env vars
+		if envMap["LOOPER_PLUGIN_NAME"] != "test-plugin" {
+			t.Errorf("expected LOOPER_PLUGIN_NAME=test-plugin, got %s", envMap["LOOPER_PLUGIN_NAME"])
+		}
+		if envMap["LOOPER_PLUGIN_CATEGORY"] != "agent" {
+			t.Errorf("expected LOOPER_PLUGIN_CATEGORY=agent, got %s", envMap["LOOPER_PLUGIN_CATEGORY"])
+		}
+	})
+}
+
+// TestToEnvKey tests the toEnvKey helper function.
+func TestToEnvKey(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"timeout", "TIMEOUT"},
+		{"work_dir", "WORK_DIR"},
+		{"some-custom-key", "SOME_CUSTOM_KEY"},
+		{"another.key", "ANOTHER_KEY"},
+		{"UPPERCASE", "UPPERCASE"},
+		{"mixed_Case-key", "MIXED_CASE_KEY"},
+		{"with-dashes_and_underscores", "WITH_DASHES_AND_UNDERSCORES"},
+		{"with.dots.too", "WITH_DOTS_TOO"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := toEnvKey(tt.input)
+			if result != tt.expected {
+				t.Errorf("toEnvKey(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestToString tests the toString helper function.
+func TestToString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{"string", "hello", "hello"},
+		{"bool true", true, "1"},
+		{"bool false", false, "0"},
+		{"int", 42, "42"},
+		{"float", 3.14, "3.14"},
+		{"string slice", []string{"a", "b"}, "a,b"},
+		{"empty string slice", []string{}, ""},
+		{"any slice", []any{"x", "y", "z"}, "x,y,z"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := toString(tt.input)
+			if result != tt.expected {
+				t.Errorf("toString(%v) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}

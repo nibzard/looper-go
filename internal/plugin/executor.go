@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -184,9 +185,76 @@ func (e *Executor) getEnvVars() []string {
 	env := append([]string{}, execCmdEnv()...)
 
 	// Add plugin-specific environment variables
-	// TODO: Add plugin configuration as environment variables
+	// Plugin configuration is passed via LOOPER_PLUGIN_* prefix
+	for key, value := range e.plugin.Config {
+		// Convert config key to uppercase with LOOPER_PLUGIN_ prefix
+		// e.g., "timeout" -> "LOOPER_PLUGIN_TIMEOUT", "work_dir" -> "LOOPER_PLUGIN_WORK_DIR"
+		envKey := "LOOPER_PLUGIN_" + toEnvKey(key)
+		envVar := envKey + "=" + toString(value)
+		env = append(env, envVar)
+	}
+
+	// Add standard plugin metadata env vars
+	env = append(env, "LOOPER_PLUGIN_NAME="+e.plugin.Name)
+	if e.plugin.Version != "" {
+		env = append(env, "LOOPER_PLUGIN_VERSION="+e.plugin.Version)
+	}
+	env = append(env, "LOOPER_PLUGIN_CATEGORY="+string(e.plugin.Category))
+	env = append(env, "LOOPER_PLUGIN_PATH="+e.plugin.Path)
 
 	return env
+}
+
+// toEnvKey converts a config key to an environment variable key format.
+// Converts lowercase/kebab-case to uppercase with underscores.
+// e.g., "timeout" -> "TIMEOUT", "work_dir" -> "WORK_DIR"
+func toEnvKey(key string) string {
+	var result []rune
+	for i, r := range key {
+		if r == '-' || r == '.' {
+			result = append(result, '_')
+		} else if r >= 'a' && r <= 'z' {
+			result = append(result, r-32) // Convert to uppercase
+		} else if r == '_' {
+			result = append(result, '_')
+		} else if r >= 'A' && r <= 'Z' {
+			result = append(result, r)
+		} else {
+			// Skip other characters or replace with underscore
+			if i > 0 && result[len(result)-1] != '_' {
+				result = append(result, '_')
+			}
+		}
+	}
+	return string(result)
+}
+
+// toString converts a value to its string representation for env vars.
+func toString(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case bool:
+		if val {
+			return "1"
+		}
+		return "0"
+	case int, int64, float64:
+		return fmt.Sprintf("%v", val)
+	case []string:
+		// Join string slices with commas
+		return strings.Join(val, ",")
+	case []any:
+		// Join any slices with commas
+		var parts []string
+		for _, item := range val {
+			parts = append(parts, toString(item))
+		}
+		return strings.Join(parts, ",")
+	default:
+		// For complex types, try to format as JSON-like string
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 // ValidatePlugin checks if the plugin binary is executable and responds to basic queries.

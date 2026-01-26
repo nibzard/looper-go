@@ -1500,7 +1500,7 @@
       "description": "Plugins can be configured via [plugins.<name>] sections in looper.toml with timeout, work_dir, binary, model, reasoning, enabled options, but this is not documented.",
       "priority": 4,
       "status": "done",
-      "details": "internal/config/types.go:181-224 defines PluginConfig and PluginSettings. Users can configure plugin execution timeout, working directory, override binary path, set model/reasoning for agent plugins, and enable/disable plugins without uninstalling. This is useful for tuning plugin behavior but completely undocumented.",
+      "details": "Added comprehensive plugin configuration documentation to README.md. The new section covers the [plugins.<name>] configuration pattern in looper.toml, including all available settings (timeout, work_dir, binary, model, reasoning, enabled), examples for common scenarios, configuration precedence, relationship to plugin manifests, and environment variable support. Also updated the main config file example to include plugin configuration and added plugin environment variables to the Environment Variables section.",
       "steps": [
         "Add plugin configuration documentation to the Configuration section in README.md",
         "Document the [plugins.<name>] section pattern",
@@ -1517,7 +1517,7 @@
       "files": [
         "README.md"
       ],
-      "updated_at": "2026-01-26T12:00:13Z"
+      "updated_at": "2026-01-26T12:02:22.073477595Z"
     },
     {
       "id": "T077",
@@ -1611,14 +1611,17 @@
       "title": "Complete plugin configuration environment variable passing",
       "description": "internal/plugin/executor.go line 172 has a TODO for passing plugin configuration as environment variables. Implement this feature to allow plugins to receive their configuration via env vars.",
       "priority": 4,
-      "status": "todo",
+      "status": "done",
       "tags": [
         "plugins",
         "config"
       ],
       "files": [
-        "internal/plugin/executor.go"
-      ]
+        "internal/plugin/executor.go",
+        "internal/plugin/integration_test.go",
+        "to-do.json"
+      ],
+      "updated_at": "2026-01-26T12:02:30Z"
     },
     {
       "id": "T082",
