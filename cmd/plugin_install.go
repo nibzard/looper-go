@@ -242,6 +242,10 @@ func (c *PluginInstallCommand) cloneGitRepo(ctx context.Context, url string) (st
 
 // copyPluginDir copies a plugin directory to a target location.
 func (c *PluginInstallCommand) copyPluginDir(src, dst string) error {
+	// Validate and clean paths to prevent path traversal attacks
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
 	// Remove target if it exists (for --force)
 	if _, err := os.Stat(dst); err == nil {
 		if err := os.RemoveAll(dst); err != nil {
@@ -265,7 +269,32 @@ func (c *PluginInstallCommand) copyPluginDir(src, dst string) error {
 			return err
 		}
 
+		// Reject relative paths that try to escape (contain "..")
+		if strings.Contains(relPath, "..") {
+			return fmt.Errorf("invalid path: %s (contains path traversal attempt)", relPath)
+		}
+
 		targetPath := filepath.Join(dst, relPath)
+
+		// Validate that the target path is within the destination directory
+		// to prevent path traversal attacks
+		absDst, err := filepath.Abs(dst)
+		if err != nil {
+			return fmt.Errorf("resolving absolute destination path: %w", err)
+		}
+		absTarget, err := filepath.Abs(targetPath)
+		if err != nil {
+			return fmt.Errorf("resolving absolute target path: %w", err)
+		}
+
+		// Check if the target path is within the destination directory
+		relToDst, err := filepath.Rel(absDst, absTarget)
+		if err != nil {
+			return fmt.Errorf("validating target path: %w", err)
+		}
+		if strings.HasPrefix(relToDst, "..") {
+			return fmt.Errorf("invalid target path: %s (outside destination directory)", targetPath)
+		}
 
 		if info.IsDir() {
 			return os.MkdirAll(targetPath, info.Mode())

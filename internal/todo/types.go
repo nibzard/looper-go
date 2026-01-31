@@ -16,17 +16,15 @@ import (
 )
 
 // Schema cache for improved performance.
-// Each schema path has its own sync.Once to ensure thread-safe initialization.
+// Uses sync.Map for thread-safe access without race conditions.
+var schemaCache sync.Map
+
+// schemaCacheEntry holds a cached schema with sync.Once for lazy initialization.
 type schemaCacheEntry struct {
 	schema *jsonschema.Schema
 	once   sync.Once
 	err    error
 }
-
-var (
-	schemaCache   = make(map[string]*schemaCacheEntry)
-	schemaCacheMu sync.RWMutex
-)
 
 // idSortKey extracts the numeric value from a task ID for sorting.
 // For IDs like "T001", "T2", "T10", it returns 1, 2, 10 respectively.
@@ -285,24 +283,28 @@ func validateTaskMinimal(task *Task, path string) *ValidationError {
 
 // getCachedSchema returns a cached compiled schema for the given path.
 // If not in cache, compiles and stores it for future use.
-// Uses sync.Once for thread-safe initialization without race conditions.
+// Uses sync.Map and sync.Once for thread-safe initialization without race conditions.
 func getCachedSchema(schemaPath string) (*jsonschema.Schema, error) {
-	schemaCacheMu.RLock()
-	entry, ok := schemaCache[schemaPath]
-	schemaCacheMu.RUnlock()
-
-	if !ok {
-		// Entry doesn't exist, create it under write lock
-		schemaCacheMu.Lock()
-		// Double-check after acquiring write lock
-		if entry, ok = schemaCache[schemaPath]; !ok {
-			entry = &schemaCacheEntry{}
-			schemaCache[schemaPath] = entry
-		}
-		schemaCacheMu.Unlock()
+	// Try to load from cache
+	if val, ok := schemaCache.Load(schemaPath); ok {
+		entry := val.(*schemaCacheEntry)
+		entry.once.Do(func() {
+			compiler := jsonschema.NewCompiler()
+			compiler.AssertFormat = true
+			entry.schema, entry.err = compiler.Compile(schemaPath)
+		})
+		return entry.schema, entry.err
 	}
 
-	// Use sync.Once to ensure the schema is compiled exactly once
+	// Create new entry
+	entry := &schemaCacheEntry{}
+
+	// Use LoadOrStore to atomically check if entry exists and store if not
+	// This ensures only one goroutine creates the entry for a given path
+	actual, _ := schemaCache.LoadOrStore(schemaPath, entry)
+	entry = actual.(*schemaCacheEntry)
+
+	// Compile the schema (sync.Once ensures it only happens once)
 	entry.once.Do(func() {
 		compiler := jsonschema.NewCompiler()
 		compiler.AssertFormat = true

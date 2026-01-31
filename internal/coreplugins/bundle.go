@@ -90,7 +90,12 @@ func EnsureExtracted(userPluginsDir string) (bool, error) {
 	bundleMutex.Lock()
 	defer bundleMutex.Unlock()
 
-	// Check if core plugins already exist
+	// Check if already extracted
+	if extracted {
+		return false, nil
+	}
+
+	// Check if core plugins already exist on disk
 	claudePath := filepath.Join(userPluginsDir, "claude", "README.md")
 	if _, err := os.Stat(claudePath); err == nil {
 		// Core plugins already exist
@@ -98,11 +103,25 @@ func EnsureExtracted(userPluginsDir string) (bool, error) {
 		return false, nil
 	}
 
-	// Extract core plugins
-	if err := Extract(userPluginsDir); err != nil {
-		return false, err
+	// Create user plugins directory if it doesn't exist
+	if err := os.MkdirAll(userPluginsDir, 0755); err != nil {
+		return false, fmt.Errorf("creating user plugins directory: %w", err)
 	}
 
+	// Extract each core plugin (inline to avoid deadlock from calling Extract which also acquires lock)
+	if err := extractClaudePlugin(userPluginsDir); err != nil {
+		return false, fmt.Errorf("extracting claude plugin: %w", err)
+	}
+
+	if err := extractCodexPlugin(userPluginsDir); err != nil {
+		return false, fmt.Errorf("extracting codex plugin: %w", err)
+	}
+
+	if err := extractTraditionalPlugin(userPluginsDir); err != nil {
+		return false, fmt.Errorf("extracting traditional plugin: %w", err)
+	}
+
+	extracted = true
 	return true, nil
 }
 

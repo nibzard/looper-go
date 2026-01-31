@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 )
 
 // Options configures a hook invocation.
@@ -17,6 +18,9 @@ type Options struct {
 	LastMessagePath string
 	Label           string
 	WorkDir         string
+	// Timeout is the maximum time to wait for the hook command to complete.
+	// If zero, a default timeout of 30 seconds is used.
+	Timeout time.Duration
 }
 
 // Result captures the outcome of a hook invocation.
@@ -32,6 +36,13 @@ type Result struct {
 func Invoke(ctx context.Context, opts Options) (Result, error) {
 	if opts.Command == "" || opts.LastMessagePath == "" {
 		return Result{}, nil
+	}
+
+	// Validate and clean the command path to prevent command injection
+	// Look up the command in PATH to ensure it's a valid executable
+	commandPath, err := exec.LookPath(opts.Command)
+	if err != nil {
+		return Result{}, fmt.Errorf("hook command not found: %w", err)
 	}
 
 	info, err := os.Stat(opts.LastMessagePath)
@@ -57,7 +68,15 @@ func Invoke(ctx context.Context, opts Options) (Result, error) {
 		ctx = context.Background()
 	}
 
-	cmd := exec.CommandContext(ctx, opts.Command, args...)
+	// Apply timeout - default to 30 seconds if not specified
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, commandPath, args...)
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
@@ -74,6 +93,10 @@ func Invoke(ctx context.Context, opts Options) (Result, error) {
 		Status:   status,
 	}
 	if err != nil {
+		// Check if it was a timeout
+		if errors.Is(err, context.DeadlineExceeded) {
+			return result, fmt.Errorf("hook command timed out after %s", timeout)
+		}
 		return result, fmt.Errorf("hook command failed: %w", err)
 	}
 	return result, nil

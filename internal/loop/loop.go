@@ -677,15 +677,34 @@ func runAgentWithConfig(ctx context.Context, cfg *config.Config, agentType, prom
 
 // verifyTodoFileCreated checks that the todo file was created and is valid.
 func verifyTodoFileCreated(todoPath string) error {
+	// Validate path is not empty
+	if todoPath == "" {
+		return fmt.Errorf("todo path is empty")
+	}
+
+	// Clean the path to handle any edge cases
+	todoPath = filepath.Clean(todoPath)
+
 	info, err := os.Stat(todoPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("todo file was not created at %s", todoPath)
 		}
+		// Check for invalid path errors
+		if os.IsPermission(err) {
+			return fmt.Errorf("permission denied accessing todo file at %s", todoPath)
+		}
 		return fmt.Errorf("stat todo file: %w", err)
+	}
+	if info == nil {
+		return fmt.Errorf("todo file info is nil for path %s", todoPath)
 	}
 	if info.IsDir() {
 		return fmt.Errorf("todo path is a directory: %s", todoPath)
+	}
+	// Check if file is empty (likely an error condition)
+	if info.Size() == 0 {
+		return fmt.Errorf("todo file is empty at %s", todoPath)
 	}
 	return nil
 }
@@ -1098,11 +1117,24 @@ func (l *Loop) executeTasksParallel(ctx context.Context, iter int, tasks []*todo
 		go func(t *todo.Task) {
 			defer wg.Done()
 
-			// Acquire semaphore slot
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			// Check context before acquiring semaphore to avoid starting work if already cancelled
+			select {
+			case <-ctx.Done():
+				resultCh <- taskResult{taskID: t.ID, err: ctx.Err()}
+				return
+			default:
+			}
 
-			// Check context
+			// Acquire semaphore slot
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				resultCh <- taskResult{taskID: t.ID, err: ctx.Err()}
+				return
+			}
+
+			// Check context again after acquiring semaphore
 			if ctx.Err() != nil {
 				resultCh <- taskResult{taskID: t.ID, err: ctx.Err()}
 				return

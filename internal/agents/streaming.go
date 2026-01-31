@@ -123,8 +123,13 @@ func streamWithStderr(
 // streamStderr streams stderr lines to the log writer as error events.
 // This is shared between codex and Claude agents.
 func streamStderr(ctx context.Context, stderr io.Reader, logWriter LogWriter, errs chan<- error) {
+	// Check context before starting to avoid blocking if already cancelled
+	if ctx.Err() != nil {
+		return
+	}
 	scanner := newScanner(stderr)
 	for scanner.Scan() {
+		// Check context on each iteration to respond quickly to cancellation
 		if ctx.Err() != nil {
 			return
 		}

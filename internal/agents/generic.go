@@ -110,8 +110,13 @@ func (a *genericAgent) runWithParser(ctx context.Context, prompt string, logWrit
 
 	go func() {
 		defer wg.Done()
+		// Check context before starting to avoid blocking if already cancelled
+		if ctx.Err() != nil {
+			return
+		}
 		scanner := newScanner(stdout)
 		for scanner.Scan() {
+			// Check context on each iteration to respond quickly to cancellation
 			if ctx.Err() != nil {
 				return
 			}

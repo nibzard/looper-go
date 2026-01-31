@@ -38,11 +38,22 @@ func runAgent(ctx context.Context, cfg Config, prompt string, logWriter LogWrite
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		// Clean up stdout pipe since stderr pipe creation failed
+		if stdout != nil {
+			_ = stdout.(io.Closer).Close()
+		}
 		return nil, fmt.Errorf("create stderr pipe: %w", err)
 	}
 
 	// Start command
 	if err := cmd.Start(); err != nil {
+		// Clean up pipes on start failure
+		if stdout != nil {
+			_ = stdout.(io.Closer).Close()
+		}
+		if stderr != nil {
+			_ = stderr.(io.Closer).Close()
+		}
 		_ = logWriter.Write(LogEvent{
 			Type:      "error",
 			Timestamp: time.Now().UTC(),

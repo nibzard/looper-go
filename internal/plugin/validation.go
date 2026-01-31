@@ -158,13 +158,19 @@ func (v *Validator) validateBinary(binaryPath string, manifest *Manifest, result
 		// Try --help
 		output, err = exec.Command(binaryPath, "--help").CombinedOutput()
 		if err != nil {
+			// Log the command output for debugging
+			if len(output) > 0 {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("binary output from --version/--help: %s", string(output)))
+			}
 			// In strict mode, fail if binary doesn't respond to --version or --help
 			if v.StrictMode {
+				result.Errors = append(result.Errors, fmt.Sprintf("binary does not respond to --version or --help: %s", err))
+				result.Valid = false
+			} else {
 				result.Warnings = append(result.Warnings, fmt.Sprintf("binary does not respond to --version or --help: %s", err))
 			}
 		}
 	}
-	_ = output
 
 	// Check binary is not a script (security warning)
 	ext := strings.ToLower(filepath.Ext(binaryPath))

@@ -3,7 +3,10 @@ package plugin
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/nibzard/looper-go/internal/coreplugins"
@@ -113,10 +116,12 @@ func (r *Registry) Initialize(projectRoot string) error {
 
 	// Ensure core plugins are extracted to user plugins directory
 	// This creates marker files so users know these plugins exist
-	// TODO: Re-enable after fixing potential hang
-	// if _, err := coreplugins.EnsureExtracted(r.loader.UserPluginsDir); err != nil {
-	// 	// Log warning but don't fail - extraction is optional for built-ins
-	// }
+	// Note: The deadlock issue in EnsureExtracted has been fixed
+	if _, err := coreplugins.EnsureExtracted(r.loader.UserPluginsDir); err != nil {
+		// Log warning but don't fail - extraction is optional for built-ins
+		// The built-in plugins are still registered and functional
+		fmt.Fprintf(os.Stderr, "Warning: core plugin extraction failed: %v\n", err)
+	}
 
 	// Discover and load user/project plugins (these override built-ins)
 	plugins, err := r.loader.DiscoverPlugins()
@@ -383,12 +388,10 @@ func (r *Registry) InstallPlugin(sourceDir string, scope PluginScope) (*Plugin, 
 		targetDir = filepath.Join(r.UserPluginsDir(), manifest.Name)
 	}
 
-	// TODO: Implement copying the plugin from sourceDir to targetDir
-	// For now, we'll just register it directly
-	// In a full implementation, we would:
-	// 1. Copy or symlink the plugin directory
-	// 2. Run any installation hooks
-	// 3. Validate dependencies
+	// Copy the plugin from sourceDir to targetDir
+	if err := copyPluginDir(sourceDir, targetDir); err != nil {
+		return nil, fmt.Errorf("copying plugin: %w", err)
+	}
 
 	plugin := &Plugin{
 		Name:       manifest.Name,
@@ -430,10 +433,31 @@ func (r *Registry) UninstallPlugin(name string) error {
 		return fmt.Errorf("cannot uninstall built-in plugin %q", name)
 	}
 
-	// TODO: Implement filesystem cleanup
-	// For now, just unregister from registry
-
+	// Remove from registry first
 	delete(r.plugins, name)
+
+	// Clean up filesystem (plugin directory)
+	// Only delete if the path is within the plugins directory to avoid accidental deletions
+	if p.Path != "" && p.Path != "<builtin>" {
+		// Verify the path is within a plugins directory before deleting
+		userPluginsDir := r.UserPluginsDir()
+		projectPluginsDir := r.ProjectPluginsDir()
+
+		absPath, err := filepath.Abs(p.Path)
+		if err == nil {
+			// Check if path is within user or project plugins directory
+			isUserPlugin := userPluginsDir != "" && strings.HasPrefix(absPath, userPluginsDir)
+			isProjectPlugin := projectPluginsDir != "" && strings.HasPrefix(absPath, projectPluginsDir)
+
+			if isUserPlugin || isProjectPlugin {
+				if err := os.RemoveAll(p.Path); err != nil {
+					// Log warning but don't fail - the registry entry is already removed
+					fmt.Fprintf(os.Stderr, "Warning: failed to remove plugin directory %s: %v\n", p.Path, err)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -481,4 +505,85 @@ func (r *Registry) GetPluginConfig(name string) (map[string]any, bool) {
 	}
 
 	return p.Config, true
+}
+
+// copyPluginDir copies a plugin directory from source to destination.
+// It performs path validation to prevent path traversal attacks.
+func copyPluginDir(src, dst string) error {
+	// Validate and clean paths
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
+	// Ensure source exists
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("stat source: %w", err)
+	}
+	if !srcInfo.IsDir() {
+		return fmt.Errorf("source is not a directory: %s", src)
+	}
+
+	// Remove destination if it exists
+	if _, err := os.Stat(dst); err == nil {
+		if err := os.RemoveAll(dst); err != nil {
+			return fmt.Errorf("remove existing destination: %w", err)
+		}
+	}
+
+	// Create destination directory
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
+
+	// Copy all files
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("read source directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		// Reject paths that try to escape
+		if strings.Contains(entry.Name(), "..") {
+			return fmt.Errorf("invalid entry name: %s (contains path traversal attempt)", entry.Name())
+		}
+
+		if entry.IsDir() {
+			// Recursively copy subdirectories
+			if err := copyPluginDir(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Copy file
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("get file info: %w", err)
+		}
+
+		srcFile, err := os.Open(srcPath)
+		if err != nil {
+			return fmt.Errorf("open source file: %w", err)
+		}
+		defer srcFile.Close()
+
+		dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+		if err != nil {
+			return fmt.Errorf("create destination file: %w", err)
+		}
+
+		if _, err := io.Copy(dstFile, srcFile); err != nil {
+			dstFile.Close()
+			return fmt.Errorf("copy file content: %w", err)
+		}
+
+		if err := dstFile.Close(); err != nil {
+			return fmt.Errorf("close destination file: %w", err)
+		}
+	}
+
+	return nil
 }
