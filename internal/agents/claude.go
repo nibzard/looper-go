@@ -6,19 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
-	"time"
 )
-
-// safePrefix returns a safe prefix of a string for logging.
-func safePrefix(s string) string {
-	const maxLen = 200
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
 
 // claudeAgent implements Agent for Claude.
 type claudeAgent struct {
@@ -79,8 +68,7 @@ func (a *claudeAgent) processStreamJSON(
 
 	var lastMessageBuf bytes.Buffer
 	sawFullMessage := false
-	var lastAssistantContent string // Track last assistant_message content
-	isInitEvent := false           // Track if we're processing an init event
+	var lastAssistantContent string // Track last assistant content with summary JSON
 
 	for {
 		if ctx.Err() != nil {
@@ -95,18 +83,6 @@ func (a *claudeAgent) processStreamJSON(
 			return "", fmt.Errorf("decode json: %w", err)
 		}
 
-		// DEBUG: Log raw decoded structure BEFORE any processing
-		rawType, typeOK := raw["type"]
-		_ = logWriter.Write(LogEvent{
-			Type:      "debug",
-			Timestamp: time.Now().UTC(),
-			Content:   fmt.Sprintf("[DEBUG-POST-DECODE] raw type=%v (typeOK=%v), raw=%+v", rawType, typeOK, raw),
-		})
-		fmt.Fprintf(os.Stderr, "DEBUG-POST-DECODE: raw type=%v (typeOK=%v)\n", rawType, typeOK)
-
-		// Reset init event flag for each new event
-		isInitEvent = false
-
 		// Serialize back to JSON for logging
 		data, _ := json.Marshal(raw)
 		line := string(data)
@@ -115,9 +91,9 @@ func (a *claudeAgent) processStreamJSON(
 			return "", err
 		}
 
-		// Check for assistant_message events with plain text content
-		// These often contain the final summary JSON
-		// Note: The stream-json format uses type "assistant" not "assistant_message"
+		// Check for assistant events with text content
+		// These may contain the final summary JSON
+		// Note: The stream-json format uses type "assistant"
 		if msgType, ok := raw["type"].(string); ok && msgType == "assistant" {
 			// Extract text content from message.content array
 			// The content is an array like: [{type:"text", text:"..."}, {type:"tool_use", ...}]
@@ -138,13 +114,6 @@ func (a *claudeAgent) processStreamJSON(
 
 			content := contentBuilder.String()
 			if content != "" {
-				// DEBUG: Log that we found an assistant_message with content
-				_ = logWriter.Write(LogEvent{
-					Type:      "debug",
-					Timestamp: time.Now().UTC(),
-					Content:   fmt.Sprintf("[DEBUG] Found assistant with text content length %d, prefix: %s", len(content), safePrefix(content)),
-				})
-
 				// Try to extract JSON from the content (handles markdown code blocks)
 				if jsonStr := extractJSON(content); jsonStr != "" {
 					// Check if it's actually a summary by validating fields
@@ -155,11 +124,6 @@ func (a *claudeAgent) processStreamJSON(
 						if hasTaskID && hasStatus {
 							// This is a valid summary JSON - save it
 							lastAssistantContent = jsonStr
-							_ = logWriter.Write(LogEvent{
-								Type:      "debug",
-								Timestamp: time.Now().UTC(),
-								Content:   fmt.Sprintf("[DEBUG] Found valid summary JSON: %s", jsonStr),
-							})
 						}
 					}
 				}
@@ -171,8 +135,7 @@ func (a *claudeAgent) processStreamJSON(
 		}
 
 		// Look for full message events from the stream
-		// Skip init events - they have nested message structures that falsely trigger full message detection
-		if !sawFullMessage && !isInitEvent {
+		if !sawFullMessage {
 			if full := extractClaudeFullMessage(raw); full != "" {
 				// Check that this is actual text content, not just a JSON structure
 				// Init events return JSON that starts with "{" and contains type/message fields
@@ -188,53 +151,20 @@ func (a *claudeAgent) processStreamJSON(
 		}
 	}
 
-	// Prefer the assistant_message content if it was captured
-	_ = logWriter.Write(LogEvent{
-		Type:      "debug",
-		Timestamp: time.Now().UTC(),
-		Content:   fmt.Sprintf("[DEBUG] After loop: lastAssistantContent=%q, sawFullMessage=%v, lastMessageBuf.Len=%d",
-			lastAssistantContent, sawFullMessage, lastMessageBuf.Len()),
-	})
+	// Prefer the assistant content if it was captured
 	if lastAssistantContent != "" {
 		if summary, ok := parseSummaryFromText(lastAssistantContent); ok {
-			_ = logWriter.Write(LogEvent{
-				Type:      "debug",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("[DEBUG] Parsed summary from assistant_message: %+v", summary),
-			})
 			if err := recordSummary(ctx, logWriter, summaries, summary); err != nil {
 				return "", err
 			}
 			return lastAssistantContent, nil
-		} else {
-			_ = logWriter.Write(LogEvent{
-				Type:      "debug",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("[DEBUG] parseSummaryFromText FAILED for lastAssistantContent: %s", safePrefix(lastAssistantContent)),
-			})
 		}
-	} else {
-		_ = logWriter.Write(LogEvent{
-			Type:      "debug",
-			Timestamp: time.Now().UTC(),
-			Content:   "[DEBUG] lastAssistantContent is EMPTY, falling back to accumulated content",
-		})
 	}
 
 	// Fall back to accumulated message content
 	if lastMessageBuf.Len() > 0 {
 		content := lastMessageBuf.String()
-		_ = logWriter.Write(LogEvent{
-			Type:      "debug",
-			Timestamp: time.Now().UTC(),
-			Content:   fmt.Sprintf("[DEBUG] Parsing summary from accumulated content (len=%d, prefix=%s)", len(content), safePrefix(content)),
-		})
 		if summary, ok := parseSummaryFromText(content); ok {
-			_ = logWriter.Write(LogEvent{
-				Type:      "debug",
-				Timestamp: time.Now().UTC(),
-				Content:   fmt.Sprintf("[DEBUG] Successfully parsed summary: %+v", summary),
-			})
 			if err := recordSummary(ctx, logWriter, summaries, summary); err != nil {
 				return "", err
 			}
